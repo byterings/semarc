@@ -1,5 +1,7 @@
 PROJECT BlogAPI
 
+TARGET PHP
+
 DATABASE MYSQL
 
 AUTH JWT
@@ -9,5 +11,14 @@ MODEL User
     email STRING
     password STRING
 
+MODEL Post
+    title STRING
+    content TEXT
+
+RELATION User HAS_MANY Post
+
+VALIDATE email REQUIRED EMAIL
+VALIDATE password REQUIRED MIN
+
 ROUTE POST /login
-ROUTE GET /users
+ROUTE GET /posts

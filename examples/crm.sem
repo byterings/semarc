@@ -1,0 +1,28 @@
+PROJECT CRM
+
+TARGET PHP
+
+DATABASE MYSQL
+
+AUTH JWT
+
+MODEL Lead
+    name STRING
+    email STRING
+    source STRING
+
+MODEL Customer
+    name STRING
+    email STRING
+    company STRING
+
+MODEL Activity
+    title STRING
+    notes TEXT
+
+RELATION Customer HAS_MANY Activity
+
+VALIDATE email REQUIRED EMAIL
+
+ROUTE GET /customers
+ROUTE GET /leads

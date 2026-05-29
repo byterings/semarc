@@ -1,0 +1,25 @@
+PROJECT Inventory
+
+TARGET PHP
+
+DATABASE MYSQL
+
+AUTH JWT
+
+MODEL Product
+    name STRING
+    sku STRING
+
+MODEL Warehouse
+    name STRING
+    location STRING
+
+MODEL Stock
+    quantity INTEGER
+    status STRING
+
+RELATION Product HAS_MANY Stock
+RELATION Warehouse HAS_MANY Stock
+
+ROUTE GET /inventory
+ROUTE GET /stock

@@ -1,0 +1,28 @@
+PROJECT SchoolManagement
+
+TARGET PHP
+
+DATABASE MYSQL
+
+AUTH JWT
+
+MODEL Student
+    name STRING
+    email STRING
+
+MODEL Teacher
+    name STRING
+    email STRING
+
+MODEL Course
+    title STRING
+    code STRING
+
+RELATION Student HAS_MANY Course
+RELATION Teacher HAS_MANY Course
+
+VALIDATE email REQUIRED EMAIL
+
+ROUTE GET /students
+ROUTE GET /teachers
+ROUTE GET /courses

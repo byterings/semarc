@@ -1,0 +1,31 @@
+PROJECT ECommerce
+
+TARGET PHP
+
+DATABASE MYSQL
+
+AUTH JWT
+
+MODEL User
+    name STRING
+    email STRING
+    password STRING
+
+MODEL Product
+    name STRING
+    sku STRING
+    price INTEGER
+
+MODEL Order
+    status STRING
+    total INTEGER
+
+RELATION User HAS_MANY Order
+RELATION Product HAS_MANY Order
+
+VALIDATE email REQUIRED EMAIL
+VALIDATE password REQUIRED MIN
+
+ROUTE POST /login
+ROUTE GET /products
+ROUTE GET /orders
