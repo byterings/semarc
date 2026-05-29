@@ -35,9 +35,22 @@ Status: complete.
 - FastAPI mappers
 - target-specific output structures
 
-## v0.4: Relationship-Aware Compiler
+## v0.4.0: Semantic Package System Foundation
 
 Status: current.
+
+- semantic package architecture
+- profile architecture
+- company standards foundation
+- reusable semantic module placeholders
+- stdlib metadata directories
+- profile and package registries
+- optional `PROFILE` and `USE` parser hooks
+- backward-compatible AST and IR metadata
+
+## v0.4.x: Relationship-Aware Compiler
+
+Status: complete.
 
 - `RELATION` syntax
 - `RelationNode`

@@ -1,0 +1,10 @@
+PROJECT BasicProfileTest
+
+PROFILE BLOG
+
+DATABASE MYSQL
+
+MODEL User
+    email STRING
+
+ROUTE GET /users

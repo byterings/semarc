@@ -1,6 +1,10 @@
-PROJECT ECommerce
+PROJECT ShopAPI
 
 TARGET PHP
+
+PROFILE ECOMMERCE
+USE payment.razorpay
+USE notification.email
 
 DATABASE MYSQL
 

@@ -1,0 +1,4 @@
+name: storage.local
+domain: storage
+description: Metadata-only placeholder for local file storage architecture.
+dependencies:

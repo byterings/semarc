@@ -1,0 +1,4 @@
+name: notification.email
+domain: notification
+description: Metadata-only placeholder for email notification architecture.
+dependencies:

@@ -7,9 +7,13 @@ KEYWORDS = {
     "TARGET",
     "DATABASE",
     "AUTH",
+    "CONFIG",
     "MODEL",
+    "PROFILE",
     "ROUTE",
+    "SERVICE",
     "RELATION",
+    "USE",
     "VALIDATE",
 }
 TYPES = {"STRING", "INTEGER", "BOOLEAN", "FLOAT", "TEXT"}

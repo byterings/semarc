@@ -1,0 +1,4 @@
+name: payment
+domain: payment
+description: Placeholder for payment provider architecture modules.
+dependencies: notification, audit.standard

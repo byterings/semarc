@@ -1,0 +1,4 @@
+name: payment.razorpay
+domain: payment
+description: Metadata-only placeholder for Razorpay payment architecture.
+dependencies: notification.email, audit.standard

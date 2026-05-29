@@ -17,6 +17,8 @@ class CompilerContext:
     migration_plan: dict = field(default_factory=dict)
     constraint_result: Any = None
     architecture_report: dict = field(default_factory=dict)
+    loaded_profiles: list[Any] = field(default_factory=list)
+    loaded_packages: list[Any] = field(default_factory=list)
     target_profile: dict = field(default_factory=dict)
     architecture_plan: dict = field(default_factory=dict)
     dependency_graph: Any = None

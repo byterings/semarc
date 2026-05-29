@@ -35,8 +35,8 @@ class ContractValidator:
         "migrations",
         "routes",
         "dependency_graph",
-        "relationship_graph",
-    }
+            "relationship_graph",
+        }
 
     def validate_ast(self, ast) -> list[str]:
         errors = []
@@ -48,6 +48,10 @@ class ContractValidator:
             errors.append("AST routes must be a list")
         if not isinstance(ast.relations, list):
             errors.append("AST relations must be a list")
+        if hasattr(ast, "profiles") and not isinstance(ast.profiles, list):
+            errors.append("AST profiles must be a list")
+        if hasattr(ast, "packages") and not isinstance(ast.packages, list):
+            errors.append("AST packages must be a list")
         return errors
 
     def validate_ir(self, ir: dict) -> list[str]:
@@ -62,6 +66,10 @@ class ContractValidator:
             errors.extend(self._validate_route(route))
         for repository in ir.get("repositories", []):
             errors.extend(self._validate_repository(repository))
+        if "profiles" in ir and not isinstance(ir["profiles"], list):
+            errors.append("IR profiles must be a list")
+        if "packages" in ir and not isinstance(ir["packages"], list):
+            errors.append("IR packages must be a list")
 
         leakage = self.detect_target_leakage(ir)
         if leakage:

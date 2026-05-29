@@ -1,0 +1,4 @@
+name: relationships
+domain: relationships
+description: Placeholder for reusable relationship and ownership modules.
+dependencies:

@@ -1,0 +1,13 @@
+PROJECT ProfileWithPackagesTest
+
+PROFILE ECOMMERCE
+USE payment.razorpay
+USE notification.email
+USE storage.local
+
+DATABASE MYSQL
+
+MODEL User
+    email STRING
+
+ROUTE GET /users

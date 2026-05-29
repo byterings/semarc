@@ -1,0 +1,4 @@
+PROFILE COMPANY_ECOMMERCE
+EXTENDS ECOMMERCE
+USE audit.standard
+USE notification.sms

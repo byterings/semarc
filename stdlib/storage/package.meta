@@ -1,0 +1,4 @@
+name: storage
+domain: storage
+description: Placeholder for file and object storage modules.
+dependencies:

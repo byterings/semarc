@@ -23,6 +23,8 @@ class ArchitectureExpander:
             "validators": [],
             "relationships": architecture.relations,
             "validations": architecture.validations,
+            "profiles": architecture.profiles,
+            "packages": architecture.packages,
             "routes": architecture.routes,
         }
 
@@ -54,6 +56,8 @@ class ArchitectureExpander:
             "validators": plan["validators"],
             "relationships": plan["relationships"],
             "validations": plan["validations"],
+            "profiles": plan.get("profiles", []),
+            "packages": plan.get("packages", []),
         }
 
     def _expand_database(self, architecture: ArchitectureNode) -> dict:

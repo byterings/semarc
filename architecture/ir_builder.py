@@ -18,6 +18,20 @@ class ArchitectureIRBuilder:
             "relationships": [],
             "foreign_keys": [],
             "migrations": {},
+            "profiles": [
+                {
+                    "name": profile.name,
+                    "metadata": dict(profile.metadata),
+                }
+                for profile in expanded_architecture.get("profiles", [])
+            ],
+            "packages": [
+                {
+                    "name": package.name,
+                    "metadata": dict(package.metadata),
+                }
+                for package in expanded_architecture.get("packages", [])
+            ],
             "routes": [],
         }
 

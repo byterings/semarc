@@ -26,6 +26,8 @@ IR may contain:
 - relationships
 - foreign keys
 - migration metadata
+- profile metadata
+- package metadata
 - target profile metadata
 - dependency graph data
 
@@ -64,6 +66,8 @@ Example:
   "relationships": [],
   "foreign_keys": [],
   "migrations": {},
+  "profiles": [],
+  "packages": [],
   "routes": [],
   "dependency_graph": {},
   "relationship_graph": {}
@@ -202,6 +206,32 @@ Migration metadata is target-neutral.
 PHP maps this to `.sql` and migration classes.
 
 FastAPI maps this to SQLAlchemy table metadata.
+
+### Profiles
+
+Profiles are optional metadata for future architecture standards.
+
+```json
+{
+  "name": "Ecommerce",
+  "metadata": {}
+}
+```
+
+Current behavior: profiles are preserved in IR and ignored by generators.
+
+### Packages
+
+Packages are optional metadata for future semantic modules.
+
+```json
+{
+  "name": "payment.razorpay",
+  "metadata": {}
+}
+```
+
+Current behavior: packages are preserved in IR and ignored by generators.
 
 ## Target Neutrality
 

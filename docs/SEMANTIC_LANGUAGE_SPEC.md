@@ -24,9 +24,13 @@ The language is not:
 ```text
 PROJECT
 TARGET
+PROFILE
+USE
 DATABASE
 AUTH
 MODEL
+SERVICE
+CONFIG
 RELATION
 ROUTE
 VALIDATE
@@ -46,10 +50,12 @@ Model fields are indented under a `MODEL` declaration.
 
 ```text
 program       := statement*
-statement     := project | target | database | auth | model | relation | route | validate
+statement     := project | target | profile | use | database | auth | model | relation | route | validate
 
 project       := "PROJECT" IDENTIFIER
 target        := "TARGET" IDENTIFIER
+profile       := "PROFILE" IDENTIFIER
+use           := "USE" IDENTIFIER
 database      := "DATABASE" IDENTIFIER
 auth          := "AUTH" IDENTIFIER
 model         := "MODEL" IDENTIFIER field*
@@ -86,6 +92,28 @@ TARGET FASTAPI
 Semantic meaning: selects generator and implementation strategy.
 
 If omitted, SEMARC defaults to PHP.
+
+## PROFILE
+
+Future profile selection hook.
+
+```text
+PROFILE Ecommerce
+```
+
+Semantic meaning: records profile intent for future profile passes. In the
+current compiler, this metadata is preserved but does not change generation.
+
+## USE
+
+Future package selection hook.
+
+```text
+USE payment.razorpay
+```
+
+Semantic meaning: records package intent for future package passes. In the
+current compiler, this metadata is preserved but does not change generation.
 
 ## DATABASE
 

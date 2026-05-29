@@ -1,0 +1,4 @@
+name: cache.redis
+domain: cache
+description: Metadata-only placeholder for Redis cache architecture.
+dependencies:

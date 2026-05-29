@@ -1,0 +1,4 @@
+name: search
+domain: search
+description: Placeholder for indexing and search capability modules.
+dependencies:

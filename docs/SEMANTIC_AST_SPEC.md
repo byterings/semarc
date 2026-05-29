@@ -38,6 +38,8 @@ Fields:
 - `routes`
 - `relations`
 - `validations`
+- `profiles`
+- `packages`
 - `location`
 - `metadata`
 
@@ -54,6 +56,8 @@ ArchitectureNode
     +-- RouteNode[]
     +-- RelationNode[]
     +-- ValidationNode[]
+    +-- ProfileNode[]
+    +-- PackageNode[]
 ```
 
 ## Node Metadata
@@ -106,6 +110,38 @@ Example:
 ```text
 TARGET FASTAPI
 ```
+
+### ProfileNode
+
+Future profile metadata selection.
+
+Fields:
+
+- `name`
+
+Example:
+
+```text
+PROFILE Ecommerce
+```
+
+Current behavior: preserved as metadata only.
+
+### PackageNode
+
+Future package metadata selection from `USE`.
+
+Fields:
+
+- `name`
+
+Example:
+
+```text
+USE payment.razorpay
+```
+
+Current behavior: preserved as metadata only.
 
 ### DatabaseNode
 

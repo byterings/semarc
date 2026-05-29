@@ -1,0 +1,4 @@
+name: notification
+domain: notification
+description: Placeholder for email, SMS, and event notification modules.
+dependencies:

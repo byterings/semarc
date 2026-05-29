@@ -1,0 +1,4 @@
+name: auth
+domain: auth
+description: Placeholder for reusable authentication semantic modules.
+dependencies:

@@ -1,0 +1,12 @@
+PROJECT CustomCompanyProfileTest
+
+PROFILE COMPANY_ECOMMERCE
+USE audit.standard
+USE notification.sms
+
+DATABASE MYSQL
+
+MODEL User
+    email STRING
+
+ROUTE GET /users

@@ -1,0 +1,4 @@
+name: audit.standard
+domain: audit
+description: Metadata-only placeholder for standard audit logging architecture.
+dependencies:

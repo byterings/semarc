@@ -1,0 +1,4 @@
+name: cache
+domain: cache
+description: Placeholder for caching capability modules.
+dependencies:

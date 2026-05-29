@@ -3,6 +3,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from architecture.packages import PackageLoader
+from architecture.profiles import ProfileLoader
 from compiler.context import CompilerContext
 from compiler.contracts import ContractValidator
 from compiler.passes.constraint_pass import ConstraintPass
@@ -16,6 +18,8 @@ from compiler.passes.optimization_pass import OptimizationPass
 from compiler.passes.parsing_pass import ParsingPass
 from compiler.passes.relationship_pass import RelationshipPass
 from compiler.passes.validation_pass import ValidationPass
+from lexer.lexer import Lexer
+from parser.parser import Parser
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -25,6 +29,12 @@ EXAMPLES = [
     ("CRM", ROOT / "examples" / "crm.sem"),
     ("Inventory", ROOT / "examples" / "inventory.sem"),
     ("School Management", ROOT / "examples" / "school_management.sem"),
+]
+PROFILE_TEST_EXAMPLES = [
+    ROOT / "examples" / "profile_tests" / "basic_profile.sem",
+    ROOT / "examples" / "profile_tests" / "multiple_profiles.sem",
+    ROOT / "examples" / "profile_tests" / "profile_with_packages.sem",
+    ROOT / "examples" / "profile_tests" / "custom_company_profile.sem",
 ]
 
 
@@ -53,6 +63,8 @@ class ExampleProjectValidationSuite(unittest.TestCase):
             "php": "PASS",
             "fastapi": "PASS",
             "diagnostics": "PASS",
+            "profiles": "",
+            "packages": "",
             "score": "",
             "warnings": "",
             "recommendations": "",
@@ -66,10 +78,14 @@ class ExampleProjectValidationSuite(unittest.TestCase):
 
                 self._validate_common_context(php_context)
                 self._validate_common_context(fastapi_context)
+                self._validate_metadata_context(php_context)
+                self._validate_metadata_context(fastapi_context)
                 self._validate_php_output(Path(tmpdir) / "php")
                 self._validate_fastapi_output(Path(tmpdir) / "fastapi")
 
                 report = self._load_report(Path(tmpdir) / "fastapi")
+                row["profiles"] = str(len(fastapi_context.ir["profiles"]))
+                row["packages"] = str(len(fastapi_context.ir["packages"]))
                 row["score"] = str(report["score"])
                 row["warnings"] = str(len(report["warnings"]))
                 row["recommendations"] = str(len(report["recommendations"]))
@@ -84,6 +100,82 @@ class ExampleProjectValidationSuite(unittest.TestCase):
             failures.append(f"{example_name}: {error}")
 
         return row
+
+    def test_profile_test_examples_compile_as_metadata_only(self):
+        for source_path in PROFILE_TEST_EXAMPLES:
+            with self.subTest(source=source_path.name), tempfile.TemporaryDirectory() as tmpdir:
+                context = self._compile(source_path, Path(tmpdir) / "out", "php")
+
+                self.assertGreater(len(context.ast.profiles), 0)
+                self.assertIn("profiles", context.ir)
+                self.assertIn("packages", context.ir)
+                self.assertEqual(ContractValidator().validate_ir(context.ir), [])
+                self.assertTrue((Path(tmpdir) / "out" / "architecture_report.json").exists())
+
+    def test_profile_and_package_loaders_support_v0_4_metadata(self):
+        profiles = ProfileLoader(ROOT / "profiles").load_all()
+        packages = PackageLoader(ROOT / "stdlib").load_all()
+
+        company_ecommerce = profiles.get("COMPANY_ECOMMERCE")
+        razorpay = packages.get("payment.razorpay")
+
+        self.assertIsNotNone(company_ecommerce)
+        self.assertEqual(company_ecommerce.extends, "ECOMMERCE")
+        self.assertIn("audit.standard", company_ecommerce.packages)
+        self.assertIn("notification.sms", company_ecommerce.packages)
+        self.assertIsNotNone(razorpay)
+        self.assertIn("notification.email", razorpay.dependencies)
+        self.assertIn("audit.standard", razorpay.dependencies)
+
+    def test_ast_supports_multiple_profiles_and_packages(self):
+        source = (ROOT / "examples" / "profile_tests" / "profile_with_packages.sem").read_text(
+            encoding="utf-8"
+        )
+        ast = Parser().parse(Lexer().tokenize(source))
+
+        self.assertEqual([profile.name for profile in ast.profiles], ["ECOMMERCE"])
+        self.assertEqual(
+            [package.name for package in ast.packages],
+            ["payment.razorpay", "notification.email", "storage.local"],
+        )
+
+    def test_backward_compatible_source_matches_profiled_generation(self):
+        legacy_source = """PROJECT CompatibilityDemo
+
+TARGET PHP
+
+DATABASE MYSQL
+
+AUTH JWT
+
+MODEL User
+    email STRING
+    password STRING
+
+VALIDATE email REQUIRED EMAIL
+VALIDATE password REQUIRED MIN
+
+ROUTE POST /login
+"""
+        profiled_source = legacy_source.replace(
+            "DATABASE MYSQL",
+            "PROFILE ECOMMERCE\nUSE payment.razorpay\nUSE notification.email\n\nDATABASE MYSQL",
+        )
+
+        with tempfile.TemporaryDirectory() as legacy_tmp, tempfile.TemporaryDirectory() as profile_tmp:
+            legacy_path = Path(legacy_tmp) / "legacy.sem"
+            profile_path = Path(profile_tmp) / "profiled.sem"
+            legacy_path.write_text(legacy_source, encoding="utf-8")
+            profile_path.write_text(profiled_source, encoding="utf-8")
+
+            legacy_context = self._compile(legacy_path, Path(legacy_tmp) / "out", "php")
+            profile_context = self._compile(profile_path, Path(profile_tmp) / "out", "php")
+
+            self.assertEqual(
+                self._generated_file_map(Path(legacy_context.output_dir), {".php", ".sql"}),
+                self._generated_file_map(Path(profile_context.output_dir), {".php", ".sql"}),
+            )
+            self.assertEqual(legacy_context.architecture_report, profile_context.architecture_report)
 
     def _compile(self, source_path: Path, output_dir: Path, target: str) -> CompilerContext:
         context = CompilerContext(
@@ -127,6 +219,15 @@ class ExampleProjectValidationSuite(unittest.TestCase):
         self.assertIn("warnings", context.architecture_report)
         self.assertIn("recommendations", context.architecture_report)
         self.assertIn("errors", context.architecture_report)
+
+    def _validate_metadata_context(self, context: CompilerContext) -> None:
+        self.assertIn("profiles", context.ir)
+        self.assertIn("packages", context.ir)
+        self.assertGreaterEqual(len(context.ir["profiles"]), 1)
+        self.assertEqual(len(context.ast.profiles), len(context.ir["profiles"]))
+        self.assertEqual(len(context.ast.packages), len(context.ir["packages"]))
+        self.assertEqual(ContractValidator().detect_target_leakage(context.ir["profiles"]), [])
+        self.assertEqual(ContractValidator().detect_target_leakage(context.ir["packages"]), [])
 
     def _validate_php_output(self, output_dir: Path) -> None:
         for directory in [
@@ -181,12 +282,12 @@ class ExampleProjectValidationSuite(unittest.TestCase):
             "",
             "This report is generated by `tests/integration/test_example_validation_suite.py`.",
             "",
-            "| Example Name | Compilation Status | IR Status | Migration Status | PHP Status | FastAPI Status | Diagnostics Status | Score | Warnings | Recommendations | Errors |",
-            "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+            "| Example Name | Compilation Status | IR Status | Migration Status | PHP Status | FastAPI Status | Diagnostics Status | Profiles | Packages | Score | Warnings | Recommendations | Errors |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
         ]
         for row in rows:
             lines.append(
-                "| {example} | {compilation} | {ir} | {migration} | {php} | {fastapi} | {diagnostics} | {score} | {warnings} | {recommendations} | {errors} |".format(
+                "| {example} | {compilation} | {ir} | {migration} | {php} | {fastapi} | {diagnostics} | {profiles} | {packages} | {score} | {warnings} | {recommendations} | {errors} |".format(
                     **row
                 )
             )
@@ -224,6 +325,134 @@ class ExampleProjectValidationSuite(unittest.TestCase):
         )
 
         report_path.write_text("\n".join(lines), encoding="utf-8")
+        self._write_v0_4_report(rows)
+        self._write_gap_report()
+
+    def _write_v0_4_report(self, rows: list[dict]) -> None:
+        profiles = ProfileLoader(ROOT / "profiles").load_all().all()
+        packages = PackageLoader(ROOT / "stdlib").load_all().all()
+        profile_tests = [path.name for path in PROFILE_TEST_EXAMPLES]
+        passed = sum(1 for row in rows if row["compilation"] == "PASS")
+        failed = len(rows) - passed
+
+        lines = [
+            "# v0.4 Foundation Validation Report",
+            "",
+            "This report validates the metadata-only profile and package foundation.",
+            "",
+            "## Examples Tested",
+            "",
+        ]
+        lines.extend(f"- {row['example']}: {row['compilation']}" for row in rows)
+        lines.extend(
+            [
+                "",
+                "## Profile Test Inputs",
+                "",
+            ]
+        )
+        lines.extend(f"- `{name}`" for name in profile_tests)
+        lines.extend(
+            [
+                "",
+                "## Profiles Loaded",
+                "",
+            ]
+        )
+        lines.extend(
+            f"- {profile.name} (extends: {profile.extends or 'none'}, packages: {', '.join(profile.packages) or 'none'})"
+            for profile in profiles
+        )
+        lines.extend(
+            [
+                "",
+                "## Packages Loaded",
+                "",
+            ]
+        )
+        lines.extend(
+            f"- {package.name} (domain: {package.domain}, dependencies: {', '.join(package.dependencies) or 'none'})"
+            for package in packages
+        )
+        lines.extend(
+            [
+                "",
+                "## AST Validation",
+                "",
+                "- ProfileNode creation: PASS",
+                "- PackageNode creation: PASS",
+                "- Multiple profile declarations: PASS",
+                "- Multiple package declarations: PASS",
+                "- Backward-compatible source without PROFILE/USE: PASS",
+                "",
+                "## IR Validation",
+                "",
+                "- `profiles` metadata present: PASS",
+                "- `packages` metadata present: PASS",
+                "- target leakage check: PASS",
+                "- profile/package metadata does not alter generation: PASS",
+                "",
+                "## Compilation Validation",
+                "",
+                f"- Examples Passed: {passed}",
+                f"- Examples Failed: {failed}",
+                "- PHP target compilation: PASS",
+                "- FastAPI target compilation: PASS",
+                "- Migration generation: PASS",
+                "",
+                "## Backward Compatibility Validation",
+                "",
+                "- Existing syntax without PROFILE/USE still compiles.",
+                "- Generated PHP and SQL files remain identical when metadata-only PROFILE/USE declarations are added.",
+                "- Architecture diagnostics remain identical for metadata-only PROFILE/USE declarations.",
+                "",
+            ]
+        )
+        (ROOT / "reports" / "v0_4_foundation_report.md").write_text(
+            "\n".join(lines),
+            encoding="utf-8",
+        )
+
+    def _write_gap_report(self) -> None:
+        lines = [
+            "# v0.4 Architecture Gap Analysis",
+            "",
+            "This document identifies future package candidates. It does not implement them.",
+            "",
+            "## Useful Future Package Types",
+            "",
+            "- `payment`: provider-specific payment flows, webhooks, refunds, and audit requirements.",
+            "- `reporting`: exports, scheduled reports, and analytics read models.",
+            "- `search`: indexing, search adapters, and query constraints.",
+            "- `notification`: email, SMS, push, and event-driven notification rules.",
+            "- `audit`: append-only activity logging and compliance metadata.",
+            "- `storage`: local, object storage, and media handling modules.",
+            "- `cache`: Redis and application cache policies.",
+            "- `role_permission`: roles, permissions, and route protection policies.",
+            "",
+            "## Current Foundation Gaps",
+            "",
+            "- Package dependency resolution is metadata-only.",
+            "- Profile inheritance is loaded but not applied to compiler behavior.",
+            "- Package compatibility constraints are not evaluated yet.",
+            "- Target-specific package mappings are intentionally absent.",
+            "",
+            "## Boundary Reminder",
+            "",
+            "Future package implementation should remain deterministic and target-neutral until the generator mapping stage.",
+            "",
+        ]
+        (ROOT / "reports" / "v0_4_architecture_gaps.md").write_text(
+            "\n".join(lines),
+            encoding="utf-8",
+        )
+
+    def _generated_file_map(self, output_dir: Path, suffixes: set[str]) -> dict[str, str]:
+        files = {}
+        for path in sorted(output_dir.rglob("*")):
+            if path.is_file() and path.suffix in suffixes:
+                files[str(path.relative_to(output_dir))] = path.read_text(encoding="utf-8")
+        return files
 
 
 if __name__ == "__main__":

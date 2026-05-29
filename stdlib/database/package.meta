@@ -1,0 +1,4 @@
+name: database
+domain: database
+description: Placeholder for database capability modules and storage policies.
+dependencies:

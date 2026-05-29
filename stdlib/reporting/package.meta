@@ -1,0 +1,4 @@
+name: reporting
+domain: reporting
+description: Placeholder for report generation and export architecture modules.
+dependencies:

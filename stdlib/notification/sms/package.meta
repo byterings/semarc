@@ -1,0 +1,4 @@
+name: notification.sms
+domain: notification
+description: Metadata-only placeholder for SMS notification architecture.
+dependencies:

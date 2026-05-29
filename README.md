@@ -35,6 +35,8 @@ Supported V1 commands:
 - `TARGET`
 - `RELATION`
 - `VALIDATE`
+- `PROFILE`
+- `USE`
 
 Example:
 
@@ -64,6 +66,9 @@ RELATION Post BELONGS_TO User
 ```
 
 The language is intentionally strict. Free-form natural language is not supported.
+
+`PROFILE` and `USE` are foundation hooks for future profile/package metadata.
+They are optional and do not change current generated output.
 
 ## Run
 
@@ -152,6 +157,8 @@ For `TARGET FASTAPI`, SEMARC generates:
 - `architecture/relationship_engine.py` builds relationship graphs, foreign keys, and migration plans.
 - `architecture/strategy_engine.py` selects target implementation profiles.
 - `architecture/constraints/` runs deterministic semantic architecture diagnostics.
+- `architecture/profiles/` loads future profile metadata.
+- `architecture/packages/` loads future package metadata.
 - `architecture/expander.py` expands semantic intent into architecture components.
 - `architecture/ir_builder.py` builds language-neutral implementation IR.
 - `generator/php/` maps IR to PHP files.

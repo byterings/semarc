@@ -2,17 +2,16 @@
 
 SEMARC can eventually support a semantic standard library of reusable architecture modules.
 
-The standard library is not implemented yet. This document defines the design direction.
+The standard library currently contains metadata placeholders only. This document defines the design direction.
 
 ## Goal
 
-Provide reusable semantic architecture modules such as:
+Provide reusable semantic architecture modules without expanding the core keyword set. Future domains should be packages:
 
 ```text
-AUTH JWT
-VALIDATE email REQUIRED EMAIL
-RELATION User HAS_MANY Post
-DATABASE MYSQL
+USE auth.jwt
+USE database.mysql
+USE notification.email
 ```
 
 These should compile into architecture components consistently across targets.
@@ -22,20 +21,17 @@ These should compile into architecture components consistently across targets.
 ```text
 stdlib/
 ├── auth/
-│   ├── jwt.semdef
-│   └── session.semdef
-├── validation/
-│   ├── required.semdef
-│   ├── email.semdef
-│   └── min.semdef
-├── relationships/
-│   ├── has_many.semdef
-│   ├── belongs_to.semdef
-│   └── has_one.semdef
-└── database/
-    ├── mysql.semdef
-    └── postgres.semdef
+├── database/
+├── reporting/
+├── payment/
+├── notification/
+├── search/
+├── storage/
+├── cache/
+└── relationships/
 ```
+
+Each directory currently contains `package.meta`.
 
 ## Stdlib Responsibilities
 
@@ -89,4 +85,4 @@ USE auth.jwt
 USE database.mysql
 ```
 
-For now, SEMARC keeps syntax explicit and simple.
+For now, SEMARC stores package metadata and keeps generation unchanged.

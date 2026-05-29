@@ -18,6 +18,8 @@ class ArchitectureRuleEngine:
             "routes": architecture.routes,
             "relationships": [],
             "validations": architecture.validations,
+            "profiles": architecture.profiles,
+            "packages": architecture.packages,
             "repositories": [],
             "validators": [],
         }

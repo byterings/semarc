@@ -52,6 +52,8 @@ AUTH JWT
 TARGET FASTAPI
 RELATION User HAS_MANY Post
 VALIDATE email REQUIRED EMAIL
+PROFILE Ecommerce
+USE payment.razorpay
 ```
 
 Bad:
@@ -87,6 +89,8 @@ Architecture synthesis belongs in `architecture/`.
 - `dependency_graph.py` tracks component dependencies.
 - `relationship_engine.py` builds relationship graphs, foreign keys, and migration plans.
 - `constraints/` evaluates deterministic architecture diagnostics and scoring.
+- `profiles/` loads future profile metadata without changing current generation.
+- `packages/` loads future package metadata without changing current generation.
 - `strategy_engine.py` selects implementation strategy and target profile.
 - `expander.py` expands semantic plans before IR generation.
 - `ir_builder.py` produces language-neutral IR.
@@ -96,6 +100,8 @@ Relationship and migration metadata must stay language-neutral in IR. PHP and Fa
 Rules must be deterministic and centralized.
 
 Constraint rules may emit errors, warnings, and recommendations. They must be explicit rule checks, not AI-generated suggestions.
+
+Future business capabilities should live in packages, profiles, or stdlib metadata instead of new core language keywords.
 
 ## Generator Boundaries
 

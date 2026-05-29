@@ -10,6 +10,8 @@ AuthNode = nodes.AuthNode
 DatabaseNode = nodes.DatabaseNode
 FieldNode = nodes.FieldNode
 ModelNode = nodes.ModelNode
+PackageNode = nodes.PackageNode
+ProfileNode = nodes.ProfileNode
 ProjectNode = nodes.ProjectNode
 RelationNode = nodes.RelationNode
 RouteNode = nodes.RouteNode
@@ -34,6 +36,8 @@ class Parser:
         database = None
         auth = None
         auth_declarations: List[AuthNode] = []
+        profiles: List[ProfileNode] = []
+        packages: List[PackageNode] = []
         models: List[ModelNode] = []
         routes: List[RouteNode] = []
         relations: List[RelationNode] = []
@@ -60,6 +64,10 @@ class Parser:
                 project = self._parse_project(tokens)
             elif command == "TARGET":
                 target = self._parse_target(tokens)
+            elif command == "PROFILE":
+                profiles.append(self._parse_profile(tokens))
+            elif command == "USE":
+                packages.append(self._parse_use(tokens))
             elif command == "DATABASE":
                 database = self._parse_database(tokens)
             elif command == "AUTH":
@@ -86,6 +94,8 @@ class Parser:
             routes,
             relations,
             validations,
+            profiles,
+            packages,
         )
         architecture.metadata["auth_strategies"] = [node.strategy for node in auth_declarations]
         return architecture
@@ -99,6 +109,16 @@ class Parser:
         self._expect_length(tokens, 2, "TARGET requires a target profile")
         self._expect(tokens[1], "IDENTIFIER", "TARGET profile must be an identifier")
         return self.builder.target(tokens[1].value, tokens[0])
+
+    def _parse_profile(self, tokens: List[Token]) -> ProfileNode:
+        self._expect_length(tokens, 2, "PROFILE requires a profile name")
+        self._expect(tokens[1], "IDENTIFIER", "PROFILE name must be an identifier")
+        return self.builder.profile(tokens[1].value, tokens[0])
+
+    def _parse_use(self, tokens: List[Token]) -> PackageNode:
+        self._expect_length(tokens, 2, "USE requires a package name")
+        self._expect(tokens[1], "IDENTIFIER", "USE package must be an identifier")
+        return self.builder.package(tokens[1].value, tokens[0])
 
     def _parse_database(self, tokens: List[Token]) -> DatabaseNode:
         self._expect_length(tokens, 2, "DATABASE requires an engine")

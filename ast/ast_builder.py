@@ -7,6 +7,8 @@ AuthNode = nodes.AuthNode
 DatabaseNode = nodes.DatabaseNode
 FieldNode = nodes.FieldNode
 ModelNode = nodes.ModelNode
+PackageNode = nodes.PackageNode
+ProfileNode = nodes.ProfileNode
 ProjectNode = nodes.ProjectNode
 RelationNode = nodes.RelationNode
 RouteNode = nodes.RouteNode
@@ -23,6 +25,12 @@ class AstBuilder:
 
     def target(self, name: str, token) -> TargetNode:
         return TargetNode(name=name.upper(), location=self._location(token))
+
+    def profile(self, name: str, token) -> ProfileNode:
+        return ProfileNode(name=name, location=self._location(token))
+
+    def package(self, name: str, token) -> PackageNode:
+        return PackageNode(name=name, location=self._location(token))
 
     def database(self, engine: str, token) -> DatabaseNode:
         return DatabaseNode(engine=engine.upper(), location=self._location(token))
@@ -72,6 +80,8 @@ class AstBuilder:
         routes,
         relations,
         validations,
+        profiles=None,
+        packages=None,
     ) -> ArchitectureNode:
         return ArchitectureNode(
             project=project,
@@ -82,6 +92,8 @@ class AstBuilder:
             routes=routes,
             relations=relations,
             validations=validations,
+            profiles=profiles or [],
+            packages=packages or [],
             location=project.location if project else SourceLocation(),
         )
 

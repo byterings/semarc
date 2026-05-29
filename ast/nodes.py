@@ -53,6 +53,28 @@ class TargetNode(AstNode):
 
 
 @dataclass(frozen=True)
+class ProfileNode(AstNode):
+    """Future semantic profile selection.
+
+    Profiles are metadata-only in the current compiler and must not change
+    generation behavior until a dedicated profile pass is introduced.
+    """
+
+    name: str
+    location: SourceLocation = field(default_factory=SourceLocation)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class PackageNode(AstNode):
+    """Future semantic package reference from USE declarations."""
+
+    name: str
+    location: SourceLocation = field(default_factory=SourceLocation)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class DatabaseNode(AstNode):
     """Database architecture intent, independent of implementation code."""
 
@@ -133,5 +155,7 @@ class ArchitectureNode(AstNode):
     routes: List[RouteNode] = field(default_factory=list)
     relations: List[RelationNode] = field(default_factory=list)
     validations: List[ValidationNode] = field(default_factory=list)
+    profiles: List[ProfileNode] = field(default_factory=list)
+    packages: List[PackageNode] = field(default_factory=list)
     location: SourceLocation = field(default_factory=SourceLocation)
     metadata: Dict[str, Any] = field(default_factory=dict)

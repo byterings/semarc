@@ -3,7 +3,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from architecture.packages import PackageLoader
 from architecture.relationship_engine import RelationshipEngine
+from architecture.profiles import ProfileLoader
 from architecture.dependency_graph import DependencyGraph, DependencyGraphError
 from compiler.context import CompilerContext
 from compiler.contracts import ContractValidator
@@ -55,6 +57,24 @@ class SemarcRelationshipTests(unittest.TestCase):
         self.assertEqual(relation.source_model, "User")
         self.assertEqual(relation.relation_type, "HAS_MANY")
         self.assertEqual(relation.target_model, "Post")
+
+    def test_profile_and_package_hooks_parse_as_metadata(self):
+        source = """PROJECT ProfileDemo
+
+PROFILE Ecommerce
+USE payment.razorpay
+
+DATABASE MYSQL
+
+MODEL User
+    email STRING
+
+ROUTE GET /users
+"""
+        ast = Parser().parse(Lexer().tokenize(source))
+
+        self.assertEqual(ast.profiles[0].name, "Ecommerce")
+        self.assertEqual(ast.packages[0].name, "payment.razorpay")
 
     def test_migration_plan_contains_foreign_key(self):
         ast = Parser().parse(Lexer().tokenize(BLOG_SOURCE))
@@ -195,6 +215,80 @@ ROUTE POST /login
 
         self.assertEqual(first.architecture_report["score"], second.architecture_report["score"])
 
+    def test_profile_and_package_metadata_reaches_ir_without_generation_effect(self):
+        source = """PROJECT ProfileDemo
+
+TARGET PHP
+
+PROFILE Ecommerce
+USE payment.razorpay
+
+DATABASE MYSQL
+
+AUTH JWT
+
+MODEL User
+    email STRING
+    password STRING
+
+VALIDATE email REQUIRED EMAIL
+VALIDATE password REQUIRED MIN
+
+ROUTE POST /login
+"""
+        context = self._compile_context_with_source(tempfile.mkdtemp(), source, target="php", generate=False)
+
+        self.assertEqual(context.ir["profiles"], [{"name": "Ecommerce", "metadata": {}}])
+        self.assertEqual(context.ir["packages"], [{"name": "payment.razorpay", "metadata": {}}])
+        self.assertEqual(ContractValidator().validate_ir(context.ir), [])
+
+    def test_profile_and_package_metadata_does_not_change_generated_php(self):
+        base_source = """PROJECT ProfileDemo
+
+TARGET PHP
+
+DATABASE MYSQL
+
+AUTH JWT
+
+MODEL User
+    email STRING
+    password STRING
+
+VALIDATE email REQUIRED EMAIL
+VALIDATE password REQUIRED MIN
+
+ROUTE POST /login
+"""
+        profiled_source = base_source.replace(
+            "DATABASE MYSQL",
+            "PROFILE Ecommerce\nUSE payment.razorpay\n\nDATABASE MYSQL",
+        )
+
+        with tempfile.TemporaryDirectory() as base_tmp, tempfile.TemporaryDirectory() as profile_tmp:
+            base_context = self._compile_context_with_source(base_tmp, base_source, target="php", generate=True)
+            profile_context = self._compile_context_with_source(profile_tmp, profiled_source, target="php", generate=True)
+
+            self.assertEqual(
+                self._generated_file_map(Path(base_context.output_dir), suffixes={".php", ".sql"}),
+                self._generated_file_map(Path(profile_context.output_dir), suffixes={".php", ".sql"}),
+            )
+
+    def test_profile_metadata_loads_safely(self):
+        registry = ProfileLoader(Path(__file__).resolve().parents[1] / "profiles").load_all()
+        ecommerce = registry.get("Ecommerce")
+
+        self.assertIsNotNone(ecommerce)
+        self.assertIn("payment", ecommerce.packages)
+
+    def test_package_metadata_loads_safely(self):
+        registry = PackageLoader(Path(__file__).resolve().parents[1] / "stdlib").load_all()
+        payment = registry.get("payment")
+
+        self.assertIsNotNone(payment)
+        self.assertEqual(payment.domain, "payment")
+        self.assertIn("notification", payment.dependencies)
+
     def test_diagnostic_report_file_is_generated(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             self._compile_context(tmpdir, target="fastapi", generate=True)
@@ -265,6 +359,13 @@ ROUTE POST /login
             ContractPass().validate_generation(context)
 
         return context
+
+    def _generated_file_map(self, output_dir: Path, suffixes: set[str]) -> dict[str, str]:
+        files = {}
+        for path in sorted(output_dir.rglob("*")):
+            if path.is_file() and path.suffix in suffixes:
+                files[str(path.relative_to(output_dir))] = path.read_text(encoding="utf-8")
+        return files
 
 
 if __name__ == "__main__":
