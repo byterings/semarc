@@ -1,0 +1,100 @@
+# Roadmap
+
+SEMARC is a prototype moving toward a well-specified semantic backend compiler.
+
+## v0.1: Semantic Parsing and Backend Generation
+
+Status: complete.
+
+- semantic source files
+- lexer
+- parser
+- semantic AST
+- PHP backend generation
+- basic routes, models, auth, config
+
+## v0.2: Compiler Architecture
+
+Status: complete.
+
+- semantic validator
+- architecture expansion
+- Architecture IR
+- modular generators
+- template-based generation
+- debug output
+
+## v0.3: Multi-Target Generation
+
+Status: complete.
+
+- target profile system
+- PHP target
+- FastAPI target
+- target override via CLI
+- FastAPI mappers
+- target-specific output structures
+
+## v0.4: Relationship-Aware Compiler
+
+Status: current.
+
+- `RELATION` syntax
+- `RelationNode`
+- relationship validation
+- relationship graph
+- foreign key planning
+- migration metadata
+- PHP migrations
+- FastAPI SQLAlchemy table migrations
+- relationship-aware repositories
+- ORM relationship generation
+
+## v0.5: Optimization Engine
+
+Status: planned.
+
+- duplicate component elimination
+- migration ordering
+- middleware ordering
+- dependency simplification
+- dead route detection
+
+## v0.6: Semantic Standard Library
+
+Status: planned.
+
+- reusable auth modules
+- reusable validation modules
+- database capability modules
+- relationship modules
+- target compatibility metadata
+
+## v0.7: Advanced Architecture Synthesis
+
+Status: planned.
+
+- richer route-to-controller mapping
+- command/query separation
+- policies and authorization rules
+- service dependency planning
+- richer repository strategies
+
+## v0.8: Production Target Profiles
+
+Status: planned.
+
+- Laravel profile
+- Node profile
+- PostgreSQL support
+- Docker output
+- environment configuration
+
+## Long-Term
+
+- frontend generation
+- infrastructure synthesis
+- workflow systems
+- semantic deployment
+
+Current focus remains deterministic semantic backend compilation.

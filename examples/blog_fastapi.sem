@@ -1,0 +1,24 @@
+PROJECT BlogAPI
+
+TARGET FASTAPI
+
+DATABASE MYSQL
+
+AUTH JWT
+
+MODEL User
+    name STRING
+    email STRING
+    password STRING
+
+MODEL Post
+    title STRING
+    body TEXT
+
+RELATION User HAS_MANY Post
+
+VALIDATE email REQUIRED EMAIL
+VALIDATE password REQUIRED MIN
+
+ROUTE POST /login
+ROUTE GET /users

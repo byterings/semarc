@@ -1,0 +1,13 @@
+PROJECT BlogAPI
+
+DATABASE MYSQL
+
+AUTH JWT
+
+MODEL User
+    name STRING
+    email STRING
+    password STRING
+
+ROUTE POST /login
+ROUTE GET /users
