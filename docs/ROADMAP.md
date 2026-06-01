@@ -63,7 +63,19 @@ Status: complete.
 - relationship-aware repositories
 - ORM relationship generation
 
-## v0.5: Optimization Engine
+## v0.5.0: Stdlib Foundation
+
+Status: current.
+
+- recursive stdlib module discovery
+- `ModuleDefinition`
+- `ModuleRegistry`
+- `StdlibLoader`
+- `USE` validation against stdlib modules
+- stdlib diagnostics `SEM5001` through `SEM5004`
+- architecture report module metadata
+
+## v0.6: Optimization Engine
 
 Status: planned.
 
@@ -73,7 +85,7 @@ Status: planned.
 - dependency simplification
 - dead route detection
 
-## v0.6: Semantic Standard Library
+## v0.7: Semantic Standard Library
 
 Status: planned.
 
@@ -83,7 +95,7 @@ Status: planned.
 - relationship modules
 - target compatibility metadata
 
-## v0.7: Advanced Architecture Synthesis
+## v0.8: Advanced Architecture Synthesis
 
 Status: planned.
 
@@ -93,7 +105,7 @@ Status: planned.
 - service dependency planning
 - richer repository strategies
 
-## v0.8: Production Target Profiles
+## v0.9: Production Target Profiles
 
 Status: planned.
 

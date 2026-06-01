@@ -16,6 +16,9 @@ class SemanticValidator:
     SUPPORTED_AUTH = {"JWT", "SESSION"}
     SUPPORTED_TARGETS = {"PHP", "FASTAPI", "LARAVEL", "NODE"}
 
+    def __init__(self, module_registry=None) -> None:
+        self.module_registry = module_registry
+
     def validate(self, architecture: ArchitectureNode) -> None:
         errors = []
 
@@ -50,6 +53,7 @@ class SemanticValidator:
         self._validate_duplicate_routes(architecture, errors)
         self._validate_relations(architecture, errors)
         self._validate_validation_rules(architecture, errors)
+        self._validate_used_modules(architecture, errors)
 
         if errors:
             raise SemanticValidationError("\n\n".join(errors))
@@ -137,6 +141,21 @@ class SemanticValidator:
             for rule in validation.rules:
                 if rule not in valid_rules:
                     errors.append(self._error(f"Unsupported validation rule: {rule}", validation))
+
+    def _validate_used_modules(self, architecture: ArchitectureNode, errors: list[str]) -> None:
+        if self.module_registry is None:
+            return
+
+        seen_modules = set()
+        for package in architecture.packages:
+            module = self.module_registry.get(package.name)
+            if module is None:
+                continue
+
+            module_key = module.name.lower()
+            if module_key in seen_modules:
+                errors.append(self._error(f"SEM5002 Duplicate module usage: {module.name}", package))
+            seen_modules.add(module_key)
 
     def _error(self, message: str, node) -> str:
         return "\n".join(

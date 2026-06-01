@@ -32,6 +32,7 @@ class ArchitectureIRBuilder:
                 }
                 for package in expanded_architecture.get("packages", [])
             ],
+            "modules": expanded_architecture.get("modules", []),
             "routes": [],
         }
 

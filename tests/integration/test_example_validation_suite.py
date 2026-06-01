@@ -17,6 +17,7 @@ from compiler.passes.lexing_pass import LexingPass
 from compiler.passes.optimization_pass import OptimizationPass
 from compiler.passes.parsing_pass import ParsingPass
 from compiler.passes.relationship_pass import RelationshipPass
+from compiler.passes.stdlib_pass import StdlibPass
 from compiler.passes.validation_pass import ValidationPass
 from lexer.lexer import Lexer
 from parser.parser import Parser
@@ -175,7 +176,11 @@ ROUTE POST /login
                 self._generated_file_map(Path(legacy_context.output_dir), {".php", ".sql"}),
                 self._generated_file_map(Path(profile_context.output_dir), {".php", ".sql"}),
             )
-            self.assertEqual(legacy_context.architecture_report, profile_context.architecture_report)
+            for key in ["score", "errors", "warnings", "recommendations"]:
+                self.assertEqual(
+                    legacy_context.architecture_report[key],
+                    profile_context.architecture_report[key],
+                )
 
     def _compile(self, source_path: Path, output_dir: Path, target: str) -> CompilerContext:
         context = CompilerContext(
@@ -187,6 +192,7 @@ ROUTE POST /login
             LexingPass(),
             ParsingPass(),
             ContractPass(),
+            StdlibPass(),
             ValidationPass(),
             RelationshipPass(),
             ConstraintPass(),

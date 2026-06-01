@@ -159,6 +159,7 @@ For `TARGET FASTAPI`, SEMARC generates:
 - `architecture/constraints/` runs deterministic semantic architecture diagnostics.
 - `architecture/profiles/` loads future profile metadata.
 - `architecture/packages/` loads future package metadata.
+- `architecture/stdlib/` discovers metadata-only stdlib modules.
 - `architecture/expander.py` expands semantic intent into architecture components.
 - `architecture/ir_builder.py` builds language-neutral implementation IR.
 - `generator/php/` maps IR to PHP files.
@@ -255,6 +256,20 @@ The report includes:
 - executed rule count
 
 Diagnostics are produced only by explicit rules. They are not AI-generated.
+
+## Stdlib Modules
+
+`USE` declarations now validate against discovered stdlib modules.
+
+Modules live under `stdlib/**/module.yaml` and are metadata-only in v0.5.0:
+
+```text
+USE auth.jwt
+USE cache.redis
+```
+
+Unknown `USE` entries remain valid metadata for v0.4 compatibility. Known
+stdlib modules are resolved into the architecture report.
 
 ## Tests
 

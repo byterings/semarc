@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -6,6 +7,7 @@ from pathlib import Path
 from architecture.packages import PackageLoader
 from architecture.relationship_engine import RelationshipEngine
 from architecture.profiles import ProfileLoader
+from architecture.stdlib import DuplicateModuleError, ModuleDefinition, ModuleRegistry, StdlibLoader, StdlibLoadingError
 from architecture.dependency_graph import DependencyGraph, DependencyGraphError
 from compiler.context import CompilerContext
 from compiler.contracts import ContractValidator
@@ -19,9 +21,11 @@ from compiler.passes.lexing_pass import LexingPass
 from compiler.passes.optimization_pass import OptimizationPass
 from compiler.passes.parsing_pass import ParsingPass
 from compiler.passes.relationship_pass import RelationshipPass
+from compiler.passes.stdlib_pass import StdlibPass
 from compiler.passes.validation_pass import ValidationPass
 from lexer.lexer import Lexer
 from parser.parser import Parser
+from validator.validator import SemanticValidationError
 
 
 BLOG_SOURCE = """PROJECT BlogAPI
@@ -98,6 +102,7 @@ ROUTE GET /users
             for compiler_pass in [
                 LexingPass(),
                 ParsingPass(),
+                StdlibPass(),
                 ValidationPass(),
                 RelationshipPass(),
                 ConstraintPass(),
@@ -289,6 +294,126 @@ ROUTE POST /login
         self.assertEqual(payment.domain, "payment")
         self.assertIn("notification", payment.dependencies)
 
+    def test_stdlib_discovers_modules_recursively(self):
+        modules = StdlibLoader(Path(__file__).resolve().parents[1] / "stdlib").load_all()
+        module_names = {module.name for module in modules}
+
+        self.assertIn("auth.jwt", module_names)
+        self.assertIn("cache.redis", module_names)
+        self.assertIn("payment.razorpay", module_names)
+
+    def test_module_registry_detects_duplicate_module_names(self):
+        registry = ModuleRegistry()
+        module = ModuleDefinition("auth.jwt", "1.0", "JWT", Path("stdlib/auth/jwt/module.yaml"))
+
+        registry.register(module)
+        with self.assertRaises(DuplicateModuleError):
+            registry.register(module)
+
+    def test_invalid_module_definition_raises_diagnostic_error(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            module_path = Path(tmpdir) / "stdlib" / "broken" / "module.yaml"
+            module_path.parent.mkdir(parents=True)
+            module_path.write_text("name: broken.module\nversion: 1.0\n", encoding="utf-8")
+
+            with self.assertRaises(StdlibLoadingError) as error:
+                StdlibLoader(Path(tmpdir) / "stdlib").load_all()
+
+            self.assertIn("SEM5003", str(error.exception))
+
+    def test_use_validation_resolves_known_modules(self):
+        source = """PROJECT ModuleDemo
+
+TARGET FASTAPI
+
+USE auth.jwt
+USE cache.redis
+
+DATABASE MYSQL
+
+MODEL User
+    email STRING
+
+ROUTE GET /users
+"""
+        context = self._compile_context_with_source(tempfile.mkdtemp(), source, target="fastapi", generate=True)
+        resolved = [module.name for module in context.resolved_modules]
+        report_modules = [module["name"] for module in context.architecture_report["modules"]]
+
+        self.assertEqual(resolved, ["auth.jwt", "cache.redis"])
+        self.assertEqual(report_modules, ["auth.jwt", "cache.redis"])
+
+    def test_unknown_use_remains_legacy_metadata(self):
+        source = """PROJECT UnknownModuleDemo
+
+USE auth.missing
+USE company.internal_standard
+
+DATABASE MYSQL
+
+MODEL User
+    email STRING
+
+ROUTE GET /users
+"""
+        context = self._compile_context_with_source(tempfile.mkdtemp(), source, target="fastapi", generate=False)
+
+        self.assertEqual(context.resolved_modules, [])
+        self.assertEqual(
+            [package["name"] for package in context.ir["packages"]],
+            ["auth.missing", "company.internal_standard"],
+        )
+
+    def test_duplicate_known_use_triggers_sem5002(self):
+        source = """PROJECT DuplicateUseDemo
+
+USE auth.jwt
+USE auth.jwt
+
+DATABASE MYSQL
+
+MODEL User
+    email STRING
+
+ROUTE GET /users
+"""
+        with self.assertRaises(SemanticValidationError) as error:
+            self._compile_context_with_source(tempfile.mkdtemp(), source, target="fastapi", generate=False)
+
+        self.assertIn("SEM5002 Duplicate module usage: auth.jwt", str(error.exception))
+
+    def test_stdlib_resolution_is_independent_of_current_working_directory(self):
+        source = """PROJECT CwdIndependent
+
+USE auth.jwt
+USE cache.redis
+
+DATABASE MYSQL
+
+MODEL User
+    email STRING
+
+ROUTE GET /users
+"""
+        original_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as source_tmp, tempfile.TemporaryDirectory() as cwd_tmp:
+            source_path = Path(source_tmp) / "cwd_independent.sem"
+            source_path.write_text(source, encoding="utf-8")
+            context = CompilerContext(source_path=source_path)
+            try:
+                os.chdir(cwd_tmp)
+                for compiler_pass in [
+                    LexingPass(),
+                    ParsingPass(),
+                    StdlibPass(),
+                    ValidationPass(),
+                ]:
+                    compiler_pass.run(context)
+            finally:
+                os.chdir(original_cwd)
+
+        self.assertEqual([module.name for module in context.resolved_modules], ["auth.jwt", "cache.redis"])
+
     def test_diagnostic_report_file_is_generated(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             self._compile_context(tmpdir, target="fastapi", generate=True)
@@ -308,6 +433,7 @@ ROUTE POST /login
                 "LexingPass",
                 "ParsingPass",
                 "ContractPass:AST",
+                "StdlibPass",
                 "ValidationPass",
                 "RelationshipPass",
                 "ConstraintPass",
@@ -340,6 +466,7 @@ ROUTE POST /login
             LexingPass(),
             ParsingPass(),
             ContractPass(),
+            StdlibPass(),
             ValidationPass(),
             RelationshipPass(),
             ConstraintPass(),

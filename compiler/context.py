@@ -19,6 +19,9 @@ class CompilerContext:
     architecture_report: dict = field(default_factory=dict)
     loaded_profiles: list[Any] = field(default_factory=list)
     loaded_packages: list[Any] = field(default_factory=list)
+    loaded_modules: list[Any] = field(default_factory=list)
+    resolved_modules: list[Any] = field(default_factory=list)
+    module_registry: Any = None
     target_profile: dict = field(default_factory=dict)
     architecture_plan: dict = field(default_factory=dict)
     dependency_graph: Any = None

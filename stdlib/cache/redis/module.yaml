@@ -1,0 +1,3 @@
+name: cache.redis
+version: 1.0
+description: Redis cache module

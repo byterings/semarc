@@ -15,6 +15,7 @@ from compiler.passes.lexing_pass import LexingPass
 from compiler.passes.optimization_pass import OptimizationPass
 from compiler.passes.parsing_pass import ParsingPass
 from compiler.passes.relationship_pass import RelationshipPass
+from compiler.passes.stdlib_pass import StdlibPass
 from compiler.passes.validation_pass import ValidationPass
 from parser.parser import ParserError
 from validator.validator import SemanticValidationError
@@ -36,11 +37,13 @@ def compile_semantic_file(
     if debug:
         print_debug("AST", ast_to_debug(context.ast))
 
+    StdlibPass().run(context)
     ValidationPass().run(context)
     RelationshipPass().run(context)
     ConstraintPass().run(context)
     if debug:
         print_debug("COMPILER PASSES", context.compiler_passes)
+        print_modules_summary(context)
         print_debug("RELATIONSHIP GRAPH", context.relationship_graph)
         print_debug("MIGRATION PLAN", context.migration_plan)
         print_constraint_summary(context)
@@ -94,6 +97,11 @@ def main() -> int:
         print(f"[Contract Error]\n{error}")
         return 1
 
+    if context.resolved_modules:
+        print("Modules Loaded:")
+        for module in context.resolved_modules:
+            print(f"* {module.name}")
+        print("Compilation Successful")
     print(f"Generated {context.target_profile['target']} backend in output/")
     return 0
 
@@ -146,6 +154,16 @@ def print_constraint_summary(context: CompilerContext) -> None:
     print(f"Recommendations: {len(report.get('recommendations', []))}")
     print(f"Errors: {len(report.get('errors', []))}")
     print(f"Architecture Score: {report.get('score', 0)}")
+
+
+def print_modules_summary(context: CompilerContext) -> None:
+    print("\n[Stdlib]")
+    print("Modules Loaded:")
+    if not context.resolved_modules:
+        print("- none")
+        return
+    for module in context.resolved_modules:
+        print(f"- {module.name}")
 
 
 def ast_to_debug(value):

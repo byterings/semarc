@@ -14,6 +14,15 @@ class DiagnosticReportPass:
             ir=context.ir,
         )
         context.architecture_report = context.constraint_result.to_dict()
+        context.architecture_report["modules"] = [
+            {
+                "name": module.name,
+                "version": module.version,
+                "description": module.description,
+                "source_path": str(module.source_path),
+            }
+            for module in context.resolved_modules
+        ]
 
         output_dir = Path(context.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)

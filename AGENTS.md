@@ -91,6 +91,7 @@ Architecture synthesis belongs in `architecture/`.
 - `constraints/` evaluates deterministic architecture diagnostics and scoring.
 - `profiles/` loads future profile metadata without changing current generation.
 - `packages/` loads future package metadata without changing current generation.
+- `stdlib/` loads metadata-only module definitions for `USE` validation.
 - `strategy_engine.py` selects implementation strategy and target profile.
 - `expander.py` expands semantic plans before IR generation.
 - `ir_builder.py` produces language-neutral IR.
