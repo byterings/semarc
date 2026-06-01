@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from dataclasses import field
 from pathlib import Path
 
 
@@ -10,3 +11,4 @@ class ModuleDefinition:
     version: str
     description: str
     source_path: Path
+    dependencies: list[str] = field(default_factory=list)

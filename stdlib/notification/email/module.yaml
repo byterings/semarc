@@ -1,3 +1,5 @@
 name: notification.email
 version: 1.0
 description: Email notification metadata module
+depends:
+* audit.standard

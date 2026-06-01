@@ -13,6 +13,10 @@ class IRPass:
                 "name": module.name,
                 "version": module.version,
                 "description": module.description,
+                "dependencies": list(module.dependencies),
             }
             for module in context.resolved_modules
+        ]
+        context.ir["resolved_through_dependencies"] = [
+            module.name for module in context.dependency_resolved_modules
         ]
