@@ -8,6 +8,7 @@ from compiler.contracts import CompilerContractError, ContractValidator
 from compiler.passes.contract_pass import ContractPass
 from compiler.passes.constraint_pass import ConstraintPass
 from compiler.passes.diagnostic_report_pass import DiagnosticReportPass
+from compiler.passes.architecture_analysis_pass import ArchitectureAnalysisPass
 from compiler.passes.expansion_pass import ExpansionPass
 from compiler.passes.generation_pass import GenerationPass
 from compiler.passes.ir_pass import IRPass
@@ -45,12 +46,14 @@ def compile_semantic_file(
     ModuleConstraintPass().run(context)
     RelationshipPass().run(context)
     ConstraintPass().run(context)
+    ArchitectureAnalysisPass().run(context)
     if debug:
         print_debug("COMPILER PASSES", context.compiler_passes)
         print_modules_summary(context)
         print_debug("RELATIONSHIP GRAPH", context.relationship_graph)
         print_debug("MIGRATION PLAN", context.migration_plan)
         print_constraint_summary(context)
+        print_architecture_analysis_summary(context)
 
     ExpansionPass().run(context)
     if debug:
@@ -170,6 +173,14 @@ def print_constraint_summary(context: CompilerContext) -> None:
     print(f"Recommendations: {len(report.get('recommendations', []))}")
     print(f"Errors: {len(report.get('errors', []))}")
     print(f"Architecture Score: {report.get('score', 0)}")
+
+
+def print_architecture_analysis_summary(context: CompilerContext) -> None:
+    report = context.architecture_analysis_report
+    print("\n[Architecture Analysis]")
+    print(f"Rules Executed: {report.get('rules_executed', 0)}")
+    print(f"Warnings: {len(report.get('warnings', []))}")
+    print(f"Recommendations: {len(report.get('recommendations', []))}")
 
 
 def print_modules_summary(context: CompilerContext) -> None:

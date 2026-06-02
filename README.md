@@ -12,6 +12,7 @@ Semantic Source
 -> Semantic Validator
 -> Relationship Pass
 -> Constraint Analysis
+-> Architecture Analysis
 -> Architecture Rule Engine
 -> Dependency Graph Builder
 -> Architecture Expansion
@@ -157,6 +158,7 @@ For `TARGET FASTAPI`, SEMARC generates:
 - `architecture/relationship_engine.py` builds relationship graphs, foreign keys, and migration plans.
 - `architecture/strategy_engine.py` selects target implementation profiles.
 - `architecture/constraints/` runs deterministic semantic architecture diagnostics.
+- `architecture/analysis/` runs deterministic architecture reasonableness analysis.
 - `architecture/profiles/` loads future profile metadata.
 - `architecture/packages/` loads future package metadata.
 - `architecture/stdlib/` discovers metadata-only stdlib modules.
@@ -254,6 +256,7 @@ The report includes:
 - recommendations
 - architecture score
 - executed rule count
+- architecture analysis warnings and recommendations
 
 Diagnostics are produced only by explicit rules. They are not AI-generated.
 

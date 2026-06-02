@@ -7,6 +7,7 @@ from architecture.packages import PackageLoader
 from architecture.profiles import ProfileLoader
 from compiler.context import CompilerContext
 from compiler.contracts import ContractValidator
+from compiler.passes.architecture_analysis_pass import ArchitectureAnalysisPass
 from compiler.passes.constraint_pass import ConstraintPass
 from compiler.passes.contract_pass import ContractPass
 from compiler.passes.diagnostic_report_pass import DiagnosticReportPass
@@ -200,6 +201,7 @@ ROUTE POST /login
             ModuleConstraintPass(),
             RelationshipPass(),
             ConstraintPass(),
+            ArchitectureAnalysisPass(),
             ExpansionPass(),
             IRPass(),
             OptimizationPass(),
@@ -229,6 +231,9 @@ ROUTE POST /login
         self.assertIn("warnings", context.architecture_report)
         self.assertIn("recommendations", context.architecture_report)
         self.assertIn("errors", context.architecture_report)
+        self.assertIn("architecture_analysis", context.architecture_report)
+        self.assertIn("warnings", context.architecture_report["architecture_analysis"])
+        self.assertIn("recommendations", context.architecture_report["architecture_analysis"])
 
     def _validate_metadata_context(self, context: CompilerContext) -> None:
         self.assertIn("profiles", context.ir)
