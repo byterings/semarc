@@ -37,6 +37,8 @@ class DiagnosticReportPass:
             context.architecture_report["requirements"] = list(context.module_requirements)
         if context.module_conflicts:
             context.architecture_report["conflicts"] = list(context.module_conflicts)
+        if context.architecture_analysis_report:
+            context.architecture_report["architecture_analysis"] = context.architecture_analysis_report
 
         output_dir = Path(context.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)

@@ -26,6 +26,7 @@ class CompilerContext:
     module_requirements: list[str] = field(default_factory=list)
     module_conflicts: list[str] = field(default_factory=list)
     module_registry: Any = None
+    architecture_analysis_report: dict = field(default_factory=dict)
     target_profile: dict = field(default_factory=dict)
     architecture_plan: dict = field(default_factory=dict)
     dependency_graph: Any = None

@@ -4,8 +4,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from architecture.analysis import ArchitectureAnalyzer
 from architecture.packages import PackageLoader
-from architecture.profiles import ProfileCompositionError, ProfileCompositionResolver
+from architecture.profiles import Profile, ProfileCompositionError, ProfileCompositionResolver
 from architecture.relationship_engine import RelationshipEngine
 from architecture.profiles import ProfileLoader, ProfileLoadingError, ProfileRegistry
 from architecture.stdlib import (
@@ -22,6 +23,7 @@ from architecture.stdlib import (
 from architecture.dependency_graph import DependencyGraph, DependencyGraphError
 from compiler.context import CompilerContext
 from compiler.contracts import ContractValidator
+from compiler.passes.architecture_analysis_pass import ArchitectureAnalysisPass
 from compiler.passes.constraint_pass import ConstraintPass
 from compiler.passes.contract_pass import ContractPass
 from compiler.passes.diagnostic_report_pass import DiagnosticReportPass
@@ -119,6 +121,7 @@ ROUTE GET /users
                 ValidationPass(),
                 RelationshipPass(),
                 ConstraintPass(),
+                ArchitectureAnalysisPass(),
                 ExpansionPass(),
                 IRPass(),
                 OptimizationPass(),
@@ -715,6 +718,141 @@ ROUTE GET /users
             ["auth.jwt", "payment.razorpay", "cache.redis"],
         )
 
+    def test_architecture_analyzer_warns_about_public_route_without_authentication(self):
+        source = """PROJECT PublicApi
+
+DATABASE MYSQL
+
+MODEL Post
+    title STRING
+
+ROUTE GET /posts
+"""
+        context = self._compile_context_with_source(tempfile.mkdtemp(), source, target="fastapi", generate=True)
+        warning_codes = [
+            warning["code"]
+            for warning in context.architecture_report["architecture_analysis"]["warnings"]
+        ]
+
+        self.assertIn("SEM9001", warning_codes)
+
+    def test_architecture_analyzer_recommends_payment_audit_pairing(self):
+        ast = Parser().parse(Lexer().tokenize(BLOG_SOURCE.replace("AUTH JWT", "")))
+        modules = [ModuleDefinition("payment.demo", "1.0", "payment", Path("payment"))]
+        report = ArchitectureAnalyzer().analyze(ast=ast, resolved_modules=modules).to_dict()
+        recommendation_codes = [item["code"] for item in report["recommendations"]]
+
+        self.assertIn("SEM9002", recommendation_codes)
+
+    def test_architecture_analyzer_warns_about_unused_model(self):
+        source = """PROJECT UnusedModel
+
+DATABASE MYSQL
+
+MODEL User
+    email STRING
+
+MODEL Comment
+    body STRING
+
+ROUTE GET /users
+"""
+        context = self._compile_context_with_source(tempfile.mkdtemp(), source, target="fastapi", generate=True)
+        warnings = context.architecture_report["architecture_analysis"]["warnings"]
+
+        self.assertIn("SEM9003", [warning["code"] for warning in warnings])
+        self.assertIn("Comment", [warning["message"] for warning in warnings][0] + "".join(
+            warning["message"] for warning in warnings
+        ))
+
+    def test_architecture_analyzer_recommends_against_ecommerce_sqlite(self):
+        source = """PROJECT Shop
+
+DATABASE SQLITE
+
+MODEL User
+    email STRING
+
+ROUTE GET /users
+"""
+        profiles = [Profile(name="Ecommerce", modules=[])]
+        report = ArchitectureAnalyzer().analyze(
+            ast=Parser().parse(Lexer().tokenize(source)),
+            loaded_profiles=profiles,
+        ).to_dict()
+        recommendation_codes = [item["code"] for item in report["recommendations"]]
+
+        self.assertIn("SEM9004", recommendation_codes)
+
+    def test_architecture_analyzer_recommends_when_auth_has_no_protected_routes(self):
+        source = """PROJECT AuthOnly
+
+DATABASE MYSQL
+
+AUTH JWT
+
+MODEL User
+    email STRING
+
+ROUTE POST /login
+"""
+        context = self._compile_context_with_source(tempfile.mkdtemp(), source, target="fastapi", generate=True)
+        recommendation_codes = [
+            item["code"]
+            for item in context.architecture_report["architecture_analysis"]["recommendations"]
+        ]
+
+        self.assertIn("SEM9005", recommendation_codes)
+
+    def test_architecture_analyzer_supports_multiple_findings(self):
+        source = """PROJECT MultiFindings
+
+DATABASE MYSQL
+
+MODEL User
+    email STRING
+
+MODEL Report
+    title STRING
+
+ROUTE GET /users
+ROUTE GET /reports
+"""
+        report = self._compile_context_with_source(
+            tempfile.mkdtemp(),
+            source,
+            target="fastapi",
+            generate=True,
+        ).architecture_report["architecture_analysis"]
+        warning_codes = [item["code"] for item in report["warnings"]]
+
+        self.assertIn("SEM9001", warning_codes)
+        self.assertNotIn("SEM9003", warning_codes)
+
+    def test_architecture_analyzer_avoids_false_positives(self):
+        source = """PROJECT NoFalsePositives
+
+DATABASE MYSQL
+
+AUTH JWT
+
+MODEL User
+    email STRING
+
+MODEL Post
+    title STRING
+
+RELATION User HAS_MANY Post
+
+ROUTE POST /login
+ROUTE GET /posts
+"""
+        context = self._compile_context_with_source(tempfile.mkdtemp(), source, target="fastapi", generate=True)
+        report = context.architecture_report["architecture_analysis"]
+
+        self.assertEqual(report["warnings"], [])
+        self.assertEqual(report["recommendations"], [])
+
     def test_unknown_profile_raises_sem8001(self):
         source = """PROJECT UnknownProfileDemo
 
@@ -950,6 +1088,23 @@ ROUTE GET /users
             self.assertIn("score", report)
             self.assertIn("warnings", report)
 
+    def test_architecture_report_includes_analysis_section(self):
+        source = """PROJECT ReportAnalysis
+
+DATABASE MYSQL
+
+MODEL Post
+    title STRING
+
+ROUTE GET /posts
+"""
+        context = self._compile_context_with_source(tempfile.mkdtemp(), source, target="fastapi", generate=True)
+        report = context.architecture_report
+
+        self.assertIn("architecture_analysis", report)
+        self.assertIn("warnings", report["architecture_analysis"])
+        self.assertIn("recommendations", report["architecture_analysis"])
+
     def test_pass_order_is_explicit(self):
         context = self._compile_context(tempfile.mkdtemp(), target="fastapi", generate=False)
 
@@ -965,6 +1120,7 @@ ROUTE GET /users
                 "ModuleConstraintPass",
                 "RelationshipPass",
                 "ConstraintPass",
+                "ArchitectureAnalysisPass",
                 "ExpansionPass",
                 "IRPass",
                 "OptimizationPass",
@@ -1000,6 +1156,7 @@ ROUTE GET /users
             ModuleConstraintPass(),
             RelationshipPass(),
             ConstraintPass(),
+            ArchitectureAnalysisPass(),
             ExpansionPass(),
             IRPass(),
             OptimizationPass(),

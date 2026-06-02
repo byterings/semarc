@@ -97,25 +97,28 @@ Status: planned.
 - dependency simplification
 - dead route detection
 
-## v0.8: Semantic Standard Library
+## v0.8.0: Profile Composition
 
-Status: planned.
+Status: complete.
 
-- reusable auth modules
-- reusable validation modules
-- database capability modules
-- relationship modules
-- target compatibility metadata
+- profile module composition
+- inherited profile module resolution
+- deterministic duplicate elimination
+- circular profile detection
+- profile-aware module loading
 
-## v0.9: Advanced Architecture Synthesis
+## v0.9.0: Architecture Intelligence
 
-Status: planned.
+Status: current.
 
-- richer route-to-controller mapping
-- command/query separation
-- policies and authorization rules
-- service dependency planning
-- richer repository strategies
+- deterministic architecture analyzer
+- read-only architecture analysis pass
+- public route authentication warnings
+- payment and audit pairing recommendations
+- unused model warnings
+- ecommerce SQLite recommendations
+- auth-without-protected-route recommendations
+- architecture report analysis section
 
 ## v1.0: Production Target Profiles
 
