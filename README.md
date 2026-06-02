@@ -89,6 +89,12 @@ Override the semantic target from the CLI:
 python3 main.py examples/blog_api.sem --target fastapi --debug
 ```
 
+Generate NestJS output:
+
+```bash
+python3 main.py examples/blog_api.sem --target nestjs
+```
+
 `--debug` prints:
 
 - tokens
@@ -146,6 +152,16 @@ For `TARGET FASTAPI`, SEMARC generates:
 - `output/repositories/`
 - `output/migrations/`
 
+For `TARGET NESTJS`, SEMARC generates:
+
+- `output/src/app.module.ts`
+- `output/src/modules/`
+- `output/src/modules/<resource>/<resource>.module.ts`
+- `output/src/modules/<resource>/<resource>.service.ts`
+- `output/src/modules/<resource>/<resource>.controller.ts`
+- `output/src/modules/<resource>/<model>.model.ts`
+- `output/src/guards/auth.guard.ts` when auth scaffolding is needed
+
 ## Architecture
 
 - `lexer/lexer.py` tokenizes strict semantic source lines.
@@ -166,9 +182,11 @@ For `TARGET FASTAPI`, SEMARC generates:
 - `architecture/ir_builder.py` builds language-neutral implementation IR.
 - `generator/php/` maps IR to PHP files.
 - `generator/fastapi/` maps the same IR to FastAPI files.
+- `generator/nestjs/` maps the same IR to NestJS TypeScript files.
 - `generator/fastapi/mappers/` maps language-neutral IR components to FastAPI-specific files.
 - `templates/php/` contains simple placeholder templates.
 - `templates/fastapi/` contains FastAPI templates.
+- `templates/nestjs/` contains NestJS templates.
 - `compiler/passes/` contains isolated compiler passes.
 - `compiler/diagnostics/` defines diagnostic errors, warnings, and recommendations.
 - `main.py` runs the full compiler pipeline.
@@ -198,6 +216,7 @@ The AST does not contain PHP syntax, framework code, folder paths, or generated 
 ```text
 TARGET PHP
 TARGET FASTAPI
+TARGET NESTJS
 ```
 
 If no target is provided, SEMARC defaults to `PHP` to preserve the original prototype behavior.
@@ -240,6 +259,8 @@ The PHP generator is split by concern:
 This keeps parser logic, architecture logic, and PHP code generation separate.
 
 Generated services and middleware contain prototype implementation logic, including password hashing, token generation, token validation, authorization-header handling, basic repository methods, and request validation helpers.
+
+The NestJS generator emits structural TypeScript scaffolding for modules, models, services, controllers, app module registration, and placeholder auth guards. It does not implement real authentication, persistence, or runtime NestJS integrations yet.
 
 ## Architecture Diagnostics
 

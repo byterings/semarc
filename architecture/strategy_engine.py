@@ -23,6 +23,13 @@ class StrategyEngine:
             "auth_strategy": "lightweight_custom_token",
             "repository_strategy": "in_memory_prototype",
         },
+        "NESTJS": {
+            "target": "NESTJS",
+            "generator": "nestjs",
+            "framework": "nestjs",
+            "auth_strategy": "placeholder_guard",
+            "repository_strategy": "service_skeleton",
+        },
         "NODE": {
             "target": "NODE",
             "generator": "node",
