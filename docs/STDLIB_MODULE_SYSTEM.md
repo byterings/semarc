@@ -5,8 +5,8 @@ SEMARC stdlib modules are metadata-only semantic extension points.
 Current version: v0.5.0 foundation.
 
 The stdlib module system does not generate code, add business behavior, resolve
-module dependencies, or alter target generators. It only discovers module
-metadata and validates `USE` declarations.
+module constraints, or alter target generators. It discovers module metadata,
+validates `USE` declarations, and resolves module dependencies.
 
 ## Purpose
 
@@ -53,6 +53,18 @@ Fields:
 - `name`: semantic module name used by `USE`
 - `version`: metadata version string
 - `description`: human-readable module description
+- `depends`: optional list of module dependencies
+
+Dependency example:
+
+```yaml
+name: payment.razorpay
+version: 1.0
+description: Razorpay payment metadata module
+depends:
+* notification.email
+* audit.standard
+```
 
 ## Loader Flow
 
@@ -87,8 +99,8 @@ USE cache.redis
 
 Validation checks each `USE` name against `ModuleRegistry`.
 
-If the module exists, compilation continues and the resolved modules are added
-to the architecture report.
+If the module exists, compilation continues, recursive dependencies are
+resolved, and the resolved modules are added to the architecture report.
 
 If the module does not exist, the `USE` declaration remains valid legacy
 metadata. This preserves v0.4.0 compatibility for company-specific package
@@ -107,6 +119,9 @@ Stdlib diagnostics:
 - `SEM5002`: duplicate known module usage in source
 - `SEM5003`: invalid `module.yaml`
 - `SEM5004`: stdlib loading failure
+- `SEM6001`: circular module dependency
+- `SEM6002`: missing module dependency
+- `SEM6003`: invalid module dependency definition
 
 ## Architecture Report
 
@@ -119,17 +134,28 @@ Generated `output/architecture_report.json` includes resolved modules:
       "name": "auth.jwt",
       "version": "1.0",
       "description": "JWT authentication module",
-      "source_path": "stdlib/auth/jwt/module.yaml"
+      "source_path": "stdlib/auth/jwt/module.yaml",
+      "dependencies": []
     }
-  ]
+  ],
+  "resolved_through_dependencies": []
 }
 ```
+
+If a source declares:
+
+```text
+USE payment.razorpay
+```
+
+and `payment.razorpay` depends on `notification.email` and `audit.standard`,
+the report contains all three modules and lists the dependency-only modules in
+`resolved_through_dependencies`.
 
 ## Non-Goals
 
 The v0.5.0 foundation does not implement:
 
-- module dependencies
 - module constraints
 - module inheritance
 - module composition

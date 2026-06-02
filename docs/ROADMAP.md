@@ -65,7 +65,7 @@ Status: complete.
 
 ## v0.5.0: Stdlib Foundation
 
-Status: current.
+Status: complete.
 
 - recursive stdlib module discovery
 - `ModuleDefinition`
@@ -75,7 +75,19 @@ Status: current.
 - stdlib diagnostics `SEM5001` through `SEM5004`
 - architecture report module metadata
 
-## v0.6: Optimization Engine
+## v0.6.0: Module Dependency Resolution
+
+Status: current.
+
+- optional `depends` entries in `module.yaml`
+- recursive module dependency resolution
+- deterministic module ordering
+- duplicate dependency elimination
+- circular dependency diagnostic `SEM6001`
+- missing dependency diagnostic `SEM6002`
+- invalid dependency schema diagnostic `SEM6003`
+
+## v0.7: Optimization Engine
 
 Status: planned.
 
@@ -85,7 +97,7 @@ Status: planned.
 - dependency simplification
 - dead route detection
 
-## v0.7: Semantic Standard Library
+## v0.8: Semantic Standard Library
 
 Status: planned.
 
@@ -95,7 +107,7 @@ Status: planned.
 - relationship modules
 - target compatibility metadata
 
-## v0.8: Advanced Architecture Synthesis
+## v0.9: Advanced Architecture Synthesis
 
 Status: planned.
 
@@ -105,7 +117,7 @@ Status: planned.
 - service dependency planning
 - richer repository strategies
 
-## v0.9: Production Target Profiles
+## v1.0: Production Target Profiles
 
 Status: planned.
 

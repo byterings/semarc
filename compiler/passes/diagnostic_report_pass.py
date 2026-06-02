@@ -20,8 +20,12 @@ class DiagnosticReportPass:
                 "version": module.version,
                 "description": module.description,
                 "source_path": str(module.source_path),
+                "dependencies": list(module.dependencies),
             }
             for module in context.resolved_modules
+        ]
+        context.architecture_report["resolved_through_dependencies"] = [
+            module.name for module in context.dependency_resolved_modules
         ]
 
         output_dir = Path(context.output_dir)

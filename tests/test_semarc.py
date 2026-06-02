@@ -7,7 +7,15 @@ from pathlib import Path
 from architecture.packages import PackageLoader
 from architecture.relationship_engine import RelationshipEngine
 from architecture.profiles import ProfileLoader
-from architecture.stdlib import DuplicateModuleError, ModuleDefinition, ModuleRegistry, StdlibLoader, StdlibLoadingError
+from architecture.stdlib import (
+    DuplicateModuleError,
+    ModuleDefinition,
+    ModuleDependencyError,
+    ModuleDependencyResolver,
+    ModuleRegistry,
+    StdlibLoader,
+    StdlibLoadingError,
+)
 from architecture.dependency_graph import DependencyGraph, DependencyGraphError
 from compiler.context import CompilerContext
 from compiler.contracts import ContractValidator
@@ -321,6 +329,113 @@ ROUTE POST /login
 
             self.assertIn("SEM5003", str(error.exception))
 
+    def test_invalid_module_dependency_schema_raises_sem6003(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            module_path = Path(tmpdir) / "stdlib" / "broken" / "module.yaml"
+            module_path.parent.mkdir(parents=True)
+            module_path.write_text(
+                "name: broken.module\nversion: 1.0\ndescription: broken\ndepends: auth.jwt\n",
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(StdlibLoadingError) as error:
+                StdlibLoader(Path(tmpdir) / "stdlib").load_all()
+
+            self.assertIn("SEM6003", str(error.exception))
+
+    def test_module_dependency_resolver_resolves_recursive_dependencies(self):
+        registry = ModuleRegistry()
+        payment = ModuleDefinition(
+            "payment.razorpay",
+            "1.0",
+            "payment",
+            Path("payment/module.yaml"),
+            ["notification.email"],
+        )
+        notification = ModuleDefinition(
+            "notification.email",
+            "1.0",
+            "email",
+            Path("notification/module.yaml"),
+            ["audit.standard"],
+        )
+        audit = ModuleDefinition("audit.standard", "1.0", "audit", Path("audit/module.yaml"))
+        for module in [payment, notification, audit]:
+            registry.register(module)
+
+        resolved = ModuleDependencyResolver(registry).resolve([payment])
+
+        self.assertEqual(
+            [module.name for module in resolved],
+            ["payment.razorpay", "notification.email", "audit.standard"],
+        )
+
+    def test_module_dependency_resolver_eliminates_duplicate_dependencies(self):
+        registry = ModuleRegistry()
+        first = ModuleDefinition("first.module", "1.0", "first", Path("first"), ["shared.module"])
+        second = ModuleDefinition("second.module", "1.0", "second", Path("second"), ["shared.module"])
+        shared = ModuleDefinition("shared.module", "1.0", "shared", Path("shared"))
+        for module in [first, second, shared]:
+            registry.register(module)
+
+        resolved = ModuleDependencyResolver(registry).resolve([first, second])
+
+        self.assertEqual(
+            [module.name for module in resolved],
+            ["first.module", "shared.module", "second.module"],
+        )
+
+    def test_module_dependency_resolver_detects_circular_dependencies(self):
+        registry = ModuleRegistry()
+        auth = ModuleDefinition("auth.jwt", "1.0", "auth", Path("auth"), ["audit.standard"])
+        audit = ModuleDefinition("audit.standard", "1.0", "audit", Path("audit"), ["auth.jwt"])
+        registry.register(auth)
+        registry.register(audit)
+
+        with self.assertRaises(ModuleDependencyError) as error:
+            ModuleDependencyResolver(registry).resolve([auth])
+
+        self.assertIn("SEM6001", str(error.exception))
+        self.assertIn("auth.jwt", str(error.exception))
+        self.assertIn("audit.standard", str(error.exception))
+
+    def test_module_dependency_resolver_detects_missing_dependency(self):
+        registry = ModuleRegistry()
+        payment = ModuleDefinition(
+            "payment.razorpay",
+            "1.0",
+            "payment",
+            Path("payment"),
+            ["notification.sms"],
+        )
+        registry.register(payment)
+
+        with self.assertRaises(ModuleDependencyError) as error:
+            ModuleDependencyResolver(registry).resolve([payment])
+
+        self.assertIn("SEM6002 Missing module dependency: notification.sms", str(error.exception))
+
+    def test_module_dependency_resolver_handles_large_dependency_chain(self):
+        registry = ModuleRegistry()
+        modules = []
+        for index in range(30):
+            dependency = [f"chain.module{index + 1}"] if index < 29 else []
+            module = ModuleDefinition(
+                f"chain.module{index}",
+                "1.0",
+                "chain",
+                Path(f"chain{index}"),
+                dependency,
+            )
+            modules.append(module)
+            registry.register(module)
+
+        resolved = ModuleDependencyResolver(registry).resolve([modules[0]])
+
+        self.assertEqual(len(resolved), 30)
+        self.assertEqual(resolved[0].name, "chain.module0")
+        self.assertEqual(resolved[-1].name, "chain.module29")
+
     def test_use_validation_resolves_known_modules(self):
         source = """PROJECT ModuleDemo
 
@@ -342,6 +457,31 @@ ROUTE GET /users
 
         self.assertEqual(resolved, ["auth.jwt", "cache.redis"])
         self.assertEqual(report_modules, ["auth.jwt", "cache.redis"])
+
+    def test_use_validation_resolves_module_dependencies_into_report(self):
+        source = """PROJECT PaymentDemo
+
+TARGET FASTAPI
+
+USE payment.razorpay
+
+DATABASE MYSQL
+
+MODEL User
+    email STRING
+
+ROUTE GET /users
+"""
+        context = self._compile_context_with_source(tempfile.mkdtemp(), source, target="fastapi", generate=True)
+        resolved = [module.name for module in context.resolved_modules]
+        dependency_modules = [module.name for module in context.dependency_resolved_modules]
+
+        self.assertEqual(resolved, ["payment.razorpay", "notification.email", "audit.standard"])
+        self.assertEqual(dependency_modules, ["notification.email", "audit.standard"])
+        self.assertEqual(
+            context.architecture_report["resolved_through_dependencies"],
+            ["notification.email", "audit.standard"],
+        )
 
     def test_unknown_use_remains_legacy_metadata(self):
         source = """PROJECT UnknownModuleDemo

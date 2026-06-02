@@ -44,22 +44,49 @@ class StdlibLoader:
                 "Invalid module definition; missing fields: " + ", ".join(missing),
                 path,
             )
+        dependencies = metadata.get("depends", [])
+        if not isinstance(dependencies, list) or not all(isinstance(item, str) and item for item in dependencies):
+            raise StdlibLoadingError(
+                "SEM6003",
+                "Invalid module dependency definition",
+                path,
+            )
 
         return ModuleDefinition(
             name=metadata["name"],
             version=metadata["version"],
             description=metadata["description"],
             source_path=path,
+            dependencies=dependencies,
         )
 
-    def _read_yaml_subset(self, path: Path) -> dict[str, str]:
-        metadata: dict[str, str] = {}
+    def _read_yaml_subset(self, path: Path) -> dict:
+        metadata: dict = {}
+        current_list_key = None
         for raw_line in path.read_text(encoding="utf-8").splitlines():
             line = raw_line.strip()
             if not line or line.startswith("#"):
                 continue
+            if line.startswith(("- ", "* ")):
+                if current_list_key != "depends":
+                    raise StdlibLoadingError("SEM6003", "Invalid module dependency definition", path)
+                item = line[2:].strip().strip("\"'")
+                if not item:
+                    raise StdlibLoadingError("SEM6003", "Invalid module dependency definition", path)
+                metadata.setdefault("depends", []).append(item)
+                continue
+
             if ":" not in line:
                 raise StdlibLoadingError("SEM5003", "Invalid module definition line", path)
             key, value = line.split(":", 1)
-            metadata[key.strip()] = value.strip().strip("\"'")
+            key = key.strip()
+            value = value.strip().strip("\"'")
+            current_list_key = None
+            if key == "depends":
+                if value:
+                    raise StdlibLoadingError("SEM6003", "Invalid module dependency definition", path)
+                metadata["depends"] = []
+                current_list_key = "depends"
+                continue
+            metadata[key] = value
         return metadata

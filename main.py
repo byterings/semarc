@@ -101,6 +101,10 @@ def main() -> int:
         print("Modules Loaded:")
         for module in context.resolved_modules:
             print(f"* {module.name}")
+        if context.dependency_resolved_modules:
+            print("Resolved Through Dependencies:")
+            for module in context.dependency_resolved_modules:
+                print(f"* {module.name}")
         print("Compilation Successful")
     print(f"Generated {context.target_profile['target']} backend in output/")
     return 0
