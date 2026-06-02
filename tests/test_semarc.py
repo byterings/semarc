@@ -5,8 +5,9 @@ import unittest
 from pathlib import Path
 
 from architecture.packages import PackageLoader
+from architecture.profiles import ProfileCompositionError, ProfileCompositionResolver
 from architecture.relationship_engine import RelationshipEngine
-from architecture.profiles import ProfileLoader
+from architecture.profiles import ProfileLoader, ProfileLoadingError, ProfileRegistry
 from architecture.stdlib import (
     DuplicateModuleError,
     ModuleDefinition,
@@ -31,6 +32,7 @@ from compiler.passes.lexing_pass import LexingPass
 from compiler.passes.module_constraint_pass import ModuleConstraintPass
 from compiler.passes.optimization_pass import OptimizationPass
 from compiler.passes.parsing_pass import ParsingPass
+from compiler.passes.profile_pass import ProfilePass
 from compiler.passes.relationship_pass import RelationshipPass
 from compiler.passes.stdlib_pass import StdlibPass
 from compiler.passes.validation_pass import ValidationPass
@@ -296,6 +298,94 @@ ROUTE POST /login
 
         self.assertIsNotNone(ecommerce)
         self.assertIn("payment", ecommerce.packages)
+        self.assertIn("auth.jwt", ecommerce.modules)
+
+    def test_invalid_profile_modules_schema_raises_sem8003(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            profile_path = Path(tmpdir) / "profiles" / "broken.profile"
+            profile_path.parent.mkdir(parents=True)
+            profile_path.write_text(
+                "name: Broken\nmodules: auth.jwt\n",
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(ProfileLoadingError) as error:
+                ProfileLoader(Path(tmpdir) / "profiles").load_all()
+
+            self.assertIn("SEM8003", str(error.exception))
+
+    def test_profile_composition_resolves_simple_modules(self):
+        registry = ProfileLoader(Path(__file__).resolve().parents[1] / "profiles").load_all()
+        profiles, modules = ProfileCompositionResolver(registry).resolve(["ECOMMERCE"])
+
+        self.assertEqual([profile.name for profile in profiles], ["Ecommerce"])
+        self.assertEqual(modules, ["auth.jwt", "payment.razorpay", "cache.redis"])
+
+    def test_profile_composition_resolves_inherited_modules(self):
+        registry = ProfileLoader(Path(__file__).resolve().parents[1] / "profiles").load_all()
+        profiles, modules = ProfileCompositionResolver(registry).resolve(["COMPANY_ECOMMERCE"])
+
+        self.assertEqual(
+            [profile.name for profile in profiles],
+            ["Ecommerce", "COMPANY_ECOMMERCE"],
+        )
+        self.assertEqual(
+            modules,
+            ["auth.jwt", "payment.razorpay", "cache.redis", "audit.standard", "notification.sms"],
+        )
+
+    def test_profile_composition_eliminates_duplicate_modules(self):
+        registry = ProfileRegistry()
+        registry.register(ProfileLoader(Path(__file__).resolve().parents[1] / "profiles").load_all().get("Ecommerce"))
+        registry.register(ProfileLoader(Path(__file__).resolve().parents[1] / "profiles").load_all().get("CompanyStandard"))
+        registry.register(
+            ProfileLoader(Path(__file__).resolve().parents[1] / "profiles").load(
+                Path(__file__).resolve().parents[1] / "profiles" / "company_ecommerce.profile"
+            )
+        )
+        _, modules = ProfileCompositionResolver(registry).resolve(["ECOMMERCE", "COMPANY_STANDARD"])
+
+        self.assertEqual(modules, ["auth.jwt", "payment.razorpay", "cache.redis"])
+
+    def test_profile_composition_detects_unknown_profile(self):
+        registry = ProfileLoader(Path(__file__).resolve().parents[1] / "profiles").load_all()
+
+        with self.assertRaises(ProfileCompositionError) as error:
+            ProfileCompositionResolver(registry).resolve(["UNKNOWN_PROFILE"])
+
+        self.assertIn("SEM8001", str(error.exception))
+
+    def test_profile_composition_detects_circular_inheritance(self):
+        registry = ProfileRegistry()
+        circular_a = ProfileLoader(Path(__file__).resolve().parents[1] / "profiles").load(
+            Path(__file__).resolve().parents[1] / "profiles" / "blog.profile"
+        )
+        circular_b = ProfileLoader(Path(__file__).resolve().parents[1] / "profiles").load(
+            Path(__file__).resolve().parents[1] / "profiles" / "crm.profile"
+        )
+        circular_a = type(circular_a)(
+            name="A",
+            description="A",
+            extends=["B"],
+            modules=["auth.jwt"],
+            packages=[],
+            metadata={},
+        )
+        circular_b = type(circular_b)(
+            name="B",
+            description="B",
+            extends=["A"],
+            modules=["notification.email"],
+            packages=[],
+            metadata={},
+        )
+        registry.register(circular_a)
+        registry.register(circular_b)
+
+        with self.assertRaises(ProfileCompositionError) as error:
+            ProfileCompositionResolver(registry).resolve(["A"])
+
+        self.assertIn("SEM8002", str(error.exception))
 
     def test_package_metadata_loads_safely(self):
         registry = PackageLoader(Path(__file__).resolve().parents[1] / "stdlib").load_all()
@@ -600,6 +690,83 @@ ROUTE GET /users
         self.assertEqual(resolved, ["auth.jwt", "cache.redis"])
         self.assertEqual(report_modules, ["auth.jwt", "cache.redis"])
 
+    def test_profile_composition_resolves_modules_without_explicit_use(self):
+        source = """PROJECT ProfileModuleDemo
+
+TARGET FASTAPI
+
+PROFILE ECOMMERCE
+
+DATABASE MYSQL
+
+MODEL User
+    email STRING
+
+ROUTE GET /users
+"""
+        context = self._compile_context_with_source(tempfile.mkdtemp(), source, target="fastapi", generate=True)
+
+        self.assertEqual(
+            [module.name for module in context.resolved_modules],
+            ["auth.jwt", "payment.razorpay", "notification.email", "audit.standard", "cache.redis"],
+        )
+        self.assertEqual(
+            context.architecture_report["modules_from_profiles"],
+            ["auth.jwt", "payment.razorpay", "cache.redis"],
+        )
+
+    def test_unknown_profile_raises_sem8001(self):
+        source = """PROJECT UnknownProfileDemo
+
+PROFILE UNKNOWN_PROFILE
+
+DATABASE MYSQL
+
+MODEL User
+    email STRING
+
+ROUTE GET /users
+"""
+        with self.assertRaises(SemanticValidationError) as error:
+            self._compile_context_with_source(tempfile.mkdtemp(), source, target="fastapi", generate=False)
+
+        self.assertIn("SEM8001 Unknown profile: UNKNOWN_PROFILE", str(error.exception))
+
+    def test_profile_constraint_interaction_raises_sem7001(self):
+        source = """PROJECT ProfileConstraintFail
+
+PROFILE ECOMMERCE
+
+DATABASE SQLITE
+
+MODEL User
+    email STRING
+
+ROUTE GET /users
+"""
+        with self.assertRaises(SemanticValidationError) as error:
+            self._compile_context_with_source(tempfile.mkdtemp(), source, target="fastapi", generate=False)
+
+        self.assertIn("SEM7001 Module requirement not satisfied", str(error.exception))
+
+    def test_multiple_profiles_compose_deterministically(self):
+        source = """PROJECT MultiProfileDemo
+
+PROFILE BLOG
+PROFILE COMPANY_STANDARD
+
+DATABASE MYSQL
+
+MODEL User
+    email STRING
+
+ROUTE GET /users
+"""
+        context = self._compile_context_with_source(tempfile.mkdtemp(), source, target="fastapi", generate=True)
+
+        self.assertEqual(context.architecture_report["profiles"], ["Blog", "CompanyStandard"])
+        self.assertEqual(context.architecture_report["modules_from_profiles"], ["auth.jwt"])
+
     def test_use_validation_resolves_module_dependencies_into_report(self):
         source = """PROJECT PaymentDemo
 
@@ -792,6 +959,7 @@ ROUTE GET /users
                 "LexingPass",
                 "ParsingPass",
                 "ContractPass:AST",
+                "ProfilePass",
                 "StdlibPass",
                 "ValidationPass",
                 "ModuleConstraintPass",
@@ -826,6 +994,7 @@ ROUTE GET /users
             LexingPass(),
             ParsingPass(),
             ContractPass(),
+            ProfilePass(),
             StdlibPass(),
             ValidationPass(),
             ModuleConstraintPass(),

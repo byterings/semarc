@@ -12,8 +12,11 @@ class ValidationPass:
         if context.module_registry is None:
             return
 
-        for package in context.ast.packages:
-            module = context.module_registry.get(package.name)
+        requested_module_names = list(context.resolved_profile_modules) + [
+            package.name for package in context.ast.packages
+        ]
+        for module_name in requested_module_names:
+            module = context.module_registry.get(module_name)
             if module is None:
                 continue
             module_key = module.name.lower()

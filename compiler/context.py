@@ -18,6 +18,7 @@ class CompilerContext:
     constraint_result: Any = None
     architecture_report: dict = field(default_factory=dict)
     loaded_profiles: list[Any] = field(default_factory=list)
+    resolved_profile_modules: list[str] = field(default_factory=list)
     loaded_packages: list[Any] = field(default_factory=list)
     loaded_modules: list[Any] = field(default_factory=list)
     resolved_modules: list[Any] = field(default_factory=list)

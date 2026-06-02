@@ -7,6 +7,7 @@ class Profile:
 
     name: str
     description: str = ""
-    extends: str | None = None
+    extends: list[str] = field(default_factory=list)
+    modules: list[str] = field(default_factory=list)
     packages: list[str] = field(default_factory=list)
     metadata: dict[str, str] = field(default_factory=dict)

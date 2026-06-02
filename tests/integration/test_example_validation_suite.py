@@ -17,6 +17,7 @@ from compiler.passes.lexing_pass import LexingPass
 from compiler.passes.module_constraint_pass import ModuleConstraintPass
 from compiler.passes.optimization_pass import OptimizationPass
 from compiler.passes.parsing_pass import ParsingPass
+from compiler.passes.profile_pass import ProfilePass
 from compiler.passes.relationship_pass import RelationshipPass
 from compiler.passes.stdlib_pass import StdlibPass
 from compiler.passes.validation_pass import ValidationPass
@@ -122,7 +123,7 @@ class ExampleProjectValidationSuite(unittest.TestCase):
         razorpay = packages.get("payment.razorpay")
 
         self.assertIsNotNone(company_ecommerce)
-        self.assertEqual(company_ecommerce.extends, "ECOMMERCE")
+        self.assertEqual(company_ecommerce.extends, ["ECOMMERCE"])
         self.assertIn("audit.standard", company_ecommerce.packages)
         self.assertIn("notification.sms", company_ecommerce.packages)
         self.assertIsNotNone(razorpay)
@@ -193,6 +194,7 @@ ROUTE POST /login
             LexingPass(),
             ParsingPass(),
             ContractPass(),
+            ProfilePass(),
             StdlibPass(),
             ValidationPass(),
             ModuleConstraintPass(),
