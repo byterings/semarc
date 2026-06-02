@@ -15,6 +15,7 @@ class StdlibLoader:
     """Discovers metadata-only stdlib modules from module.yaml files."""
 
     REQUIRED_FIELDS = {"name", "version", "description"}
+    LIST_FIELDS = {"depends", "requires", "conflicts"}
 
     def __init__(self, stdlib_dir: str | Path = "stdlib") -> None:
         self.stdlib_dir = Path(stdlib_dir)
@@ -51,6 +52,20 @@ class StdlibLoader:
                 "Invalid module dependency definition",
                 path,
             )
+        requirements = metadata.get("requires", [])
+        conflicts = metadata.get("conflicts", [])
+        if not isinstance(requirements, list) or not all(isinstance(item, str) and item for item in requirements):
+            raise StdlibLoadingError(
+                "SEM7003",
+                "Invalid module constraint definition",
+                path,
+            )
+        if not isinstance(conflicts, list) or not all(isinstance(item, str) and item for item in conflicts):
+            raise StdlibLoadingError(
+                "SEM7003",
+                "Invalid module constraint definition",
+                path,
+            )
 
         return ModuleDefinition(
             name=metadata["name"],
@@ -58,6 +73,8 @@ class StdlibLoader:
             description=metadata["description"],
             source_path=path,
             dependencies=dependencies,
+            requirements=requirements,
+            conflicts=conflicts,
         )
 
     def _read_yaml_subset(self, path: Path) -> dict:
@@ -68,12 +85,14 @@ class StdlibLoader:
             if not line or line.startswith("#"):
                 continue
             if line.startswith(("- ", "* ")):
-                if current_list_key != "depends":
-                    raise StdlibLoadingError("SEM6003", "Invalid module dependency definition", path)
+                if current_list_key not in self.LIST_FIELDS:
+                    raise StdlibLoadingError("SEM5003", "Invalid module definition line", path)
                 item = line[2:].strip().strip("\"'")
                 if not item:
-                    raise StdlibLoadingError("SEM6003", "Invalid module dependency definition", path)
-                metadata.setdefault("depends", []).append(item)
+                    if current_list_key == "depends":
+                        raise StdlibLoadingError("SEM6003", "Invalid module dependency definition", path)
+                    raise StdlibLoadingError("SEM7003", "Invalid module constraint definition", path)
+                metadata.setdefault(current_list_key, []).append(item)
                 continue
 
             if ":" not in line:
@@ -82,11 +101,13 @@ class StdlibLoader:
             key = key.strip()
             value = value.strip().strip("\"'")
             current_list_key = None
-            if key == "depends":
+            if key in self.LIST_FIELDS:
                 if value:
-                    raise StdlibLoadingError("SEM6003", "Invalid module dependency definition", path)
-                metadata["depends"] = []
-                current_list_key = "depends"
+                    if key == "depends":
+                        raise StdlibLoadingError("SEM6003", "Invalid module dependency definition", path)
+                    raise StdlibLoadingError("SEM7003", "Invalid module constraint definition", path)
+                metadata[key] = []
+                current_list_key = key
                 continue
             metadata[key] = value
         return metadata

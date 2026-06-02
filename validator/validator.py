@@ -12,7 +12,7 @@ class SemanticValidationError(Exception):
 class SemanticValidator:
     """Validates semantic meaning after parsing and before architecture expansion."""
 
-    SUPPORTED_DATABASES = {"MYSQL"}
+    SUPPORTED_DATABASES = {"MYSQL", "POSTGRESQL", "SQLITE"}
     SUPPORTED_AUTH = {"JWT", "SESSION"}
     SUPPORTED_TARGETS = {"PHP", "FASTAPI", "LARAVEL", "NODE"}
 

@@ -34,3 +34,17 @@ class ValidationPass:
             for module in resolved_modules
             if module.name.lower() not in direct_keys
         ]
+        context.module_requirements = sorted(
+            {
+                requirement
+                for module in resolved_modules
+                for requirement in module.requirements
+            }
+        )
+        context.module_conflicts = sorted(
+            {
+                conflict
+                for module in resolved_modules
+                for conflict in module.conflicts
+            }
+        )

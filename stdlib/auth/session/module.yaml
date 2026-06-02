@@ -1,0 +1,5 @@
+name: auth.session
+version: 1.0
+description: Session authentication module
+conflicts:
+* auth.jwt
