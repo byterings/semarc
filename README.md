@@ -271,6 +271,16 @@ USE cache.redis
 Unknown `USE` entries remain valid metadata for v0.4 compatibility. Known
 stdlib modules are resolved into the architecture report.
 
+Resolved modules may also declare:
+
+- `depends`
+- `requires`
+- `conflicts`
+
+Module constraints are validated after dependency resolution. For example,
+`payment.razorpay` can require `database.mysql`, and `auth.jwt` can conflict
+with `auth.session`.
+
 ## Tests
 
 Run the focused compiler tests:

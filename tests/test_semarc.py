@@ -10,6 +10,8 @@ from architecture.profiles import ProfileLoader
 from architecture.stdlib import (
     DuplicateModuleError,
     ModuleDefinition,
+    ModuleConstraintError,
+    ModuleConstraintValidator,
     ModuleDependencyError,
     ModuleDependencyResolver,
     ModuleRegistry,
@@ -26,6 +28,7 @@ from compiler.passes.expansion_pass import ExpansionPass
 from compiler.passes.generation_pass import GenerationPass
 from compiler.passes.ir_pass import IRPass
 from compiler.passes.lexing_pass import LexingPass
+from compiler.passes.module_constraint_pass import ModuleConstraintPass
 from compiler.passes.optimization_pass import OptimizationPass
 from compiler.passes.parsing_pass import ParsingPass
 from compiler.passes.relationship_pass import RelationshipPass
@@ -343,6 +346,34 @@ ROUTE POST /login
 
             self.assertIn("SEM6003", str(error.exception))
 
+    def test_invalid_module_requires_schema_raises_sem7003(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            module_path = Path(tmpdir) / "stdlib" / "broken" / "module.yaml"
+            module_path.parent.mkdir(parents=True)
+            module_path.write_text(
+                "name: broken.module\nversion: 1.0\ndescription: broken\nrequires: database.mysql\n",
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(StdlibLoadingError) as error:
+                StdlibLoader(Path(tmpdir) / "stdlib").load_all()
+
+            self.assertIn("SEM7003", str(error.exception))
+
+    def test_invalid_module_conflicts_schema_raises_sem7003(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            module_path = Path(tmpdir) / "stdlib" / "broken" / "module.yaml"
+            module_path.parent.mkdir(parents=True)
+            module_path.write_text(
+                "name: broken.module\nversion: 1.0\ndescription: broken\nconflicts: auth.jwt\n",
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(StdlibLoadingError) as error:
+                StdlibLoader(Path(tmpdir) / "stdlib").load_all()
+
+            self.assertIn("SEM7003", str(error.exception))
+
     def test_module_dependency_resolver_resolves_recursive_dependencies(self):
         registry = ModuleRegistry()
         payment = ModuleDefinition(
@@ -436,6 +467,117 @@ ROUTE POST /login
         self.assertEqual(resolved[0].name, "chain.module0")
         self.assertEqual(resolved[-1].name, "chain.module29")
 
+    def test_module_constraint_validator_accepts_satisfied_database_requirement(self):
+        module = ModuleDefinition(
+            "payment.razorpay",
+            "1.0",
+            "payment",
+            Path("payment"),
+            requirements=["database.mysql"],
+        )
+        source = """PROJECT RequirementOk
+
+DATABASE MYSQL
+
+MODEL User
+    email STRING
+
+ROUTE GET /users
+"""
+        ast = Parser().parse(Lexer().tokenize(source))
+        ModuleConstraintValidator().validate(ast, [module])
+
+    def test_module_constraint_validator_rejects_unsatisfied_database_requirement(self):
+        module = ModuleDefinition(
+            "payment.razorpay",
+            "1.0",
+            "payment",
+            Path("payment"),
+            requirements=["database.mysql"],
+        )
+        source = """PROJECT RequirementFail
+
+DATABASE MYSQL
+
+MODEL User
+    email STRING
+
+ROUTE GET /users
+"""
+        ast = Parser().parse(Lexer().tokenize(source.replace("MYSQL", "SQLITE")))
+        with self.assertRaises(ModuleConstraintError) as error:
+            ModuleConstraintValidator().validate(ast, [module])
+
+        self.assertIn("SEM7001", str(error.exception))
+
+    def test_module_constraint_validator_accepts_target_requirement(self):
+        module = ModuleDefinition(
+            "cache.redis",
+            "1.0",
+            "cache",
+            Path("cache"),
+            requirements=["target.fastapi"],
+        )
+        source = """PROJECT TargetOk
+
+TARGET FASTAPI
+
+DATABASE MYSQL
+
+MODEL User
+    email STRING
+
+ROUTE GET /users
+"""
+        ast = Parser().parse(Lexer().tokenize(source))
+        ModuleConstraintValidator().validate(ast, [module])
+
+    def test_module_constraint_validator_accepts_module_requirement(self):
+        auth = ModuleDefinition("auth.jwt", "1.0", "auth", Path("auth"))
+        payment = ModuleDefinition(
+            "payment.razorpay",
+            "1.0",
+            "payment",
+            Path("payment"),
+            requirements=["auth.jwt"],
+        )
+        source = """PROJECT ModuleReqOk
+
+DATABASE MYSQL
+
+MODEL User
+    email STRING
+
+ROUTE GET /users
+"""
+        ast = Parser().parse(Lexer().tokenize(source))
+        ModuleConstraintValidator().validate(ast, [auth, payment])
+
+    def test_module_constraint_validator_detects_conflict(self):
+        auth_jwt = ModuleDefinition(
+            "auth.jwt",
+            "1.0",
+            "auth",
+            Path("auth"),
+            conflicts=["auth.session"],
+        )
+        auth_session = ModuleDefinition("auth.session", "1.0", "session", Path("session"))
+        source = """PROJECT ConflictDemo
+
+DATABASE MYSQL
+
+MODEL User
+    email STRING
+
+ROUTE GET /users
+"""
+        ast = Parser().parse(Lexer().tokenize(source))
+        with self.assertRaises(ModuleConstraintError) as error:
+            ModuleConstraintValidator().validate(ast, [auth_jwt, auth_session])
+
+        self.assertIn("SEM7002", str(error.exception))
+
+
     def test_use_validation_resolves_known_modules(self):
         source = """PROJECT ModuleDemo
 
@@ -482,6 +624,83 @@ ROUTE GET /users
             context.architecture_report["resolved_through_dependencies"],
             ["notification.email", "audit.standard"],
         )
+
+    def test_payment_module_database_requirement_is_satisfied(self):
+        source = """PROJECT PaymentOk
+
+TARGET FASTAPI
+
+USE payment.razorpay
+
+DATABASE MYSQL
+
+MODEL User
+    email STRING
+
+ROUTE GET /users
+"""
+        context = self._compile_context_with_source(tempfile.mkdtemp(), source, target="fastapi", generate=True)
+
+        self.assertIn("database.mysql", context.architecture_report["requirements"])
+
+    def test_payment_module_database_requirement_violation_raises_sem7001(self):
+        source = """PROJECT PaymentFail
+
+TARGET FASTAPI
+
+USE payment.razorpay
+
+DATABASE SQLITE
+
+MODEL User
+    email STRING
+
+ROUTE GET /users
+"""
+        with self.assertRaises(SemanticValidationError) as error:
+            self._compile_context_with_source(tempfile.mkdtemp(), source, target="fastapi", generate=False)
+
+        self.assertIn("SEM7001 Module requirement not satisfied", str(error.exception))
+
+    def test_auth_module_conflict_raises_sem7002(self):
+        source = """PROJECT AuthConflict
+
+USE auth.jwt
+USE auth.session
+
+DATABASE MYSQL
+
+MODEL User
+    email STRING
+
+ROUTE GET /users
+"""
+        with self.assertRaises(SemanticValidationError) as error:
+            self._compile_context_with_source(tempfile.mkdtemp(), source, target="fastapi", generate=False)
+
+        self.assertIn("SEM7002 Module conflict detected", str(error.exception))
+
+    def test_architecture_report_includes_requirements_and_conflicts(self):
+        source = """PROJECT ReportDemo
+
+TARGET FASTAPI
+
+USE auth.jwt
+USE payment.razorpay
+
+DATABASE MYSQL
+
+MODEL User
+    email STRING
+
+ROUTE GET /users
+"""
+        context = self._compile_context_with_source(tempfile.mkdtemp(), source, target="fastapi", generate=True)
+
+        self.assertIn("requirements", context.architecture_report)
+        self.assertIn("database.mysql", context.architecture_report["requirements"])
+        self.assertIn("conflicts", context.architecture_report)
+        self.assertIn("auth.session", context.architecture_report["conflicts"])
 
     def test_unknown_use_remains_legacy_metadata(self):
         source = """PROJECT UnknownModuleDemo
@@ -575,6 +794,7 @@ ROUTE GET /users
                 "ContractPass:AST",
                 "StdlibPass",
                 "ValidationPass",
+                "ModuleConstraintPass",
                 "RelationshipPass",
                 "ConstraintPass",
                 "ExpansionPass",
@@ -608,6 +828,7 @@ ROUTE GET /users
             ContractPass(),
             StdlibPass(),
             ValidationPass(),
+            ModuleConstraintPass(),
             RelationshipPass(),
             ConstraintPass(),
             ExpansionPass(),

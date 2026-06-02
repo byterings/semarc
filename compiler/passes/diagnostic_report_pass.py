@@ -21,12 +21,18 @@ class DiagnosticReportPass:
                 "description": module.description,
                 "source_path": str(module.source_path),
                 "dependencies": list(module.dependencies),
+                "requirements": list(module.requirements),
+                "conflicts": list(module.conflicts),
             }
             for module in context.resolved_modules
         ]
         context.architecture_report["resolved_through_dependencies"] = [
             module.name for module in context.dependency_resolved_modules
         ]
+        if context.module_requirements:
+            context.architecture_report["requirements"] = list(context.module_requirements)
+        if context.module_conflicts:
+            context.architecture_report["conflicts"] = list(context.module_conflicts)
 
         output_dir = Path(context.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)

@@ -12,6 +12,7 @@ from compiler.passes.expansion_pass import ExpansionPass
 from compiler.passes.generation_pass import GenerationPass
 from compiler.passes.ir_pass import IRPass
 from compiler.passes.lexing_pass import LexingPass
+from compiler.passes.module_constraint_pass import ModuleConstraintPass
 from compiler.passes.optimization_pass import OptimizationPass
 from compiler.passes.parsing_pass import ParsingPass
 from compiler.passes.relationship_pass import RelationshipPass
@@ -39,6 +40,7 @@ def compile_semantic_file(
 
     StdlibPass().run(context)
     ValidationPass().run(context)
+    ModuleConstraintPass().run(context)
     RelationshipPass().run(context)
     ConstraintPass().run(context)
     if debug:
@@ -105,6 +107,14 @@ def main() -> int:
             print("Resolved Through Dependencies:")
             for module in context.dependency_resolved_modules:
                 print(f"* {module.name}")
+        if context.module_requirements:
+            print("Requirements:")
+            for requirement in context.module_requirements:
+                print(f"* {requirement}")
+        if context.module_conflicts:
+            print("Conflicts:")
+            for conflict in context.module_conflicts:
+                print(f"* {conflict}")
         print("Compilation Successful")
     print(f"Generated {context.target_profile['target']} backend in output/")
     return 0

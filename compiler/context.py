@@ -22,6 +22,8 @@ class CompilerContext:
     loaded_modules: list[Any] = field(default_factory=list)
     resolved_modules: list[Any] = field(default_factory=list)
     dependency_resolved_modules: list[Any] = field(default_factory=list)
+    module_requirements: list[str] = field(default_factory=list)
+    module_conflicts: list[str] = field(default_factory=list)
     module_registry: Any = None
     target_profile: dict = field(default_factory=dict)
     architecture_plan: dict = field(default_factory=dict)

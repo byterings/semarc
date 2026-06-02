@@ -4,3 +4,5 @@ description: Razorpay payment metadata module
 depends:
 * notification.email
 * audit.standard
+requires:
+* database.mysql

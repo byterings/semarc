@@ -14,6 +14,7 @@ from compiler.passes.expansion_pass import ExpansionPass
 from compiler.passes.generation_pass import GenerationPass
 from compiler.passes.ir_pass import IRPass
 from compiler.passes.lexing_pass import LexingPass
+from compiler.passes.module_constraint_pass import ModuleConstraintPass
 from compiler.passes.optimization_pass import OptimizationPass
 from compiler.passes.parsing_pass import ParsingPass
 from compiler.passes.relationship_pass import RelationshipPass
@@ -194,6 +195,7 @@ ROUTE POST /login
             ContractPass(),
             StdlibPass(),
             ValidationPass(),
+            ModuleConstraintPass(),
             RelationshipPass(),
             ConstraintPass(),
             ExpansionPass(),
