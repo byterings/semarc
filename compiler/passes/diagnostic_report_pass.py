@@ -29,6 +29,10 @@ class DiagnosticReportPass:
         context.architecture_report["resolved_through_dependencies"] = [
             module.name for module in context.dependency_resolved_modules
         ]
+        if context.loaded_profiles:
+            context.architecture_report["profiles"] = [profile.name for profile in context.loaded_profiles]
+        if context.resolved_profile_modules:
+            context.architecture_report["modules_from_profiles"] = list(context.resolved_profile_modules)
         if context.module_requirements:
             context.architecture_report["requirements"] = list(context.module_requirements)
         if context.module_conflicts:

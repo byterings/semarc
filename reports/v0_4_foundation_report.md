@@ -20,8 +20,8 @@ This report validates the metadata-only profile and package foundation.
 ## Profiles Loaded
 
 - Blog (extends: none, packages: storage, search)
+- COMPANY_ECOMMERCE (extends: ['ECOMMERCE'], packages: audit.standard, notification.sms)
 - CompanyStandard (extends: none, packages: auth, database, notification)
-- COMPANY_ECOMMERCE (extends: ECOMMERCE, packages: audit.standard, notification.sms)
 - CRM (extends: none, packages: reporting, notification)
 - Ecommerce (extends: none, packages: payment, notification, storage)
 - Inventory (extends: none, packages: reporting, storage)

@@ -22,5 +22,7 @@ class IRPass:
         context.ir["resolved_through_dependencies"] = [
             module.name for module in context.dependency_resolved_modules
         ]
+        context.ir["profiles_loaded"] = [profile.name for profile in context.loaded_profiles]
+        context.ir["modules_from_profiles"] = list(context.resolved_profile_modules)
         context.ir["module_requirements"] = list(context.module_requirements)
         context.ir["module_conflicts"] = list(context.module_conflicts)
