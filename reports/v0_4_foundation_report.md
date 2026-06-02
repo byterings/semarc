@@ -66,6 +66,7 @@ This report validates the metadata-only profile and package foundation.
 - Examples Failed: 0
 - PHP target compilation: PASS
 - FastAPI target compilation: PASS
+- NestJS target compilation: PASS
 - Migration generation: PASS
 
 ## Backward Compatibility Validation

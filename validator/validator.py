@@ -14,7 +14,7 @@ class SemanticValidator:
 
     SUPPORTED_DATABASES = {"MYSQL", "POSTGRESQL", "SQLITE"}
     SUPPORTED_AUTH = {"JWT", "SESSION"}
-    SUPPORTED_TARGETS = {"PHP", "FASTAPI", "LARAVEL", "NODE"}
+    SUPPORTED_TARGETS = {"PHP", "FASTAPI", "LARAVEL", "NODE", "NESTJS"}
 
     def __init__(self, module_registry=None) -> None:
         self.module_registry = module_registry

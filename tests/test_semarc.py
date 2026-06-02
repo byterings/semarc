@@ -173,6 +173,157 @@ ROUTE GET /users
             self.assertTrue((Path(first) / "out" / "main.py").exists())
             self.assertTrue((Path(second) / "out" / "routes.php").exists())
 
+    def test_nestjs_target_selection(self):
+        source = """PROJECT NestTarget
+
+TARGET NESTJS
+
+DATABASE MYSQL
+
+MODEL User
+    email STRING
+
+ROUTE GET /users
+"""
+        context = self._compile_context_with_source(tempfile.mkdtemp(), source, target=None, generate=False)
+
+        self.assertEqual(context.target_profile["generator"], "nestjs")
+        self.assertEqual(context.target_profile["framework"], "nestjs")
+
+    def test_nestjs_project_generation(self):
+        context = self._compile_context_with_source(
+            tempfile.mkdtemp(),
+            self._nestjs_source(),
+            target="nestjs",
+            generate=True,
+        )
+        output_dir = Path(context.output_dir)
+
+        self.assertTrue((output_dir / "src" / "app.module.ts").exists())
+        self.assertTrue((output_dir / "src" / "modules" / "users" / "users.module.ts").exists())
+
+    def test_nestjs_model_service_and_controller_generation(self):
+        context = self._compile_context_with_source(
+            tempfile.mkdtemp(),
+            self._nestjs_source(),
+            target="nestjs",
+            generate=True,
+        )
+        users_dir = Path(context.output_dir) / "src" / "modules" / "users"
+
+        model = (users_dir / "user.model.ts").read_text(encoding="utf-8")
+        service = (users_dir / "users.service.ts").read_text(encoding="utf-8")
+        controller = (users_dir / "users.controller.ts").read_text(encoding="utf-8")
+
+        self.assertIn("export class User", model)
+        self.assertIn("email!: string;", model)
+        self.assertIn("@Injectable()", service)
+        self.assertIn("export class UserService", service)
+        self.assertIn("@Controller('users')", controller)
+        self.assertIn("@Get()", controller)
+        self.assertIn("export class UserController", controller)
+
+    def test_nestjs_auth_scaffold_generation(self):
+        context = self._compile_context_with_source(
+            tempfile.mkdtemp(),
+            self._nestjs_source(auth=True),
+            target="nestjs",
+            generate=True,
+        )
+        output_dir = Path(context.output_dir)
+        app_module = (output_dir / "src" / "app.module.ts").read_text(encoding="utf-8")
+        guard = (output_dir / "src" / "guards" / "auth.guard.ts").read_text(encoding="utf-8")
+
+        self.assertTrue((output_dir / "src" / "modules" / "auth" / "auth.module.ts").exists())
+        self.assertIn("AuthModule", app_module)
+        self.assertIn("export class AuthGuard implements CanActivate", guard)
+
+    def test_nestjs_app_module_registers_generated_modules(self):
+        context = self._compile_context_with_source(
+            tempfile.mkdtemp(),
+            self._nestjs_source(auth=True),
+            target="nestjs",
+            generate=True,
+        )
+        app_module = (Path(context.output_dir) / "src" / "app.module.ts").read_text(encoding="utf-8")
+
+        self.assertIn("import { UserModule } from './modules/users/users.module';", app_module)
+        self.assertIn("UserModule", app_module)
+        self.assertIn("AuthModule", app_module)
+
+    def test_nestjs_generates_multiple_model_modules(self):
+        source = """PROJECT MultiNest
+
+TARGET NESTJS
+
+DATABASE MYSQL
+
+MODEL User
+    email STRING
+
+MODEL Product
+    name STRING
+
+ROUTE GET /users
+ROUTE GET /products
+"""
+        context = self._compile_context_with_source(tempfile.mkdtemp(), source, target="nestjs", generate=True)
+        output_dir = Path(context.output_dir)
+
+        self.assertTrue((output_dir / "src" / "modules" / "users" / "users.module.ts").exists())
+        self.assertTrue((output_dir / "src" / "modules" / "products" / "products.module.ts").exists())
+
+    def test_nestjs_generation_supports_profile_based_projects(self):
+        source = """PROJECT ProfileNest
+
+PROFILE BLOG
+
+DATABASE MYSQL
+
+MODEL User
+    email STRING
+
+ROUTE GET /users
+"""
+        context = self._compile_context_with_source(tempfile.mkdtemp(), source, target="nestjs", generate=True)
+
+        self.assertEqual(context.target_profile["generator"], "nestjs")
+        self.assertTrue((Path(context.output_dir) / "src" / "modules" / "users" / "users.service.ts").exists())
+        self.assertIn("auth.jwt", [module.name for module in context.resolved_modules])
+
+    def test_nestjs_generation_supports_dependency_based_projects(self):
+        source = """PROJECT DependencyNest
+
+USE payment.razorpay
+
+DATABASE MYSQL
+
+MODEL User
+    email STRING
+
+ROUTE GET /users
+"""
+        context = self._compile_context_with_source(tempfile.mkdtemp(), source, target="nestjs", generate=True)
+
+        self.assertEqual(
+            [module.name for module in context.resolved_modules],
+            ["payment.razorpay", "notification.email", "audit.standard"],
+        )
+        self.assertTrue((Path(context.output_dir) / "src" / "app.module.ts").exists())
+
+    def test_nestjs_target_does_not_break_php_or_fastapi_generation(self):
+        with tempfile.TemporaryDirectory() as php_tmp, tempfile.TemporaryDirectory() as fastapi_tmp:
+            php_context = self._compile_context_with_source(php_tmp, self._nestjs_source(), target="php", generate=True)
+            fastapi_context = self._compile_context_with_source(
+                fastapi_tmp,
+                self._nestjs_source(),
+                target="fastapi",
+                generate=True,
+            )
+
+            self.assertTrue((Path(php_context.output_dir) / "routes.php").exists())
+            self.assertTrue((Path(fastapi_context.output_dir) / "main.py").exists())
+
     def test_auth_constraint_warns_about_rate_limiting(self):
         context = self._compile_context(tempfile.mkdtemp(), target="fastapi", generate=False)
         warning_codes = [warning["code"] for warning in context.architecture_report["warnings"]]
@@ -1139,7 +1290,7 @@ ROUTE GET /posts
         self,
         tmpdir: str,
         source: str,
-        target: str,
+        target: str | None,
         generate: bool,
     ) -> CompilerContext:
         source_path = Path(tmpdir) / "blog.sem"
@@ -1173,6 +1324,22 @@ ROUTE GET /posts
             ContractPass().validate_generation(context)
 
         return context
+
+    def _nestjs_source(self, auth: bool = False) -> str:
+        auth_block = "\nAUTH JWT\n" if auth else ""
+        return f"""PROJECT NestShop
+
+TARGET NESTJS
+
+DATABASE MYSQL
+{auth_block}
+MODEL User
+    email STRING
+    name STRING
+
+ROUTE GET /users
+ROUTE POST /users
+"""
 
     def _generated_file_map(self, output_dir: Path, suffixes: set[str]) -> dict[str, str]:
         files = {}

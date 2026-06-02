@@ -37,7 +37,7 @@ Status: complete.
 
 ## v0.4.0: Semantic Package System Foundation
 
-Status: current.
+Status: complete.
 
 - semantic package architecture
 - profile architecture
@@ -77,7 +77,7 @@ Status: complete.
 
 ## v0.6.0: Module Dependency Resolution
 
-Status: current.
+Status: complete.
 
 - optional `depends` entries in `module.yaml`
 - recursive module dependency resolution
@@ -109,7 +109,7 @@ Status: complete.
 
 ## v0.9.0: Architecture Intelligence
 
-Status: current.
+Status: complete.
 
 - deterministic architecture analyzer
 - read-only architecture analysis pass
@@ -119,6 +119,20 @@ Status: current.
 - ecommerce SQLite recommendations
 - auth-without-protected-route recommendations
 - architecture report analysis section
+
+## v0.10.0: NestJS Generator
+
+Status: current.
+
+- `TARGET NESTJS`
+- NestJS target profile
+- TypeScript project structure generation
+- model class generation
+- service skeleton generation
+- controller skeleton generation
+- placeholder auth guard scaffolding
+- app module registration
+- PHP and FastAPI compatibility preserved
 
 ## v1.0: Production Target Profiles
 
