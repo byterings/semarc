@@ -57,6 +57,9 @@ class FastApiGenerator:
 
         for cache_dir in self.output_dir.rglob("__pycache__"):
             shutil.rmtree(cache_dir)
+        nestjs_src = self.output_dir / "src"
+        if nestjs_src.exists():
+            shutil.rmtree(nestjs_src)
 
         for directory in [
             "config",
@@ -117,7 +120,10 @@ class FastApiGenerator:
             "repositories",
             "migrations",
         ]:
-            (self.output_dir / directory / "__init__.py").write_text("", encoding="utf-8")
+            (self.output_dir / directory / "__init__.py").write_text(
+                "# Generated package marker.\n",
+                encoding="utf-8",
+            )
 
     def _remove_generated_directory(self, directory: str) -> None:
         target = self.output_dir / directory

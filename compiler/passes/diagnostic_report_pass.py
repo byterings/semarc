@@ -39,6 +39,7 @@ class DiagnosticReportPass:
             context.architecture_report["conflicts"] = list(context.module_conflicts)
         if context.architecture_analysis_report:
             context.architecture_report["architecture_analysis"] = context.architecture_analysis_report
+        self._add_v2_report_fields(context)
 
         output_dir = Path(context.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -46,3 +47,57 @@ class DiagnosticReportPass:
             json.dumps(context.architecture_report, indent=2),
             encoding="utf-8",
         )
+
+    def _add_v2_report_fields(self, context) -> None:
+        analysis = context.architecture_analysis_report or {
+            "warnings": [],
+            "recommendations": [],
+            "rules_executed": 0,
+        }
+        constraint_warnings = context.architecture_report.get("warnings", [])
+        constraint_recommendations = context.architecture_report.get("recommendations", [])
+        analysis_warnings = analysis.get("warnings", [])
+        analysis_recommendations = analysis.get("recommendations", [])
+
+        context.architecture_report["project"] = context.ast.project.name if context.ast and context.ast.project else ""
+        context.architecture_report["target"] = context.target_profile.get(
+            "target",
+            context.ir.get("target", "PHP"),
+        )
+        context.architecture_report["statistics"] = {
+            "models": len(context.ast.models),
+            "routes": len(context.ast.routes),
+            "relations": len(context.ast.relations),
+            "profiles": len(context.loaded_profiles),
+            "modules": len(context.resolved_modules),
+            "resolved_dependencies": len(context.dependency_resolved_modules),
+            "warnings": len(constraint_warnings) + len(analysis_warnings),
+            "recommendations": len(constraint_recommendations) + len(analysis_recommendations),
+        }
+        context.architecture_report["dependencies"] = [
+            {
+                "module": module.name,
+                "dependencies": list(module.dependencies),
+            }
+            for module in context.resolved_modules
+            if module.dependencies
+        ]
+        context.architecture_report["constraints"] = {
+            "score": context.architecture_report.get("score", 0),
+            "rules_executed": context.architecture_report.get("rules_executed", 0),
+            "errors": context.architecture_report.get("errors", []),
+            "warnings": constraint_warnings,
+            "recommendations": constraint_recommendations,
+            "requirements": list(context.module_requirements),
+            "conflicts": list(context.module_conflicts),
+        }
+        context.architecture_report["analysis"] = analysis
+        context.architecture_report["generator"] = {
+            "target": context.target_profile.get("target", context.ir.get("target", "PHP")),
+            "framework": context.target_profile.get("framework", "none"),
+            "generator": context.target_profile.get("generator", ""),
+        }
+        context.architecture_report["compilation"] = {
+            "passes": list(context.compiler_passes),
+            "generated_components": len(context.generated_components),
+        }

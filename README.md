@@ -278,6 +278,20 @@ The report includes:
 - architecture score
 - executed rule count
 - architecture analysis warnings and recommendations
+- project summary
+- generator target
+- compiler statistics
+- dependency and constraint summaries
+
+## Release Validation
+
+Run the full release validation workflow with:
+
+```bash
+python3 scripts/validate_release.py
+```
+
+The script runs unit, integration, golden, regression, release, stress, generator validation, and compile checks.
 
 Diagnostics are produced only by explicit rules. They are not AI-generated.
 

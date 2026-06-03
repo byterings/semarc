@@ -58,6 +58,9 @@ class PhpGenerator:
         fastapi_main = self.output_dir / "main.py"
         if fastapi_main.exists():
             fastapi_main.unlink()
+        nestjs_src = self.output_dir / "src"
+        if nestjs_src.exists():
+            shutil.rmtree(nestjs_src)
 
         for cache_dir in self.output_dir.rglob("__pycache__"):
             shutil.rmtree(cache_dir)

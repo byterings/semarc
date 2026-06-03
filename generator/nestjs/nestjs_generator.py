@@ -72,6 +72,22 @@ class NestJSGenerator:
         for cache_dir in self.output_dir.rglob("__pycache__"):
             shutil.rmtree(cache_dir)
 
+        for directory in [
+            "controllers",
+            "models",
+            "middleware",
+            "config",
+            "services",
+            "repositories",
+            "validators",
+            "migrations",
+            "routers",
+            "schemas",
+        ]:
+            target = self.output_dir / directory
+            if target.exists():
+                shutil.rmtree(target)
+
     def _write_model_module(self, model: dict, routes: list[dict]) -> str:
         model_name = pascal_case(model["name"])
         folder = self._folder_name(model_name)

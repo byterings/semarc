@@ -1,0 +1,11 @@
+config/database.php
+controllers/AuthController.php
+middleware/AuthMiddleware.php
+migrations/CreateUsersTable.php
+migrations/create_users_table.sql
+models/User.php
+repositories/UserRepository.php
+routes.php
+services/PasswordHasher.php
+services/TokenService.php
+validators/Validator.php

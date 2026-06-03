@@ -122,7 +122,7 @@ Status: complete.
 
 ## v0.10.0: NestJS Generator
 
-Status: current.
+Status: complete.
 
 - `TARGET NESTJS`
 - NestJS target profile
@@ -133,6 +133,21 @@ Status: current.
 - placeholder auth guard scaffolding
 - app module registration
 - PHP and FastAPI compatibility preserved
+
+## v0.11.0: Release Hardening and Quality Validation
+
+Status: current.
+
+- golden generator test suite
+- regression test suite
+- end-to-end release validation
+- generator validation framework
+- optional generated syntax checks
+- stress tests for large architectures
+- architecture report v2 fields
+- compiler statistics in reports
+- release validation script
+- generated project ownership documentation
 
 ## v1.0: Production Target Profiles
 
