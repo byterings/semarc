@@ -1,6 +1,7 @@
 from pathlib import Path
 import shutil
 
+from generator.project_files import ProjectFileWriter
 from generator.fastapi.mappers.config_mapper import ConfigMapper
 from generator.fastapi.mappers.controller_mapper import ControllerMapper
 from generator.fastapi.mappers.middleware_mapper import MiddlewareMapper
@@ -35,6 +36,7 @@ class FastApiGenerator:
         self._write_mapped(MigrationMapper().map(ir), "MigrationMapper")
         self._write_main(ir)
         self._write_init_files()
+        self._generate_project_template(ir)
 
         if self.debug:
             print("\n[FastAPI Mappers]")
@@ -123,6 +125,133 @@ class FastApiGenerator:
             (self.output_dir / directory / "__init__.py").write_text(
                 "# Generated package marker.\n",
                 encoding="utf-8",
+            )
+
+    def _generate_project_template(self, ir: dict) -> None:
+        writer = ProjectFileWriter(self.output_dir, self._record_project_file)
+        for directory in [
+            "app",
+            "app/routers",
+            "app/models",
+            "app/schemas",
+            "app/services",
+            "app/middleware",
+            "app/repositories",
+            "tests",
+        ]:
+            (self.output_dir / directory).mkdir(parents=True, exist_ok=True)
+
+        for package in ["app", "app/routers", "app/models", "app/schemas", "app/services", "app/middleware", "app/repositories"]:
+            writer.write_text(f"{package}/__init__.py", "# Generated package marker.\n", "fastapi package marker")
+
+        writer.write_text(
+            "app/main.py",
+            "\n".join(
+                [
+                    "from fastapi import FastAPI",
+                    "",
+                    "from app.config import settings",
+                    "",
+                    "app = FastAPI(title=settings.APP_NAME)",
+                    "",
+                ]
+            ),
+            "fastapi app main",
+        )
+        writer.write_text(
+            "app/config.py",
+            "\n".join(
+                [
+                    "class Settings:",
+                    f"    APP_NAME = \"{ir['project']}\"",
+                    "    DB_HOST = \"127.0.0.1\"",
+                    "    DB_PORT = \"3306\"",
+                    "",
+                    "",
+                    "settings = Settings()",
+                    "",
+                ]
+            ),
+            "fastapi app config",
+        )
+        self._copy_tree_files("routers", "app/routers", ".py")
+        self._copy_tree_files("models", "app/models", ".py")
+        self._copy_tree_files("schemas", "app/schemas", ".py")
+        self._copy_tree_files("services", "app/services", ".py")
+        self._copy_tree_files("middleware", "app/middleware", ".py")
+        self._copy_tree_files("repositories", "app/repositories", ".py")
+        writer.write_text("tests/test_app.py", "def test_generated_project_exists():\n    assert True\n", "fastapi test placeholder")
+        writer.write_text(
+            "requirements.txt",
+            "fastapi\nuvicorn\nsqlalchemy\n",
+            "fastapi requirements",
+        )
+        writer.write_readme(ir, "fastapi")
+        writer.write_env_example(
+            ir,
+            {
+                "APP_NAME": ir["project"],
+                "DB_HOST": "127.0.0.1",
+                "DB_PORT": "3306",
+                "DB_DATABASE": "semarc_app",
+            },
+        )
+        writer.write_text(
+            "Dockerfile",
+            "\n".join(
+                [
+                    "FROM python:3.12-slim",
+                    "WORKDIR /app",
+                    "COPY requirements.txt .",
+                    "RUN pip install --no-cache-dir -r requirements.txt",
+                    "COPY . .",
+                    "EXPOSE 8000",
+                    "CMD [\"uvicorn\", \"app.main:app\", \"--host\", \"0.0.0.0\", \"--port\", \"8000\"]",
+                    "",
+                ]
+            ),
+            "fastapi Dockerfile",
+        )
+        writer.write_text(
+            "docker-compose.yml",
+            "\n".join(
+                [
+                    "services:",
+                    "  app:",
+                    "    build: .",
+                    "    ports:",
+                    "      - \"8000:8000\"",
+                    "",
+                ]
+            ),
+            "fastapi docker compose",
+        )
+        writer.write_manifest(ir, "fastapi")
+
+    def _record_project_file(self, path: Path, template: str) -> None:
+        self.generated_components.append(
+            {
+                "created": str(path.relative_to(self.output_dir)),
+                "template": template,
+            }
+        )
+
+    def _copy_tree_files(self, source_dir: str, destination_dir: str, suffix: str) -> None:
+        source = self.output_dir / source_dir
+        destination = self.output_dir / destination_dir
+        if not source.exists():
+            return
+        destination.mkdir(parents=True, exist_ok=True)
+        for path in sorted(source.glob(f"*{suffix}")):
+            target = destination / path.name
+            if target.exists():
+                continue
+            target.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+            self.generated_components.append(
+                {
+                    "created": str(target.relative_to(self.output_dir)),
+                    "template": "project file copy",
+                }
             )
 
     def _remove_generated_directory(self, directory: str) -> None:

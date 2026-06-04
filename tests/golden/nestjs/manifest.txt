@@ -1,3 +1,11 @@
+.env.example
+Dockerfile
+README.md
+architecture_report.json
+docker-compose.yml
+generator_manifest.json
+nest-cli.json
+package.json
 src/app.module.ts
 src/guards/auth.guard.ts
 src/modules/auth/auth.controller.ts
@@ -7,3 +15,5 @@ src/modules/users/user.model.ts
 src/modules/users/users.controller.ts
 src/modules/users/users.module.ts
 src/modules/users/users.service.ts
+test/app.e2e-spec.ts
+tsconfig.json

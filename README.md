@@ -2,7 +2,7 @@
 
 SEMARC is a prototype Semantic Architecture Compiler.
 
-It converts strict semantic architecture intent into deterministic backend code:
+It converts strict semantic architecture intent into deterministic runnable project foundations:
 
 ```text
 Semantic Source
@@ -19,10 +19,18 @@ Semantic Source
 -> Architecture IR
 -> Optimization Pass
 -> Target Profile Selection
--> PHP Generator
+-> Runnable Project Builder
 ```
 
 SEMARC is not a chatbot system, not an LLM application, and not token prediction. It is a compiler-oriented prototype with strict input rules and deterministic output.
+
+Current product direction:
+
+```text
+Architecture Specification -> Runnable Project Generator
+```
+
+SEMARC Core is the architecture engine. Targets are runnable project builders.
 
 ## Semantic Language
 
@@ -111,22 +119,37 @@ python3 main.py examples/blog_api.sem --target nestjs
 
 ## Output
 
-Generated PHP files are written to `output/`:
+Generated PHP projects are written to `output/`:
 
 ```text
 output/
-├── routes.php
-├── controllers/
-├── models/
-├── middleware/
-├── repositories/
-├── migrations/
-├── services/
-├── validators/
-└── config/
+├── public/
+├── app/
+├── routes/
+├── config/
+├── storage/
+├── tests/
+├── README.md
+├── .env.example
+├── Dockerfile
+├── docker-compose.yml
+└── generator_manifest.json
 ```
 
 For the example input, SEMARC generates:
+
+- `output/public/index.php`
+- `output/routes/web.php`
+- `output/app/Controllers/AuthController.php`
+- `output/app/Models/User.php`
+- `output/app/Services/TokenService.php`
+- `output/README.md`
+- `output/.env.example`
+- `output/Dockerfile`
+- `output/docker-compose.yml`
+- `output/generator_manifest.json`
+
+Legacy compatibility files are also still generated, including:
 
 - `output/routes.php`
 - `output/controllers/AuthController.php`
@@ -141,6 +164,21 @@ For the example input, SEMARC generates:
 - `output/config/database.php`
 
 For `TARGET FASTAPI`, SEMARC generates:
+
+- `output/app/main.py`
+- `output/app/routers/`
+- `output/app/models/`
+- `output/app/schemas/`
+- `output/app/services/`
+- `output/tests/`
+- `output/requirements.txt`
+- `output/README.md`
+- `output/.env.example`
+- `output/Dockerfile`
+- `output/docker-compose.yml`
+- `output/generator_manifest.json`
+
+Legacy compatibility files are also still generated, including:
 
 - `output/main.py`
 - `output/config/settings.py`
@@ -161,6 +199,15 @@ For `TARGET NESTJS`, SEMARC generates:
 - `output/src/modules/<resource>/<resource>.controller.ts`
 - `output/src/modules/<resource>/<model>.model.ts`
 - `output/src/guards/auth.guard.ts` when auth scaffolding is needed
+- `output/test/`
+- `output/package.json`
+- `output/nest-cli.json`
+- `output/tsconfig.json`
+- `output/README.md`
+- `output/.env.example`
+- `output/Dockerfile`
+- `output/docker-compose.yml`
+- `output/generator_manifest.json`
 
 ## Architecture
 
@@ -183,6 +230,7 @@ For `TARGET NESTJS`, SEMARC generates:
 - `generator/php/` maps IR to PHP files.
 - `generator/fastapi/` maps the same IR to FastAPI files.
 - `generator/nestjs/` maps the same IR to NestJS TypeScript files.
+- `generator/targets/` stores target metadata foundations for future target packages.
 - `generator/fastapi/mappers/` maps language-neutral IR components to FastAPI-specific files.
 - `templates/php/` contains simple placeholder templates.
 - `templates/fastapi/` contains FastAPI templates.
@@ -247,6 +295,8 @@ This happens before code generation.
 
 Generators consume Architecture IR, not raw parser output.
 
+Since v0.12.0, generators are runnable project builders. They generate framework code, README files, environment examples, Docker defaults, project bootstrap files, and `generator_manifest.json`.
+
 The PHP generator is split by concern:
 
 - `routes_generator.py`
@@ -261,6 +311,8 @@ This keeps parser logic, architecture logic, and PHP code generation separate.
 Generated services and middleware contain prototype implementation logic, including password hashing, token generation, token validation, authorization-header handling, basic repository methods, and request validation helpers.
 
 The NestJS generator emits structural TypeScript scaffolding for modules, models, services, controllers, app module registration, and placeholder auth guards. It does not implement real authentication, persistence, or runtime NestJS integrations yet.
+
+See `docs/PROJECT_TEMPLATE_SYSTEM.md` for the project template system.
 
 ## Architecture Diagnostics
 

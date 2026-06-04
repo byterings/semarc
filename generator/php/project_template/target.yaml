@@ -1,0 +1,3 @@
+name: php
+language: PHP
+description: Runnable core PHP project generator

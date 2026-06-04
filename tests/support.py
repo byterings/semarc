@@ -69,8 +69,13 @@ def compile_file(source_path: Path, output_dir: Path, target: str, generate: boo
 
 
 def generated_code_files(output_dir: Path) -> list[Path]:
-    suffixes = {".php", ".py", ".sql", ".ts"}
-    return sorted(path for path in output_dir.rglob("*") if path.is_file() and path.suffix in suffixes)
+    suffixes = {".php", ".py", ".sql", ".ts", ".json", ".md", ".txt", ".yml", ".example"}
+    names = {"Dockerfile", ".htaccess"}
+    return sorted(
+        path
+        for path in output_dir.rglob("*")
+        if path.is_file() and (path.suffix in suffixes or path.name in names)
+    )
 
 
 def generated_file_map(output_dir: Path) -> dict[str, str]:
@@ -83,22 +88,73 @@ def generated_file_map(output_dir: Path) -> dict[str, str]:
 class GeneratorValidationSuite:
     REQUIRED_FILES = {
         "php": [
+            "README.md",
+            ".env.example",
+            "Dockerfile",
+            "docker-compose.yml",
+            "generator_manifest.json",
+            "public/index.php",
             "routes.php",
             "config/database.php",
         ],
         "fastapi": [
+            "README.md",
+            ".env.example",
+            "Dockerfile",
+            "docker-compose.yml",
+            "generator_manifest.json",
+            "requirements.txt",
+            "app/main.py",
             "main.py",
             "config/settings.py",
         ],
         "nestjs": [
+            "README.md",
+            ".env.example",
+            "Dockerfile",
+            "docker-compose.yml",
+            "generator_manifest.json",
+            "package.json",
+            "nest-cli.json",
+            "tsconfig.json",
             "src/app.module.ts",
         ],
     }
 
     REQUIRED_DIRECTORIES = {
-        "php": ["controllers", "models", "services", "repositories", "middleware", "migrations", "config"],
-        "fastapi": ["config", "routers", "models", "schemas", "services", "repositories", "middleware", "migrations"],
-        "nestjs": ["src", "src/modules"],
+        "php": [
+            "public",
+            "app/Controllers",
+            "app/Services",
+            "app/Models",
+            "routes",
+            "storage",
+            "tests",
+            "controllers",
+            "models",
+            "services",
+            "repositories",
+            "middleware",
+            "migrations",
+            "config",
+        ],
+        "fastapi": [
+            "app",
+            "app/routers",
+            "app/models",
+            "app/schemas",
+            "app/services",
+            "tests",
+            "config",
+            "routers",
+            "models",
+            "schemas",
+            "services",
+            "repositories",
+            "middleware",
+            "migrations",
+        ],
+        "nestjs": ["src", "src/modules", "test"],
     }
 
     def validate(self, context: CompilerContext, target: str) -> None:
@@ -165,5 +221,5 @@ class GeneratorValidationSuite:
             content = path.read_text(encoding="utf-8")
             if content.count("{") != content.count("}"):
                 raise AssertionError(f"Unbalanced braces in {path.relative_to(output_dir)}")
-            if "export " not in content:
+            if path.relative_to(output_dir).parts[0] == "src" and "export " not in content:
                 raise AssertionError(f"Missing TypeScript export in {path.relative_to(output_dir)}")
