@@ -3,6 +3,7 @@ import shutil
 
 from generator.nestjs.name_utils import camel_case, pascal_case, pluralize, segment_name, typescript_type
 from generator.php.template_engine import TemplateEngine
+from generator.project_files import ProjectFileWriter
 
 
 class NestJSGenerator:
@@ -50,6 +51,7 @@ class NestJSGenerator:
                 "modules": self._module_array(module_names),
             },
         )
+        self._generate_project_template(ir)
 
         if self.debug:
             print("\n[NestJS Generator]")
@@ -87,6 +89,117 @@ class NestJSGenerator:
             target = self.output_dir / directory
             if target.exists():
                 shutil.rmtree(target)
+
+    def _generate_project_template(self, ir: dict) -> None:
+        writer = ProjectFileWriter(self.output_dir, self._record_project_file)
+        (self.output_dir / "test").mkdir(parents=True, exist_ok=True)
+        writer.write_text(
+            "package.json",
+            "\n".join(
+                [
+                    "{",
+                    f"  \"name\": \"{self._package_name(ir['project'])}\",",
+                    "  \"version\": \"0.1.0\",",
+                    "  \"private\": true,",
+                    "  \"scripts\": {",
+                    "    \"start\": \"nest start\",",
+                    "    \"start:dev\": \"nest start --watch\",",
+                    "    \"test\": \"jest\"",
+                    "  },",
+                    "  \"dependencies\": {",
+                    "    \"@nestjs/common\": \"latest\",",
+                    "    \"@nestjs/core\": \"latest\",",
+                    "    \"reflect-metadata\": \"latest\",",
+                    "    \"rxjs\": \"latest\"",
+                    "  },",
+                    "  \"devDependencies\": {",
+                    "    \"@nestjs/cli\": \"latest\",",
+                    "    \"typescript\": \"latest\"",
+                    "  }",
+                    "}",
+                    "",
+                ]
+            ),
+            "nestjs package json",
+        )
+        writer.write_text(
+            "nest-cli.json",
+            "{\n  \"collection\": \"@nestjs/schematics\",\n  \"sourceRoot\": \"src\"\n}\n",
+            "nestjs cli config",
+        )
+        writer.write_text(
+            "tsconfig.json",
+            "\n".join(
+                [
+                    "{",
+                    "  \"compilerOptions\": {",
+                    "    \"module\": \"commonjs\",",
+                    "    \"target\": \"ES2021\",",
+                    "    \"emitDecoratorMetadata\": true,",
+                    "    \"experimentalDecorators\": true,",
+                    "    \"strict\": true,",
+                    "    \"outDir\": \"./dist\"",
+                    "  }",
+                    "}",
+                    "",
+                ]
+            ),
+            "nestjs tsconfig",
+        )
+        writer.write_text(
+            "test/app.e2e-spec.ts",
+            "describe('Generated app', () => {\n    it('exists', () => {\n        expect(true).toBe(true);\n    });\n});\n",
+            "nestjs test placeholder",
+        )
+        writer.write_readme(ir, "nestjs")
+        writer.write_env_example(
+            ir,
+            {
+                "APP_NAME": ir["project"],
+                "PORT": "3000",
+                "DB_HOST": "127.0.0.1",
+                "DB_PORT": "3306",
+            },
+        )
+        writer.write_text(
+            "Dockerfile",
+            "\n".join(
+                [
+                    "FROM node:20-alpine",
+                    "WORKDIR /app",
+                    "COPY package.json .",
+                    "RUN npm install",
+                    "COPY . .",
+                    "EXPOSE 3000",
+                    "CMD [\"npm\", \"run\", \"start\"]",
+                    "",
+                ]
+            ),
+            "nestjs Dockerfile",
+        )
+        writer.write_text(
+            "docker-compose.yml",
+            "\n".join(
+                [
+                    "services:",
+                    "  app:",
+                    "    build: .",
+                    "    ports:",
+                    "      - \"3000:3000\"",
+                    "",
+                ]
+            ),
+            "nestjs docker compose",
+        )
+        writer.write_manifest(ir, "nestjs")
+
+    def _record_project_file(self, path: Path, template: str) -> None:
+        self.generated_components.append(
+            {
+                "created": str(path.relative_to(self.output_dir)),
+                "template": template,
+            }
+        )
 
     def _write_model_module(self, model: dict, routes: list[dict]) -> str:
         model_name = pascal_case(model["name"])
@@ -238,6 +351,9 @@ class NestJSGenerator:
     def _first_segment(self, path: str) -> str:
         parts = [part for part in path.strip("/").split("/") if part]
         return parts[0].lower() if parts else ""
+
+    def _package_name(self, project_name: str) -> str:
+        return segment_name(project_name).replace("_", "-")
 
     def _write(self, path: Path, template: str, values: dict) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)

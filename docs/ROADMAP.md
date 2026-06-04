@@ -136,7 +136,7 @@ Status: complete.
 
 ## v0.11.0: Release Hardening and Quality Validation
 
-Status: current.
+Status: complete.
 
 - golden generator test suite
 - regression test suite
@@ -149,12 +149,31 @@ Status: current.
 - release validation script
 - generated project ownership documentation
 
+## v0.12.0: Project Template Foundation
+
+Status: current.
+
+- SEMARC Core positioned as architecture engine
+- targets positioned as runnable project builders
+- project template foundations
+- runnable PHP project structure
+- runnable FastAPI project structure
+- runnable NestJS project structure
+- generated README files
+- generated `.env.example`
+- generated Docker defaults
+- `generator_manifest.json`
+- target metadata foundation
+- validation expanded for runnable project files
+
 ## v1.0: Production Target Profiles
 
 Status: planned.
 
-- Laravel profile
-- Node profile
+- target packages
+- runnable production project templates
+- Laravel target package
+- Node target package
 - PostgreSQL support
 - Docker output
 - environment configuration

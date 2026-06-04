@@ -1,11 +1,11 @@
 # Generator Architecture
 
-Generators map Architecture IR to target-specific backend code.
+Generators map Architecture IR to target-specific runnable project foundations.
 
 Generators must only perform target mapping:
 
 ```text
-Architecture IR -> Framework Code
+Architecture IR -> Runnable Project
 ```
 
 Generators must not parse semantic source or invent architecture decisions.
@@ -18,6 +18,8 @@ Allowed in generators:
 - rendering templates
 - mapping IR fields to target syntax
 - writing generated files
+- writing target project bootstrap files
+- writing README, environment, Docker, and manifest files
 
 Not allowed in generators:
 
@@ -33,6 +35,8 @@ Not allowed in generators:
 generator/
     php/
     fastapi/
+    nestjs/
+    targets/
 ```
 
 ## PHP Generator
@@ -59,6 +63,16 @@ Output:
 
 ```text
 output/
+├── public/
+├── app/
+├── routes/
+├── storage/
+├── tests/
+├── README.md
+├── .env.example
+├── Dockerfile
+├── docker-compose.yml
+├── generator_manifest.json
 ├── routes.php
 ├── controllers/
 ├── models/
@@ -96,6 +110,14 @@ Output:
 
 ```text
 output/
+├── app/
+├── tests/
+├── requirements.txt
+├── README.md
+├── .env.example
+├── Dockerfile
+├── docker-compose.yml
+├── generator_manifest.json
 ├── main.py
 ├── config/
 ├── routers/
@@ -107,6 +129,43 @@ output/
 └── migrations/
 ```
 
+## NestJS Generator
+
+Entry point:
+
+```text
+generator/nestjs/nestjs_generator.py
+```
+
+Output:
+
+```text
+output/
+├── src/
+├── test/
+├── package.json
+├── nest-cli.json
+├── tsconfig.json
+├── README.md
+├── .env.example
+├── Dockerfile
+├── docker-compose.yml
+└── generator_manifest.json
+```
+
+## Target Foundation
+
+Target metadata foundations live under:
+
+```text
+generator/targets/
+generator/php/project_template/
+generator/fastapi/project_template/
+generator/nestjs/project_template/
+```
+
+Built-in targets are registered through `TargetRegistry`.
+
 ## Template System
 
 Templates live under:
@@ -114,6 +173,7 @@ Templates live under:
 ```text
 templates/php/
 templates/fastapi/
+templates/nestjs/
 ```
 
 The template engine supports deterministic placeholder replacement:

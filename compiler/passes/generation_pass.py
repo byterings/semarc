@@ -1,12 +1,16 @@
 from generator.fastapi.fastapi_generator import FastApiGenerator
 from generator.nestjs.nestjs_generator import NestJSGenerator
 from generator.php_generator import PhpGenerator
+from generator.targets import TargetRegistry
 
 
 class GenerationPass:
     def run(self, context) -> None:
         context.compiler_passes.append("GenerationPass")
         generator_name = context.target_profile["generator"]
+        target_definition = TargetRegistry.builtins().get(generator_name)
+        if target_definition is None:
+            raise ValueError(f"No target registered for generator: {generator_name}")
 
         if generator_name == "php":
             generator = PhpGenerator(output_dir=context.output_dir, debug=context.debug)

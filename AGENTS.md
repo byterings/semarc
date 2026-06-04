@@ -13,11 +13,11 @@ This project is:
 
 - a deterministic semantic compiler
 - an architecture synthesis engine
-- a backend generator driven by strict semantic intent
+- a runnable project generator driven by strict semantic intent
 
 ## Architecture Philosophy
 
-SEMARC compiles declarative architecture intent into backend structure and implementation code.
+SEMARC compiles declarative architecture intent into runnable project foundations.
 
 The compiler pipeline is:
 
@@ -36,7 +36,7 @@ Semantic Source
 -> Optimization Pass
 -> Target Profile Selection
 -> Target Generator
--> Generated Backend
+-> Runnable Project
 ```
 
 Keep every stage isolated. Do not let parser logic leak into generators, and do not let generator syntax leak into AST nodes.
@@ -108,17 +108,28 @@ Future business capabilities should live in packages, profiles, or stdlib metada
 
 Generators consume Architecture IR. They do not parse semantic source and do not make semantic decisions.
 
+SEMARC Core is the architecture engine. Target generators are runnable project builders. Future target work should focus on project templates and target packages, not lexer/parser/compiler expansion.
+
 Target generators live under:
 
 - `generator/php/`
 - `generator/fastapi/`
+- `generator/nestjs/`
+- `generator/targets/`
 
 Templates live under:
 
 - `templates/php/`
 - `templates/fastapi/`
+- `templates/nestjs/`
 
-Keep generated code readable and prototype-friendly.
+Project template foundations live under:
+
+- `generator/php/project_template/`
+- `generator/fastapi/project_template/`
+- `generator/nestjs/project_template/`
+
+Keep generated projects readable, runnable, and prototype-friendly.
 
 ## Coding Conventions
 
