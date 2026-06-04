@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 
 @Injectable()
 export class AuthService {
-    login(): { token: string } {
-        return { token: 'demo-token' };
+    login(): never {
+        throw new Error('TODO: configure a real authentication provider.');
     }
 }

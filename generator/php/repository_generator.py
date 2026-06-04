@@ -20,6 +20,10 @@ class RepositoryGenerator:
                 {
                     "class_name": repository["name"],
                     "model_name": repository["model"],
+                    "collection_name": self._collection_name(repository["model"]),
+                    "create_method": f"create{repository['model']}",
+                    "find_method": f"find{repository['model']}ById",
+                    "list_method": f"get{self._pluralize(repository['model'])}",
                     "relationship_methods": self._relationship_methods(repository),
                 },
             )
@@ -28,9 +32,17 @@ class RepositoryGenerator:
             self._report(path, template)
 
     def _template_for(self, repository: dict) -> str:
-        if repository["model"] == "User":
-            return "repositories/user_repository.tpl"
         return "repositories/user_repository.tpl"
+
+    def _collection_name(self, model_name: str) -> str:
+        return self._pluralize(model_name)[0].lower() + self._pluralize(model_name)[1:]
+
+    def _pluralize(self, model_name: str) -> str:
+        if model_name.endswith("y"):
+            return model_name[:-1] + "ies"
+        if model_name.endswith("s"):
+            return model_name
+        return model_name + "s"
 
     def _relationship_methods(self, repository: dict) -> str:
         methods = []

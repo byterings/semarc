@@ -35,7 +35,10 @@ Semantic Source
 -> Architecture IR
 -> Optimization Pass
 -> Target Profile Selection
+-> Generation Contract
+-> Target Capability Validation
 -> Target Generator
+-> Generated Artifact Validation
 -> Runnable Project
 ```
 
@@ -95,6 +98,7 @@ Architecture synthesis belongs in `architecture/`.
 - `strategy_engine.py` selects implementation strategy and target profile.
 - `expander.py` expands semantic plans before IR generation.
 - `ir_builder.py` produces language-neutral IR.
+- `contracts/` defines the generation contract, target capability validation, target mappings, and generated artifact validation.
 
 Relationship and migration metadata must stay language-neutral in IR. PHP and FastAPI generators may map that metadata to SQL files, migration classes, SQLAlchemy tables, or ORM relationship methods.
 
@@ -106,7 +110,15 @@ Future business capabilities should live in packages, profiles, or stdlib metada
 
 ## Generator Boundaries
 
-Generators consume Architecture IR. They do not parse semantic source and do not make semantic decisions.
+Generators consume Architecture IR after the Generation Contract has validated architecture wiring. They do not parse semantic source and do not make semantic decisions.
+
+For model-backed routes, generated targets must preserve this dependency chain:
+
+```text
+API -> Business -> Persistence -> Entity
+```
+
+Do not generate fake security implementations. Auth output should be honest scaffolding or TODO contracts unless a future target/package explicitly implements real security.
 
 SEMARC Core is the architecture engine. Target generators are runnable project builders. Future target work should focus on project templates and target packages, not lexer/parser/compiler expansion.
 

@@ -79,14 +79,25 @@ class FastApiGenerator:
                 if generated_file.is_file() and generated_file.suffix in {".py", ".php", ".sql"}:
                     generated_file.unlink()
 
-        for unused in ["routes", "controllers", "validators"]:
+        for unused in ["routes", "controllers", "validators", "app"]:
             self._remove_generated_directory(unused)
 
     def _write_main(self, ir: dict) -> None:
+        routers = self._router_modules(ir)
         self._write(
             self.output_dir / "main.py",
             "main.tpl",
-            {"project_name": ir["project"]},
+            {
+                "project_name": ir["project"],
+                "router_imports": "\n".join(
+                    f"from routers.{module} import router as {module}_router"
+                    for module in routers
+                ),
+                "router_includes": "\n".join(
+                    f"app.include_router({module}_router)"
+                    for module in routers
+                ),
+            },
         )
 
     def _write_mapped(self, mappings: list[dict], mapper_name: str) -> None:
@@ -130,56 +141,10 @@ class FastApiGenerator:
     def _generate_project_template(self, ir: dict) -> None:
         writer = ProjectFileWriter(self.output_dir, self._record_project_file)
         for directory in [
-            "app",
-            "app/routers",
-            "app/models",
-            "app/schemas",
-            "app/services",
-            "app/middleware",
-            "app/repositories",
             "tests",
         ]:
             (self.output_dir / directory).mkdir(parents=True, exist_ok=True)
 
-        for package in ["app", "app/routers", "app/models", "app/schemas", "app/services", "app/middleware", "app/repositories"]:
-            writer.write_text(f"{package}/__init__.py", "# Generated package marker.\n", "fastapi package marker")
-
-        writer.write_text(
-            "app/main.py",
-            "\n".join(
-                [
-                    "from fastapi import FastAPI",
-                    "",
-                    "from app.config import settings",
-                    "",
-                    "app = FastAPI(title=settings.APP_NAME)",
-                    "",
-                ]
-            ),
-            "fastapi app main",
-        )
-        writer.write_text(
-            "app/config.py",
-            "\n".join(
-                [
-                    "class Settings:",
-                    f"    APP_NAME = \"{ir['project']}\"",
-                    "    DB_HOST = \"127.0.0.1\"",
-                    "    DB_PORT = \"3306\"",
-                    "",
-                    "",
-                    "settings = Settings()",
-                    "",
-                ]
-            ),
-            "fastapi app config",
-        )
-        self._copy_tree_files("routers", "app/routers", ".py")
-        self._copy_tree_files("models", "app/models", ".py")
-        self._copy_tree_files("schemas", "app/schemas", ".py")
-        self._copy_tree_files("services", "app/services", ".py")
-        self._copy_tree_files("middleware", "app/middleware", ".py")
-        self._copy_tree_files("repositories", "app/repositories", ".py")
         writer.write_text("tests/test_app.py", "def test_generated_project_exists():\n    assert True\n", "fastapi test placeholder")
         writer.write_text(
             "requirements.txt",
@@ -206,7 +171,7 @@ class FastApiGenerator:
                     "RUN pip install --no-cache-dir -r requirements.txt",
                     "COPY . .",
                     "EXPOSE 8000",
-                    "CMD [\"uvicorn\", \"app.main:app\", \"--host\", \"0.0.0.0\", \"--port\", \"8000\"]",
+                    "CMD [\"uvicorn\", \"main:app\", \"--host\", \"0.0.0.0\", \"--port\", \"8000\"]",
                     "",
                 ]
             ),
@@ -258,6 +223,9 @@ class FastApiGenerator:
         target = self.output_dir / directory
         if not target.exists():
             return
+        if target.is_dir() and any(child.is_dir() for child in target.iterdir()):
+            shutil.rmtree(target)
+            return
         for generated_file in target.glob("*"):
             if generated_file.is_file() and generated_file.suffix in {".py", ".php", ".sql"}:
                 generated_file.unlink()
@@ -265,3 +233,32 @@ class FastApiGenerator:
             target.rmdir()
         except OSError:
             pass
+
+    def _router_modules(self, ir: dict) -> list[str]:
+        modules = []
+        if any(route["path"] == "/login" for route in ir["routes"]):
+            modules.append("auth")
+        for model in ir["models"]:
+            snake = self._snake_case(model["name"])
+            if any(self._first_segment(route["path"]) in {snake, self._pluralize(snake)} for route in ir["routes"]):
+                modules.append(snake)
+        return modules
+
+    def _first_segment(self, path: str) -> str:
+        parts = [part for part in path.strip("/").split("/") if part]
+        return parts[0].replace("-", "_").lower() if parts else ""
+
+    def _snake_case(self, value: str) -> str:
+        output = []
+        for index, char in enumerate(value):
+            if char.isupper() and index > 0:
+                output.append("_")
+            output.append(char.lower())
+        return "".join(output)
+
+    def _pluralize(self, value: str) -> str:
+        if value.endswith("y"):
+            return value[:-1] + "ies"
+        if value.endswith("s"):
+            return value
+        return value + "s"

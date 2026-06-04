@@ -8,17 +8,10 @@ class AuthMiddleware:
         self.tokens = TokenService()
 
     def handle(self, request: Request):
-        header = request.headers.get("authorization", "")
-        token = self._extract_bearer_token(header)
-
-        if token is None:
-            raise HTTPException(status_code=401, detail="Unauthorized")
-
-        payload = self.tokens.validate(token)
-        if payload is None:
-            raise HTTPException(status_code=401, detail="Unauthorized")
-
-        return payload
+        raise HTTPException(
+            status_code=501,
+            detail="Authentication middleware is a generated TODO scaffold.",
+        )
 
     def _extract_bearer_token(self, header: str):
         if not header.startswith("Bearer "):

@@ -104,7 +104,6 @@ class GeneratorValidationSuite:
             "docker-compose.yml",
             "generator_manifest.json",
             "requirements.txt",
-            "app/main.py",
             "main.py",
             "config/settings.py",
         ],
@@ -124,11 +123,6 @@ class GeneratorValidationSuite:
     REQUIRED_DIRECTORIES = {
         "php": [
             "public",
-            "app/Controllers",
-            "app/Services",
-            "app/Models",
-            "routes",
-            "storage",
             "tests",
             "controllers",
             "models",
@@ -139,11 +133,6 @@ class GeneratorValidationSuite:
             "config",
         ],
         "fastapi": [
-            "app",
-            "app/routers",
-            "app/models",
-            "app/schemas",
-            "app/services",
             "tests",
             "config",
             "routers",

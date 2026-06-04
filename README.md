@@ -297,6 +297,8 @@ Generators consume Architecture IR, not raw parser output.
 
 Since v0.12.0, generators are runnable project builders. They generate framework code, README files, environment examples, Docker defaults, project bootstrap files, and `generator_manifest.json`.
 
+The Generation Contract Foundation validates that model-backed routes, business services, persistence components, and entities are wired as one coherent architecture before and after target generation.
+
 The PHP generator is split by concern:
 
 - `routes_generator.py`
@@ -308,11 +310,12 @@ The PHP generator is split by concern:
 
 This keeps parser logic, architecture logic, and PHP code generation separate.
 
-Generated services and middleware contain prototype implementation logic, including password hashing, token generation, token validation, authorization-header handling, basic repository methods, and request validation helpers.
+Generated auth components are explicit TODO scaffolds. SEMARC does not generate fake JWT, demo tokens, or pretend authentication runtime behavior.
 
 The NestJS generator emits structural TypeScript scaffolding for modules, models, services, controllers, app module registration, and placeholder auth guards. It does not implement real authentication, persistence, or runtime NestJS integrations yet.
 
 See `docs/PROJECT_TEMPLATE_SYSTEM.md` for the project template system.
+See `docs/GENERATION_CONTRACT.md` for generation contract and target compliance rules.
 
 ## Architecture Diagnostics
 

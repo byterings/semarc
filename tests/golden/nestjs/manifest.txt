@@ -14,6 +14,7 @@ src/modules/auth/auth.service.ts
 src/modules/users/user.model.ts
 src/modules/users/users.controller.ts
 src/modules/users/users.module.ts
+src/modules/users/users.repository.ts
 src/modules/users/users.service.ts
 test/app.e2e-spec.ts
 tsconfig.json

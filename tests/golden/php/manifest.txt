@@ -1,14 +1,11 @@
 .env.example
 Dockerfile
 README.md
-app/Controllers/AuthController.php
-app/Models/User.php
-app/Services/PasswordHasher.php
-app/Services/TokenService.php
 architecture_report.json
 config/app.php
 config/database.php
 controllers/AuthController.php
+controllers/UserController.php
 docker-compose.yml
 generator_manifest.json
 middleware/AuthMiddleware.php
@@ -19,8 +16,8 @@ public/.htaccess
 public/index.php
 repositories/UserRepository.php
 routes.php
-routes/web.php
 services/PasswordHasher.php
 services/TokenService.php
+services/UserService.php
 tests/FeatureTest.php
 validators/Validator.php

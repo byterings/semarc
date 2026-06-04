@@ -22,6 +22,23 @@ class ServiceMapper:
                 }
             )
 
+        for model in ir["models"]:
+            snake = snake_case(model["name"])
+            mapped.append(
+                {
+                    "path": f"services/{snake}_service.py",
+                    "template": "services/model_service.tpl",
+                    "values": {
+                        "class_name": f"{model['name']}Service",
+                        "repository_class": f"{model['name']}Repository",
+                        "repository_module": f"{snake}_repository",
+                        "repository_variable": f"{snake}_repository",
+                        "create_method": f"create_{snake}",
+                        "list_method": f"get_{self._pluralize(snake)}",
+                    },
+                }
+            )
+
         validator_names = sorted({validator["name"] for validator in ir["validators"]})
         for validator_name in validator_names:
             mapped.append(
@@ -76,3 +93,10 @@ class ServiceMapper:
                 "        return None",
             ]
         )
+
+    def _pluralize(self, value: str) -> str:
+        if value.endswith("y"):
+            return value[:-1] + "ies"
+        if value.endswith("s"):
+            return value
+        return value + "s"

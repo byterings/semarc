@@ -151,7 +151,7 @@ Status: complete.
 
 ## v0.12.0: Project Template Foundation
 
-Status: current.
+Status: complete.
 
 - SEMARC Core positioned as architecture engine
 - targets positioned as runnable project builders
@@ -165,6 +165,22 @@ Status: current.
 - `generator_manifest.json`
 - target metadata foundation
 - validation expanded for runnable project files
+
+## v0.12.x: Generation Contract Foundation
+
+Status: current.
+
+- framework-neutral generation contract
+- project/configuration/entity/persistence/business/API/auth layers
+- target capability declarations
+- target contract mapping
+- pre-generation contract validation
+- post-generation artifact validation
+- PHP repository generation fixed to be model-specific
+- route-to-controller-to-service-to-repository wiring
+- duplicate generated architecture tree removal
+- fake authentication runtime replaced with explicit TODO scaffolds
+- target compliance tests
 
 ## v1.0: Production Target Profiles
 

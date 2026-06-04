@@ -219,10 +219,22 @@ class NestJSGenerator:
             },
         )
         self._write(
+            module_dir / f"{folder}.repository.ts",
+            "repository.tpl",
+            {
+                "repository_name": f"{model_name}Repository",
+                "model_name": model_class,
+                "model_file": self._file_stem(model_name),
+                "property_name": camel_case(model_name),
+            },
+        )
+        self._write(
             module_dir / f"{folder}.service.ts",
             "service.tpl",
             {
                 "service_name": service_class,
+                "repository_name": f"{model_name}Repository",
+                "repository_file": folder,
                 "model_name": model_class,
                 "model_file": self._file_stem(model_name),
                 "property_name": camel_case(model_name),
