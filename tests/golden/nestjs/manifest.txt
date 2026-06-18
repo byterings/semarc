@@ -6,6 +6,7 @@ docker-compose.yml
 generator_manifest.json
 nest-cli.json
 package.json
+src/app.controller.ts
 src/app.module.ts
 src/guards/auth.guard.ts
 src/modules/auth/auth.controller.ts

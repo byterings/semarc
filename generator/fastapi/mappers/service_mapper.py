@@ -1,4 +1,5 @@
 from generator.fastapi.mappers.name_utils import snake_case
+from generator.utils.inflector import pluralize
 
 
 class ServiceMapper:
@@ -34,7 +35,7 @@ class ServiceMapper:
                         "repository_module": f"{snake}_repository",
                         "repository_variable": f"{snake}_repository",
                         "create_method": f"create_{snake}",
-                        "list_method": f"get_{self._pluralize(snake)}",
+                        "list_method": f"get_{pluralize(snake)}",
                     },
                 }
             )
@@ -93,10 +94,3 @@ class ServiceMapper:
                 "        return None",
             ]
         )
-
-    def _pluralize(self, value: str) -> str:
-        if value.endswith("y"):
-            return value[:-1] + "ies"
-        if value.endswith("s"):
-            return value
-        return value + "s"

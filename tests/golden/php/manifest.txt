@@ -8,7 +8,6 @@ controllers/AuthController.php
 controllers/UserController.php
 docker-compose.yml
 generator_manifest.json
-middleware/AuthMiddleware.php
 migrations/CreateUsersTable.php
 migrations/create_users_table.sql
 models/User.php

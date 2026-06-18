@@ -166,9 +166,9 @@ Status: complete.
 - target metadata foundation
 - validation expanded for runnable project files
 
-## v0.12.x: Generation Contract Foundation
+## v0.12.0: Generation Contract Foundation
 
-Status: current.
+Status: complete.
 
 - framework-neutral generation contract
 - project/configuration/entity/persistence/business/API/auth layers
@@ -182,7 +182,38 @@ Status: current.
 - fake authentication runtime replaced with explicit TODO scaffolds
 - target compliance tests
 
-## v1.0: Production Target Profiles
+## v0.13.0: Project Experience and Target Foundation
+
+Status: current.
+
+- generated `/` home endpoint
+- generated `/health` endpoint
+- generated `/routes` discovery endpoint
+- canonical model route completion
+- shared pluralization engine
+- relation runtime helpers removed until implementation exists
+- generated scaffold tests
+- target manifests with declared capabilities
+- registry-driven target selection
+- expanded dead artifact validation
+
+## v0.14.0: Framework Target Foundation
+
+Status: planned.
+
+- stronger target package boundaries
+- framework-specific project profiles
+- deeper target compliance fixtures
+
+## v0.15.0: Community Target Architecture
+
+Status: planned.
+
+- third-party target structure
+- local target package validation
+- target compatibility reports
+
+## v1.0.0: Architecture-to-Project Generator
 
 Status: planned.
 

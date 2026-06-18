@@ -1,4 +1,6 @@
 from generator.fastapi.mappers.name_utils import snake_case
+from generator.utils.inflector import pluralize, resource_path
+from generator.utils.project_experience import complete_routes
 
 
 class ControllerMapper:
@@ -6,7 +8,8 @@ class ControllerMapper:
 
     def map(self, ir: dict) -> list[dict]:
         mapped = []
-        if any(route["path"] == "/login" for route in ir["routes"]):
+        routes = complete_routes(ir)
+        if any(route["path"] == "/login" for route in routes):
             mapped.append(
                 {
                     "path": "routers/auth.py",
@@ -18,8 +21,8 @@ class ControllerMapper:
             )
 
         for model in ir["models"]:
-            routes = self._routes_for_model(model["name"], ir["routes"])
-            if not routes:
+            model_routes = self._routes_for_model(model["name"], routes)
+            if not model_routes:
                 continue
             snake = snake_case(model["name"])
             mapped.append(
@@ -28,11 +31,11 @@ class ControllerMapper:
                     "template": "routers/model_router.tpl",
                     "values": {
                         "model_name": model["name"],
-                        "router_prefix": "/" + self._pluralize(snake),
+                        "router_prefix": "/" + resource_path(model["name"]),
                         "service_name": f"{model['name']}Service",
                         "service_module": f"{snake}_service",
                         "service_variable": f"{snake}_service",
-                        "methods": self._methods(model["name"], routes),
+                        "methods": self._methods(model["name"], model_routes),
                     },
                 }
             )
@@ -88,8 +91,4 @@ class ControllerMapper:
         return parts[0].replace("-", "_").lower() if parts else ""
 
     def _pluralize(self, value: str) -> str:
-        if value.endswith("y"):
-            return value[:-1] + "ies"
-        if value.endswith("s"):
-            return value
-        return value + "s"
+        return pluralize(value)

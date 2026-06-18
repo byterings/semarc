@@ -122,14 +122,16 @@ Line: 18
 
 Relationship engine output remains target-neutral.
 
-PHP generator maps relationships to:
+PHP generator maps relationships to metadata comments and migration foreign keys:
 
 ```php
-return $this->hasMany(Post::class);
+// Relation metadata: User HAS_MANY Post
 ```
 
-FastAPI generator maps relationships to:
+FastAPI generator maps relationships to schema/table metadata and migration foreign keys:
 
 ```python
-posts = relationship("Post", back_populates="user")
+# Relation metadata: User HAS_MANY Post
 ```
+
+Runtime relationship helper methods are not emitted until target runtime support exists.

@@ -4,6 +4,7 @@ import shutil
 from generator.nestjs.name_utils import camel_case, pascal_case, pluralize, segment_name, typescript_type
 from generator.php.template_engine import TemplateEngine
 from generator.project_files import ProjectFileWriter
+from generator.utils.project_experience import SEMARC_VERSION, complete_routes, model_names, module_names, profile_names, route_lines
 
 
 class NestJSGenerator:
@@ -29,26 +30,39 @@ class NestJSGenerator:
         self._prepare_output_dirs()
 
         module_imports = []
-        module_names = []
+        app_module_names = []
+        routes = complete_routes(ir)
 
         for model in ir["models"]:
-            module_name = self._write_model_module(model, ir["routes"])
+            module_name = self._write_model_module(model, routes)
             module_imports.append(
                 f"import {{ {module_name} }} from './modules/{self._folder_name(model['name'])}/{self._folder_name(model['name'])}.module';"
             )
-            module_names.append(module_name)
+            app_module_names.append(module_name)
 
-        if ir.get("middlewares") or any(route["path"] == "/login" for route in ir["routes"]):
+        if ir.get("middlewares") or any(route["path"] == "/login" for route in routes):
             self._write_auth_scaffold()
             module_imports.append("import { AuthModule } from './modules/auth/auth.module';")
-            module_names.append("AuthModule")
+            app_module_names.append("AuthModule")
 
         self._write(
             self.src_dir / "app.module.ts",
             "app.module.tpl",
             {
                 "module_imports": "\n".join(module_imports),
-                "modules": self._module_array(module_names),
+                "modules": self._module_array(app_module_names),
+            },
+        )
+        self._write(
+            self.src_dir / "app.controller.ts",
+            "app.controller.tpl",
+            {
+                "project_name": ir["project"],
+                "semarc_version": SEMARC_VERSION,
+                "models": self._ts_array(model_names(ir)),
+                "routes": self._ts_array(["GET /", "GET /health", "GET /routes"] + route_lines(ir)),
+                "profiles": self._ts_array(profile_names(ir)),
+                "modules": self._ts_array(module_names(ir)),
             },
         )
         self._generate_project_template(ir)
@@ -148,8 +162,23 @@ class NestJSGenerator:
         )
         writer.write_text(
             "test/app.e2e-spec.ts",
-            "describe('Generated app', () => {\n    it('exists', () => {\n        expect(true).toBe(true);\n    });\n});\n",
-            "nestjs test placeholder",
+            "\n".join(
+                [
+                    "describe('Generated app scaffold', () => {",
+                    "    const expectedRoutes = " + self._ts_array(["GET /", "GET /health", "GET /routes"] + route_lines(ir)) + ";",
+                    "",
+                    "    it('documents generated routes', () => {",
+                    "        expect(expectedRoutes).toContain('GET /health');",
+                    "    });",
+                    "",
+                    "    it('keeps generated layers explicit', () => {",
+                    "        expect(expectedRoutes.length).toBeGreaterThan(0);",
+                    "    });",
+                    "});",
+                    "",
+                ]
+            ),
+            "nestjs scaffold tests",
         )
         writer.write_readme(ir, "nestjs")
         writer.write_env_example(
@@ -366,6 +395,11 @@ class NestJSGenerator:
 
     def _package_name(self, project_name: str) -> str:
         return segment_name(project_name).replace("_", "-")
+
+    def _ts_array(self, values: list[str]) -> str:
+        if not values:
+            return "[]"
+        return "[" + ", ".join("'" + value.replace("'", "\\'") + "'" for value in values) + "]"
 
     def _write(self, path: Path, template: str, values: dict) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)

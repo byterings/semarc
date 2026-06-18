@@ -100,7 +100,7 @@ Architecture synthesis belongs in `architecture/`.
 - `ir_builder.py` produces language-neutral IR.
 - `contracts/` defines the generation contract, target capability validation, target mappings, and generated artifact validation.
 
-Relationship and migration metadata must stay language-neutral in IR. PHP and FastAPI generators may map that metadata to SQL files, migration classes, SQLAlchemy tables, or ORM relationship methods.
+Relationship and migration metadata must stay language-neutral in IR. PHP and FastAPI generators may map that metadata to SQL files, migration classes, and table definitions. Do not generate runtime relationship helper methods until the target implements the underlying relationship runtime.
 
 Rules must be deterministic and centralized.
 
@@ -140,6 +140,8 @@ Project template foundations live under:
 - `generator/php/project_template/`
 - `generator/fastapi/project_template/`
 - `generator/nestjs/project_template/`
+
+Every generated target should expose `/`, `/health`, and `/routes` and should use `generator/utils/inflector.py` for resource names.
 
 Keep generated projects readable, runnable, and prototype-friendly.
 

@@ -9,6 +9,7 @@ from architecture.contracts.generation_contract import (
     ContractComponent,
     GenerationContract,
 )
+from generator.utils.inflector import resource_path
 
 
 class ContractDefinition:
@@ -85,7 +86,7 @@ class ContractDefinition:
                     )
                 )
 
-        for route in ir.get("routes", []):
+        for route in self._complete_routes(ir):
             route_id = f"api:{route['method']}:{route['path']}"
             route_component = contract.add_component(
                 ContractComponent(
@@ -131,6 +132,21 @@ class ContractDefinition:
                 return model_name
         return None
 
+    def _complete_routes(self, ir: dict) -> list[dict]:
+        routes = list(ir.get("routes", []))
+        existing = {(route["method"], route["path"]) for route in routes}
+        for model in ir.get("models", []):
+            path = "/" + resource_path(model["name"])
+            if ("GET", path) not in existing:
+                routes.append(
+                    {
+                        "method": "GET",
+                        "path": path,
+                        "handler": {"type": "generated_resource", "model": model["name"]},
+                    }
+                )
+        return routes
+
     def _segment_name(self, value: str) -> str:
         output = []
         for index, char in enumerate(value):
@@ -140,8 +156,4 @@ class ContractDefinition:
         return "".join(output).replace("_", "-")
 
     def _pluralize(self, value: str) -> str:
-        if value.endswith("y"):
-            return value[:-1] + "ies"
-        if value.endswith("s"):
-            return value
-        return value + "s"
+        return resource_path(value)

@@ -124,11 +124,15 @@ Generated PHP projects are written to `output/`:
 ```text
 output/
 ├── public/
-├── app/
-├── routes/
 ├── config/
-├── storage/
 ├── tests/
+├── controllers/
+├── models/
+├── repositories/
+├── services/
+├── validators/
+├── migrations/
+├── routes.php
 ├── README.md
 ├── .env.example
 ├── Dockerfile
@@ -139,23 +143,20 @@ output/
 For the example input, SEMARC generates:
 
 - `output/public/index.php`
-- `output/routes/web.php`
-- `output/app/Controllers/AuthController.php`
-- `output/app/Models/User.php`
-- `output/app/Services/TokenService.php`
+- `output/routes.php`
+- `output/controllers/AuthController.php`
+- `output/controllers/UserController.php`
+- `output/models/User.php`
+- `output/services/UserService.php`
+- `output/repositories/UserRepository.php`
 - `output/README.md`
 - `output/.env.example`
 - `output/Dockerfile`
 - `output/docker-compose.yml`
 - `output/generator_manifest.json`
 
-Legacy compatibility files are also still generated, including:
+Additional generated files include:
 
-- `output/routes.php`
-- `output/controllers/AuthController.php`
-- `output/models/User.php`
-- `output/middleware/AuthMiddleware.php`
-- `output/repositories/UserRepository.php`
 - `output/migrations/create_users_table.sql`
 - `output/migrations/CreateUsersTable.php`
 - `output/services/TokenService.php`
@@ -165,11 +166,13 @@ Legacy compatibility files are also still generated, including:
 
 For `TARGET FASTAPI`, SEMARC generates:
 
-- `output/app/main.py`
-- `output/app/routers/`
-- `output/app/models/`
-- `output/app/schemas/`
-- `output/app/services/`
+- `output/main.py`
+- `output/routers/`
+- `output/models/`
+- `output/schemas/`
+- `output/services/`
+- `output/repositories/`
+- `output/middleware/`
 - `output/tests/`
 - `output/requirements.txt`
 - `output/README.md`
@@ -299,6 +302,14 @@ Since v0.12.0, generators are runnable project builders. They generate framework
 
 The Generation Contract Foundation validates that model-backed routes, business services, persistence components, and entities are wired as one coherent architecture before and after target generation.
 
+Since v0.13.0, generated projects expose:
+
+- `/`
+- `/health`
+- `/routes`
+
+Every model receives a reachable resource route using shared pluralization.
+
 The PHP generator is split by concern:
 
 - `routes_generator.py`
@@ -316,6 +327,7 @@ The NestJS generator emits structural TypeScript scaffolding for modules, models
 
 See `docs/PROJECT_TEMPLATE_SYSTEM.md` for the project template system.
 See `docs/GENERATION_CONTRACT.md` for generation contract and target compliance rules.
+See `docs/TARGET_REGISTRY.md` for target registry and manifest rules.
 
 ## Architecture Diagnostics
 

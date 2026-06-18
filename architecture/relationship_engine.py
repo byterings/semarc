@@ -1,3 +1,6 @@
+from generator.utils.inflector import pluralize, snake_case
+
+
 class RelationshipEngine:
     """Builds relationship graph and migration plan from semantic relations."""
 
@@ -77,12 +80,7 @@ class RelationshipEngine:
         }
 
     def _table_name(self, model_name: str) -> str:
-        return f"{self._snake_case(model_name)}s"
+        return pluralize(snake_case(model_name))
 
     def _snake_case(self, value: str) -> str:
-        output = []
-        for index, char in enumerate(value):
-            if char.isupper() and index > 0:
-                output.append("_")
-            output.append(char.lower())
-        return "".join(output)
+        return snake_case(value)

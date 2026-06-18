@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from generator.php.template_engine import TemplateEngine
+from generator.utils.inflector import camel_case, pluralize
 
 
 class RepositoryGenerator:
@@ -35,14 +36,10 @@ class RepositoryGenerator:
         return "repositories/user_repository.tpl"
 
     def _collection_name(self, model_name: str) -> str:
-        return self._pluralize(model_name)[0].lower() + self._pluralize(model_name)[1:]
+        return camel_case(pluralize(model_name))
 
     def _pluralize(self, model_name: str) -> str:
-        if model_name.endswith("y"):
-            return model_name[:-1] + "ies"
-        if model_name.endswith("s"):
-            return model_name
-        return model_name + "s"
+        return pluralize(model_name)
 
     def _relationship_methods(self, repository: dict) -> str:
         methods = []

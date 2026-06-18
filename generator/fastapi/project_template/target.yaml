@@ -1,3 +1,12 @@
 name: fastapi
 language: Python
 description: Runnable FastAPI project generator
+generator: fastapi
+supports:
+  - project
+  - configuration
+  - entity
+  - persistence
+  - business
+  - api
+  - auth

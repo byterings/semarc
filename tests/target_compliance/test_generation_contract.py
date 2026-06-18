@@ -12,6 +12,8 @@ from architecture.contracts import (
     PROJECT_LAYER,
 )
 from tests.support import compile_source
+from generator.targets import TargetRegistry
+from generator.utils.inflector import pluralize, resource_path
 
 
 CONTRACT_SOURCE = """PROJECT ContractAPI
@@ -71,6 +73,7 @@ class GenerationContractComplianceTests(unittest.TestCase):
 
             self.assertIn("new CustomerController()", routes)
             self.assertIn("$controller->index()", routes)
+            self.assertIn("new AuthController()", routes)
             self.assertNotIn("json_encode(['data' => []])", routes)
             self.assertIn("new CustomerService()", controller)
             self.assertIn("new CustomerRepository()", service)
@@ -135,6 +138,79 @@ class GenerationContractComplianceTests(unittest.TestCase):
             service = (module / "customers.service.ts").read_text(encoding="utf-8")
             self.assertIn("CustomerRepository", service)
             self.assertIn("this.repository.findAll()", service)
+
+    def test_project_experience_endpoints_exist_for_every_target(self):
+        for target in ["php", "fastapi", "nestjs"]:
+            with self.subTest(target=target), tempfile.TemporaryDirectory() as tmpdir:
+                source = CONTRACT_SOURCE.replace("TARGET PHP", f"TARGET {target.upper()}")
+                context = compile_source(source, tmpdir, target, generate=True)
+                output = Path(context.output_dir)
+
+                if target == "php":
+                    content = (output / "routes.php").read_text(encoding="utf-8")
+                    self.assertIn("$path === '/'", content)
+                    self.assertIn("$path === '/health'", content)
+                    self.assertIn("$path === '/routes'", content)
+                elif target == "fastapi":
+                    content = (output / "main.py").read_text(encoding="utf-8")
+                    self.assertIn('@app.get("/")', content)
+                    self.assertIn('@app.get("/health")', content)
+                    self.assertIn('@app.get("/routes")', content)
+                else:
+                    content = (output / "src" / "app.controller.ts").read_text(encoding="utf-8")
+                    self.assertIn("@Get()", content)
+                    self.assertIn("@Get('health')", content)
+                    self.assertIn("@Get('routes')", content)
+
+    def test_route_completeness_generates_routes_for_models_without_route_statements(self):
+        source = """PROJECT CRM
+
+TARGET PHP
+
+DATABASE MYSQL
+
+MODEL Customer
+    name STRING
+
+MODEL Lead
+    name STRING
+"""
+        for target in ["php", "fastapi", "nestjs"]:
+            with self.subTest(target=target), tempfile.TemporaryDirectory() as tmpdir:
+                context = compile_source(source.replace("TARGET PHP", f"TARGET {target.upper()}"), tmpdir, target, generate=True)
+                output = Path(context.output_dir)
+
+                if target == "php":
+                    routes = (output / "routes.php").read_text(encoding="utf-8")
+                    self.assertIn("$path === '/customers'", routes)
+                    self.assertIn("$path === '/leads'", routes)
+                elif target == "fastapi":
+                    main = (output / "main.py").read_text(encoding="utf-8")
+                    self.assertIn("from routers.customer import router as customer_router", main)
+                    self.assertIn("from routers.lead import router as lead_router", main)
+                else:
+                    app = (output / "src" / "app.module.ts").read_text(encoding="utf-8")
+                    self.assertIn("CustomerModule", app)
+                    self.assertIn("LeadModule", app)
+
+    def test_pluralization_engine_handles_common_domain_names(self):
+        self.assertEqual(pluralize("Activity"), "Activities")
+        self.assertEqual(pluralize("Company"), "Companies")
+        self.assertEqual(pluralize("Category"), "Categories")
+        self.assertEqual(pluralize("Person"), "People")
+        self.assertEqual(resource_path("Activity"), "activities")
+
+    def test_target_registry_loads_manifest_capabilities(self):
+        registry = TargetRegistry.builtins()
+        targets = {target.name: target for target in registry.all()}
+
+        self.assertEqual(sorted(targets), ["fastapi", "nestjs", "php"])
+        for target in targets.values():
+            self.assertTrue(target.capabilities.supports("entity"))
+            self.assertTrue(target.capabilities.supports("persistence"))
+            self.assertTrue(target.capabilities.supports("business"))
+            self.assertTrue(target.capabilities.supports("api"))
+            self.assertTrue(target.capabilities.supports("auth"))
 
 
 if __name__ == "__main__":

@@ -1,4 +1,5 @@
 from generator.fastapi.mappers.name_utils import snake_case
+from generator.utils.inflector import pluralize
 
 
 class RepositoryMapper:
@@ -9,7 +10,7 @@ class RepositoryMapper:
 
         for repository in ir["repositories"]:
             model_name = repository["model"]
-            collection_name = f"{snake_case(model_name)}s"
+            collection_name = pluralize(snake_case(model_name))
             mapped.append(
                 {
                     "path": f"repositories/{snake_case(repository['name'])}.py",

@@ -29,6 +29,8 @@ class TargetMetadata:
     name: str
     language: str
     description: str
+    generator: str = ""
+    supports: tuple[str, ...] = ()
     source_path: Path | None = None
 
 

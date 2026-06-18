@@ -1,6 +1,8 @@
 from pathlib import Path
 
 from generator.php.template_engine import TemplateEngine
+from generator.utils.inflector import resource_path
+from generator.utils.project_experience import SEMARC_VERSION, complete_routes, model_names, module_names, profile_names, route_lines
 
 
 class RoutesGenerator:
@@ -10,7 +12,12 @@ class RoutesGenerator:
         self.reporter = reporter
 
     def generate(self, ir: dict) -> None:
-        route_blocks = [self._route_block(route, ir) for route in ir["routes"]]
+        route_blocks = [
+            self._home_route_block(ir),
+            self._health_route_block(ir),
+            self._route_discovery_block(ir),
+        ]
+        route_blocks.extend(self._route_block(route, ir) for route in complete_routes(ir))
         template = "routes.tpl"
         content = self.template_engine.render(
             template,
@@ -25,9 +32,9 @@ class RoutesGenerator:
 
     def _requires(self, ir: dict) -> str:
         controllers = set()
-        if any(route["path"] == "/login" for route in ir["routes"]):
+        if any(route["path"] == "/login" for route in complete_routes(ir)):
             controllers.add("AuthController")
-        for route in ir["routes"]:
+        for route in complete_routes(ir):
             model_name = self._model_for_route(route, ir["models"])
             if model_name:
                 controllers.add(f"{model_name}Controller")
@@ -37,10 +44,10 @@ class RoutesGenerator:
         )
 
     def _route_block(self, route: dict, ir: dict) -> str:
-        handler = route["handler"]
+        handler = route.get("handler", {})
         lines = [f"if ($method === '{route['method']}' && $path === '{route['path']}') {{"]
 
-        if handler["type"] == "controller":
+        if handler.get("type") == "controller":
             controller = handler["component"]
             action = handler["action"]
             lines.extend(
@@ -81,6 +88,64 @@ class RoutesGenerator:
                 return model["name"]
         return None
 
+    def _home_route_block(self, ir: dict) -> str:
+        html = self._php_array(
+            {
+                "project": ir["project"],
+                "target": "PHP",
+                "semarc_version": SEMARC_VERSION,
+                "models": model_names(ir),
+                "routes": ["GET /", "GET /health", "GET /routes"] + route_lines(ir),
+                "profiles": profile_names(ir),
+                "modules": module_names(ir),
+                "status": "Running",
+            }
+        )
+        return "\n".join(
+            [
+                "if ($method === 'GET' && $path === '/') {",
+                "    header('Content-Type: text/html; charset=utf-8');",
+                f"    $project = {html};",
+                "    echo '<h1>SEMARC Generated Project</h1>';",
+                "    echo '<p><strong>Project:</strong> ' . htmlspecialchars($project['project']) . '</p>';",
+                "    echo '<p><strong>Target:</strong> ' . htmlspecialchars($project['target']) . '</p>';",
+                "    echo '<p><strong>SEMARC Version:</strong> ' . htmlspecialchars($project['semarc_version']) . '</p>';",
+                "    echo '<h2>Models</h2><ul>';",
+                "    foreach ($project['models'] as $item) { echo '<li>' . htmlspecialchars($item) . '</li>'; }",
+                "    echo '</ul><h2>Routes</h2><ul>';",
+                "    foreach ($project['routes'] as $item) { echo '<li>' . htmlspecialchars($item) . '</li>'; }",
+                "    echo '</ul><p><strong>Status:</strong> ' . htmlspecialchars($project['status']) . '</p>';",
+                "    exit;",
+                "}",
+                "",
+            ]
+        )
+
+    def _health_route_block(self, ir: dict) -> str:
+        return "\n".join(
+            [
+                "if ($method === 'GET' && $path === '/health') {",
+                "    header('Content-Type: application/json');",
+                f"    echo json_encode(['status' => 'ok', 'project' => '{ir['project']}']);",
+                "    exit;",
+                "}",
+                "",
+            ]
+        )
+
+    def _route_discovery_block(self, ir: dict) -> str:
+        routes = self._php_array(["GET /", "GET /health", "GET /routes"] + route_lines(ir))
+        return "\n".join(
+            [
+                "if ($method === 'GET' && $path === '/routes') {",
+                "    header('Content-Type: application/json');",
+                f"    echo json_encode(['routes' => {routes}]);",
+                "    exit;",
+                "}",
+                "",
+            ]
+        )
+
     def _segment_name(self, value: str) -> str:
         output = []
         for index, char in enumerate(value):
@@ -90,11 +155,16 @@ class RoutesGenerator:
         return "".join(output).replace("_", "-")
 
     def _pluralize(self, value: str) -> str:
-        if value.endswith("y"):
-            return value[:-1] + "ies"
-        if value.endswith("s"):
-            return value
-        return value + "s"
+        return resource_path(value)
+
+    def _php_array(self, value) -> str:
+        if isinstance(value, dict):
+            entries = ", ".join(f"'{key}' => {self._php_array(item)}" for key, item in value.items())
+            return "[" + entries + "]"
+        if isinstance(value, list):
+            entries = ", ".join(self._php_array(item) for item in value)
+            return "[" + entries + "]"
+        return "'" + str(value).replace("'", "\\'") + "'"
 
     def _report(self, path: Path, template: str) -> None:
         if self.reporter:

@@ -10,6 +10,7 @@ from generator.fastapi.mappers.model_mapper import ModelMapper
 from generator.fastapi.mappers.repository_mapper import RepositoryMapper
 from generator.fastapi.mappers.service_mapper import ServiceMapper
 from generator.php.template_engine import TemplateEngine
+from generator.utils.project_experience import SEMARC_VERSION, complete_routes, model_names, module_names, profile_names, route_lines
 
 
 class FastApiGenerator:
@@ -89,6 +90,11 @@ class FastApiGenerator:
             "main.tpl",
             {
                 "project_name": ir["project"],
+                "semarc_version": SEMARC_VERSION,
+                "models": repr(model_names(ir)),
+                "routes": repr(["GET /", "GET /health", "GET /routes"] + route_lines(ir)),
+                "profiles": repr(profile_names(ir)),
+                "modules": repr(module_names(ir)),
                 "router_imports": "\n".join(
                     f"from routers.{module} import router as {module}_router"
                     for module in routers
@@ -145,7 +151,29 @@ class FastApiGenerator:
         ]:
             (self.output_dir / directory).mkdir(parents=True, exist_ok=True)
 
-        writer.write_text("tests/test_app.py", "def test_generated_project_exists():\n    assert True\n", "fastapi test placeholder")
+        writer.write_text(
+            "tests/test_app.py",
+            "\n".join(
+                [
+                    "from pathlib import Path",
+                    "",
+                    "",
+                    "def test_generated_routes_are_documented():",
+                    f"    expected_routes = {repr(['GET /', 'GET /health', 'GET /routes'] + route_lines(ir))}",
+                    "    assert 'GET /health' in expected_routes",
+                    "",
+                    "",
+                    "def test_generated_layers_exist():",
+                    "    root = Path(__file__).resolve().parents[1]",
+                    "    assert (root / 'routers').is_dir()",
+                    "    assert (root / 'services').is_dir()",
+                    "    assert (root / 'repositories').is_dir()",
+                    "    assert (root / 'models').is_dir()",
+                    "",
+                ]
+            ),
+            "fastapi scaffold tests",
+        )
         writer.write_text(
             "requirements.txt",
             "fastapi\nuvicorn\nsqlalchemy\n",
@@ -236,11 +264,11 @@ class FastApiGenerator:
 
     def _router_modules(self, ir: dict) -> list[str]:
         modules = []
-        if any(route["path"] == "/login" for route in ir["routes"]):
+        if any(route["path"] == "/login" for route in complete_routes(ir)):
             modules.append("auth")
         for model in ir["models"]:
             snake = self._snake_case(model["name"])
-            if any(self._first_segment(route["path"]) in {snake, self._pluralize(snake)} for route in ir["routes"]):
+            if any(self._first_segment(route["path"]) in {snake, self._pluralize(snake)} for route in complete_routes(ir)):
                 modules.append(snake)
         return modules
 

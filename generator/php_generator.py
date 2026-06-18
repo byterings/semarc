@@ -9,6 +9,8 @@ from generator.php.repository_generator import RepositoryGenerator
 from generator.php.routes_generator import RoutesGenerator
 from generator.php.template_engine import TemplateEngine
 from generator.php.validator_generator import ValidatorGenerator
+from generator.utils.inflector import pluralize
+from generator.utils.project_experience import route_lines
 
 
 class PhpGenerator:
@@ -186,8 +188,23 @@ class PhpGenerator:
         )
         writer.write_text(
             "tests/FeatureTest.php",
-            "<?php\n\n// Generated project test placeholder.\n",
-            "php test placeholder",
+            "\n".join(
+                [
+                    "<?php",
+                    "",
+                    "// Scaffold tests for generated route/controller/service/repository wiring.",
+                    "$expectedRoutes = " + self._php_array(["GET /", "GET /health", "GET /routes"] + route_lines(ir)) + ";",
+                    "foreach ($expectedRoutes as $route) {",
+                    "    assert(is_string($route));",
+                    "}",
+                    "assert(file_exists(__DIR__ . '/../routes.php'));",
+                    "assert(is_dir(__DIR__ . '/../controllers'));",
+                    "assert(is_dir(__DIR__ . '/../services'));",
+                    "assert(is_dir(__DIR__ . '/../repositories'));",
+                    "",
+                ]
+            ),
+            "php scaffold tests",
         )
 
         writer.write_readme(ir, "php")
@@ -251,8 +268,7 @@ class PhpGenerator:
         )
 
     def _pluralize(self, model_name: str) -> str:
-        if model_name.endswith("y"):
-            return model_name[:-1] + "ies"
-        if model_name.endswith("s"):
-            return model_name
-        return model_name + "s"
+        return pluralize(model_name)
+
+    def _php_array(self, values: list[str]) -> str:
+        return "[" + ", ".join("'" + value.replace("'", "\\'") + "'" for value in values) + "]"
