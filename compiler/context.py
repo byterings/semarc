@@ -32,5 +32,7 @@ class CompilerContext:
     dependency_graph: Any = None
     expanded_architecture: dict = field(default_factory=dict)
     ir: dict = field(default_factory=dict)
+    generation_contract: Any = None
+    target_contract_mapping: dict = field(default_factory=dict)
     generated_components: list[dict[str, str]] = field(default_factory=list)
     compiler_passes: list[str] = field(default_factory=list)

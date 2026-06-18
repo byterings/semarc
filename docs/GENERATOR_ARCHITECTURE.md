@@ -64,9 +64,6 @@ Output:
 ```text
 output/
 ├── public/
-├── app/
-├── routes/
-├── storage/
 ├── tests/
 ├── README.md
 ├── .env.example
@@ -110,7 +107,6 @@ Output:
 
 ```text
 output/
-├── app/
 ├── tests/
 ├── requirements.txt
 ├── README.md

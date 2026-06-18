@@ -244,11 +244,13 @@ IR relationship:
 User HAS_MANY Post
 
 PHP:
-$this->hasMany(Post::class)
+relation metadata comments and migration foreign keys
 
 FastAPI:
-relationship("Post", back_populates="user")
+schema/table metadata and migration foreign keys
 ```
+
+Runtime relationship helper methods are intentionally not generated until a target implements the required ORM/runtime support.
 
 ## Determinism
 

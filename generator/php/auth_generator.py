@@ -55,19 +55,6 @@ class AuthGenerator:
         middleware_dir = self.output_dir / "middleware"
         middleware_dir.mkdir(parents=True, exist_ok=True)
 
-        for middleware in ir["middlewares"]:
-            template = "middleware/auth_middleware.tpl"
-            content = self.template_engine.render(
-                template,
-                {
-                    "class_name": middleware["name"],
-                    "token_service_class": "TokenService",
-                },
-            )
-            path = middleware_dir / f"{middleware['name']}.php"
-            path.write_text(content, encoding="utf-8")
-            self._report(path, template)
-
     def _service_template(self, service_name: str) -> str:
         templates = {
             "PasswordHasher": "services/password_hasher.tpl",

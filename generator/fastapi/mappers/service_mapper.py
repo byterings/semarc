@@ -1,4 +1,5 @@
 from generator.fastapi.mappers.name_utils import snake_case
+from generator.utils.inflector import pluralize
 
 
 class ServiceMapper:
@@ -18,6 +19,23 @@ class ServiceMapper:
                     "template": template,
                     "values": {
                         "secret_key": f"{ir['project']}_prototype_secret",
+                    },
+                }
+            )
+
+        for model in ir["models"]:
+            snake = snake_case(model["name"])
+            mapped.append(
+                {
+                    "path": f"services/{snake}_service.py",
+                    "template": "services/model_service.tpl",
+                    "values": {
+                        "class_name": f"{model['name']}Service",
+                        "repository_class": f"{model['name']}Repository",
+                        "repository_module": f"{snake}_repository",
+                        "repository_variable": f"{snake}_repository",
+                        "create_method": f"create_{snake}",
+                        "list_method": f"get_{pluralize(snake)}",
                     },
                 }
             )

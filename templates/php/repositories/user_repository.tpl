@@ -2,36 +2,25 @@
 
 class {{class_name}}
 {
-    private array $users = [];
-
-    public function createUser(array $data): array
+    public function {{create_method}}(array $data): array
     {
-        $user = [
-            'id' => count($this->users) + 1,
-            'name' => $data['name'] ?? '',
-            'email' => $data['email'] ?? '',
-            'password' => $data['password'] ?? '',
+        // TODO: connect this repository to the selected database adapter.
+        return [
+            'status' => 'TODO',
+            'data' => $data,
         ];
-
-        $this->users[] = $user;
-
-        return $user;
     }
 
-    public function findUserByEmail(string $email): ?array
+    public function {{find_method}}(int $id): ?array
     {
-        foreach ($this->users as $user) {
-            if (($user['email'] ?? '') === $email) {
-                return $user;
-            }
-        }
-
+        // TODO: connect this repository to the selected database adapter.
         return null;
     }
 
-    public function getUsers(): array
+    public function {{list_method}}(): array
     {
-        return $this->users;
+        // TODO: connect this repository to the selected database adapter.
+        return [];
     }
 {{relationship_methods}}
 }

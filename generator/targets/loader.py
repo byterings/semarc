@@ -18,17 +18,33 @@ class TargetLoader:
             name=metadata["name"],
             language=metadata["language"],
             description=metadata["description"],
+            generator=metadata.get("generator", metadata["name"]),
+            supports=tuple(metadata.get("supports", [])),
             source_path=path,
         )
 
-    def _read_metadata(self, path: Path) -> dict[str, str]:
+    def _read_metadata(self, path: Path) -> dict:
         values = {}
+        current_list_key = None
         for raw_line in path.read_text(encoding="utf-8").splitlines():
-            line = raw_line.strip()
+            stripped = raw_line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            if stripped.startswith("-") and current_list_key:
+                values.setdefault(current_list_key, []).append(stripped[1:].strip().strip("\"'"))
+                continue
+            current_list_key = None
+            line = stripped
             if not line or line.startswith("#"):
                 continue
             if ":" not in line:
                 raise ValueError(f"Invalid target metadata line: {line}")
             key, value = line.split(":", 1)
-            values[key.strip()] = value.strip().strip("\"'")
+            key = key.strip()
+            value = value.strip().strip("\"'")
+            if value == "":
+                values[key] = []
+                current_list_key = key
+            else:
+                values[key] = value
         return values

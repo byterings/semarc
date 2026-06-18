@@ -10,8 +10,9 @@ ROOT = Path(__file__).resolve().parents[1]
 CHECKS = [
     ("Unit Tests", [sys.executable, "-m", "unittest", "discover", "-s", "tests", "-p", "test_semarc.py"]),
     ("Integration Tests", [sys.executable, "-m", "unittest", "discover", "-s", "tests/integration"]),
-    ("Golden Tests", [sys.executable, "-m", "unittest", "discover", "-s", "tests/golden"]),
-    ("Regression Tests", [sys.executable, "-m", "unittest", "discover", "-s", "tests/regression"]),
+        ("Golden Tests", [sys.executable, "-m", "unittest", "discover", "-s", "tests/golden"]),
+        ("Target Compliance Tests", [sys.executable, "-m", "unittest", "discover", "-s", "tests/target_compliance"]),
+        ("Regression Tests", [sys.executable, "-m", "unittest", "discover", "-s", "tests/regression"]),
     ("Release Tests", [sys.executable, "-m", "unittest", "discover", "-s", "tests/release"]),
     (
         "Compile Checks",

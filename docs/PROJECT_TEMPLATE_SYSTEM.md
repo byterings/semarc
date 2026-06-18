@@ -101,17 +101,17 @@ output/
 ├── public/
 │   ├── index.php
 │   └── .htaccess
-├── app/
-│   ├── Controllers/
-│   ├── Services/
-│   └── Models/
-├── routes/
-│   └── web.php
 ├── config/
 │   ├── app.php
 │   └── database.php
-├── storage/
 ├── tests/
+├── controllers/
+├── models/
+├── repositories/
+├── services/
+├── validators/
+├── migrations/
+├── routes.php
 ├── README.md
 ├── .env.example
 ├── Dockerfile
@@ -119,23 +119,21 @@ output/
 └── generator_manifest.json
 ```
 
-Legacy PHP output files are still generated for compatibility.
+PHP exposes `/`, `/health`, and `/routes` from `routes.php`.
 
 ### FastAPI
 
-FastAPI output now includes an application package:
+FastAPI output now includes direct project modules:
 
 ```text
 output/
-├── app/
-│   ├── main.py
-│   ├── config.py
-│   ├── routers/
-│   ├── models/
-│   ├── schemas/
-│   ├── services/
-│   ├── middleware/
-│   └── repositories/
+├── main.py
+├── routers/
+├── models/
+├── schemas/
+├── services/
+├── middleware/
+├── repositories/
 ├── tests/
 ├── requirements.txt
 ├── README.md
@@ -145,7 +143,7 @@ output/
 └── generator_manifest.json
 ```
 
-Legacy FastAPI files remain at the previous output paths for compatibility.
+FastAPI exposes `/`, `/health`, and `/routes` from `main.py`.
 
 ### NestJS
 

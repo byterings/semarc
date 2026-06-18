@@ -1,19 +1,13 @@
 <?php
 
-require_once __DIR__ . '/../services/TokenService.php';
-require_once __DIR__ . '/../services/PasswordHasher.php';
 require_once __DIR__ . '/../validators/Validator.php';
 
 class {{controller_name}}
 {
-    private TokenService $tokens;
-    private PasswordHasher $passwords;
     private Validator $validator;
 
     public function __construct()
     {
-        $this->tokens = new TokenService();
-        $this->passwords = new PasswordHasher();
         $this->validator = new Validator();
     }
 
@@ -33,13 +27,9 @@ class {{controller_name}}
             return;
         }
 
-        $token = $this->tokens->generate([
-            'email' => $input['email'],
-            'project' => '{{project_name}}',
-        ]);
-
+        http_response_code(501);
         echo json_encode([
-            'token' => $token,
+            'error' => 'Authentication implementation is a generated TODO scaffold.',
             'project' => '{{project_name}}',
         ]);
     }

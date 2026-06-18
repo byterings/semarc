@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from generator.php.template_engine import TemplateEngine
+from generator.utils.inflector import camel_case, pluralize
 
 
 class ModelGenerator:
@@ -31,42 +32,9 @@ class ModelGenerator:
                 assignments.append(f"        $this->{name} = $data['{name}'] ?? 0;")
 
             for relation in model.get("relations", []):
-                if relation["source"] == model["name"] and relation["type"] == "HAS_MANY":
-                    method = self._plural_method(relation["target"])
-                    relationships.append(
-                        "\n".join(
-                            [
-                                f"    public function {method}()",
-                                "    {",
-                                f"        return $this->hasMany({relation['target']}::class);",
-                                "    }",
-                            ]
-                        )
-                    )
-                elif relation["source"] == model["name"] and relation["type"] == "HAS_ONE":
-                    method = relation["target"][0].lower() + relation["target"][1:]
-                    relationships.append(
-                        "\n".join(
-                            [
-                                f"    public function {method}()",
-                                "    {",
-                                f"        return $this->hasOne({relation['target']}::class);",
-                                "    }",
-                            ]
-                        )
-                    )
-                elif relation["target"] == model["name"] and relation["type"] in {"HAS_MANY", "HAS_ONE"}:
-                    method = relation["source"][0].lower() + relation["source"][1:]
-                    relationships.append(
-                        "\n".join(
-                            [
-                                f"    public function {method}()",
-                                "    {",
-                                f"        return $this->belongsTo({relation['source']}::class);",
-                                "    }",
-                            ]
-                        )
-                    )
+                relationship_properties.append(
+                    f"    // Relation metadata: {relation['source']} {relation['type']} {relation['target']}"
+                )
 
             template = "model.tpl"
             content = self.template_engine.render(
@@ -93,10 +61,7 @@ class ModelGenerator:
         }.get(semantic_type, "string")
 
     def _plural_method(self, model_name: str) -> str:
-        method = model_name[0].lower() + model_name[1:]
-        if method.endswith("s"):
-            return method
-        return method + "s"
+        return camel_case(pluralize(model_name))
 
     def _report(self, path: Path, template: str) -> None:
         if self.reporter:

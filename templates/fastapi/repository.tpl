@@ -1,23 +1,16 @@
 class {{class_name}}:
-    def __init__(self):
-        self.{{collection_name}} = []
-
     def {{create_method}}(self, data: dict) -> dict:
-        record = {
-            "id": len(self.{{collection_name}}) + 1,
-            "name": data.get("name", ""),
-            "email": data.get("email", ""),
-            "password": data.get("password", ""),
+        # TODO: connect this repository to the selected database adapter.
+        return {
+            "status": "TODO",
+            "data": data,
         }
-        self.{{collection_name}}.append(record)
-        return record
 
-    def find_by_email(self, email: str):
-        for record in self.{{collection_name}}:
-            if record.get("email") == email:
-                return record
+    def find_by_id(self, record_id: int):
+        # TODO: connect this repository to the selected database adapter.
         return None
 
     def {{list_method}}(self) -> list:
-        return self.{{collection_name}}
+        # TODO: connect this repository to the selected database adapter.
+        return []
 {{relationship_methods}}

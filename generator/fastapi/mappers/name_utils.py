@@ -1,10 +1,4 @@
-import re
-
-
-def snake_case(value: str) -> str:
-    value = re.sub(r"(.)([A-Z][a-z]+)", r"\1_\2", value)
-    value = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", value)
-    return value.lower()
+from generator.utils.inflector import snake_case
 
 
 def python_type(semantic_type: str) -> str:

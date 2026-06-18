@@ -9,6 +9,8 @@ from generator.php.repository_generator import RepositoryGenerator
 from generator.php.routes_generator import RoutesGenerator
 from generator.php.template_engine import TemplateEngine
 from generator.php.validator_generator import ValidatorGenerator
+from generator.utils.inflector import pluralize
+from generator.utils.project_experience import route_lines
 
 
 class PhpGenerator:
@@ -25,10 +27,11 @@ class PhpGenerator:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self._prepare_output_dirs()
 
-        RoutesGenerator(self.output_dir, self.template_engine, self._record).generate(ir)
         ModelGenerator(self.output_dir, self.template_engine, self._record).generate(ir)
         AuthGenerator(self.output_dir, self.template_engine, self._record).generate(ir)
         RepositoryGenerator(self.output_dir, self.template_engine, self._record).generate(ir)
+        self._generate_model_services_and_controllers(ir)
+        RoutesGenerator(self.output_dir, self.template_engine, self._record).generate(ir)
         ValidatorGenerator(self.output_dir, self.template_engine, self._record).generate(ir)
         MigrationGenerator(self.output_dir, self.template_engine, self._record).generate(ir)
         self._generate_database_config(ir)
@@ -79,13 +82,52 @@ class PhpGenerator:
             "migrations",
             "routers",
             "schemas",
+            "app",
+            "routes",
+            "storage",
         ]:
             target_dir = self.output_dir / directory
             if not target_dir.exists():
                 continue
+            if directory in {"app", "routes", "storage"}:
+                shutil.rmtree(target_dir)
+                continue
             for generated_file in target_dir.glob("*"):
                 if generated_file.is_file() and generated_file.suffix in {".php", ".py", ".sql"}:
                     generated_file.unlink()
+
+    def _generate_model_services_and_controllers(self, ir: dict) -> None:
+        for model in ir["models"]:
+            model_name = model["name"]
+            service_name = f"{model_name}Service"
+            repository_name = f"{model_name}Repository"
+            controller_name = f"{model_name}Controller"
+            create_method = f"create{model_name}"
+            list_method = f"get{self._pluralize(model_name)}"
+
+            service_path = self.output_dir / "services" / f"{service_name}.php"
+            service_content = self.template_engine.render(
+                "services/model_service.tpl",
+                {
+                    "service_name": service_name,
+                    "repository_name": repository_name,
+                    "create_method": create_method,
+                    "list_method": list_method,
+                },
+            )
+            service_path.write_text(service_content, encoding="utf-8")
+            self._record(service_path, "services/model_service.tpl")
+
+            controller_path = self.output_dir / "controllers" / f"{controller_name}.php"
+            controller_content = self.template_engine.render(
+                "controllers/model_controller.tpl",
+                {
+                    "controller_name": controller_name,
+                    "service_name": service_name,
+                },
+            )
+            controller_path.write_text(controller_content, encoding="utf-8")
+            self._record(controller_path, "controllers/model_controller.tpl")
 
     def _generate_database_config(self, ir: dict) -> None:
         engine = ir["config"]["database"]["engine"]
@@ -111,11 +153,6 @@ class PhpGenerator:
         writer = ProjectFileWriter(self.output_dir, self._record)
         for directory in [
             "public",
-            "app/Controllers",
-            "app/Services",
-            "app/Models",
-            "routes",
-            "storage",
             "tests",
         ]:
             (self.output_dir / directory).mkdir(parents=True, exist_ok=True)
@@ -126,7 +163,7 @@ class PhpGenerator:
                 [
                     "<?php",
                     "",
-                    "require_once __DIR__ . '/../routes/web.php';",
+                    "require_once __DIR__ . '/../routes.php';",
                     "",
                 ]
             ),
@@ -145,26 +182,30 @@ class PhpGenerator:
             "php htaccess",
         )
         writer.write_text(
-            "routes/web.php",
-            "<?php\n\nrequire_once __DIR__ . '/../routes.php';\n",
-            "php web routes",
-        )
-        writer.write_text(
             "config/app.php",
             "<?php\n\nreturn [\n    'name' => getenv('APP_NAME') ?: '" + ir["project"] + "',\n];\n",
             "php app config",
         )
         writer.write_text(
             "tests/FeatureTest.php",
-            "<?php\n\n// Generated project test placeholder.\n",
-            "php test placeholder",
+            "\n".join(
+                [
+                    "<?php",
+                    "",
+                    "// Scaffold tests for generated route/controller/service/repository wiring.",
+                    "$expectedRoutes = " + self._php_array(["GET /", "GET /health", "GET /routes"] + route_lines(ir)) + ";",
+                    "foreach ($expectedRoutes as $route) {",
+                    "    assert(is_string($route));",
+                    "}",
+                    "assert(file_exists(__DIR__ . '/../routes.php'));",
+                    "assert(is_dir(__DIR__ . '/../controllers'));",
+                    "assert(is_dir(__DIR__ . '/../services'));",
+                    "assert(is_dir(__DIR__ . '/../repositories'));",
+                    "",
+                ]
+            ),
+            "php scaffold tests",
         )
-
-        self._copy_if_exists("controllers/AuthController.php", "app/Controllers/AuthController.php")
-        for model in ir["models"]:
-            self._copy_if_exists(f"models/{model['name']}.php", f"app/Models/{model['name']}.php")
-        for service in ir["services"]:
-            self._copy_if_exists(f"services/{service['name']}.php", f"app/Services/{service['name']}.php")
 
         writer.write_readme(ir, "php")
         writer.write_env_example(
@@ -225,3 +266,9 @@ class PhpGenerator:
                 "template": template,
             }
         )
+
+    def _pluralize(self, model_name: str) -> str:
+        return pluralize(model_name)
+
+    def _php_array(self, values: list[str]) -> str:
+        return "[" + ", ".join("'" + value.replace("'", "\\'") + "'" for value in values) + "]"

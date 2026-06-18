@@ -1,6 +1,10 @@
-from generator.fastapi.fastapi_generator import FastApiGenerator
-from generator.nestjs.nestjs_generator import NestJSGenerator
-from generator.php_generator import PhpGenerator
+from architecture.contracts import (
+    ContractDefinition,
+    ContractValidator,
+    GeneratorArchitectureValidator,
+    TargetContractAdapter,
+)
+from generator.targets.factory import TargetGeneratorFactory
 from generator.targets import TargetRegistry
 
 
@@ -12,14 +16,24 @@ class GenerationPass:
         if target_definition is None:
             raise ValueError(f"No target registered for generator: {generator_name}")
 
-        if generator_name == "php":
-            generator = PhpGenerator(output_dir=context.output_dir, debug=context.debug)
-        elif generator_name == "fastapi":
-            generator = FastApiGenerator(output_dir=context.output_dir, debug=context.debug)
-        elif generator_name == "nestjs":
-            generator = NestJSGenerator(output_dir=context.output_dir, debug=context.debug)
-        else:
-            raise ValueError(f"No generator implemented for target: {context.target_profile['target']}")
+        context.generation_contract = ContractDefinition().build(context.ir)
+        ContractValidator().validate(context.generation_contract, target_definition)
+        context.target_contract_mapping = TargetContractAdapter().map(
+            context.generation_contract,
+            target_definition,
+        )
+
+        generator = TargetGeneratorFactory().create(
+            target_definition,
+            output_dir=context.output_dir,
+            debug=context.debug,
+        )
 
         generator.generate(context.ir)
         context.generated_components = generator.generated_components
+        GeneratorArchitectureValidator().validate(
+            context.generation_contract,
+            target_definition,
+            context.output_dir,
+            context.generated_components,
+        )

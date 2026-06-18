@@ -13,22 +13,9 @@ class {{class_name}}
 
     public function handle(): ?array
     {
-        $header = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
-        $token = $this->extractBearerToken($header);
-
-        if ($token === null) {
-            $this->reject();
-            return null;
-        }
-
-        $payload = $this->tokens->validate($token);
-
-        if ($payload === null) {
-            $this->reject();
-            return null;
-        }
-
-        return $payload;
+        // TODO: connect this middleware to a real authentication provider.
+        $this->reject();
+        return null;
     }
 
     private function extractBearerToken(string $header): ?string

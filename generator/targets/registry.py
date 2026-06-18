@@ -1,4 +1,7 @@
-from generator.targets.target import TargetDefinition
+from pathlib import Path
+
+from generator.targets.loader import TargetLoader
+from generator.targets.target import TargetCapability, TargetDefinition, TargetMetadata
 
 
 class TargetRegistry:
@@ -19,28 +22,27 @@ class TargetRegistry:
     @classmethod
     def builtins(cls) -> "TargetRegistry":
         registry = cls()
-        registry.register(
-            TargetDefinition(
-                name="php",
-                language="PHP",
-                description="Runnable core PHP project generator",
-                generator="php",
-            )
-        )
-        registry.register(
-            TargetDefinition(
-                name="fastapi",
-                language="Python",
-                description="Runnable FastAPI project generator",
-                generator="fastapi",
-            )
-        )
-        registry.register(
-            TargetDefinition(
-                name="nestjs",
-                language="TypeScript",
-                description="Runnable NestJS project generator",
-                generator="nestjs",
-            )
-        )
+        root = Path(__file__).resolve().parents[1]
+        for path in sorted(root.glob("*/project_template/target.yaml")):
+            registry.register(cls._definition_from_metadata(TargetLoader().load(path)))
         return registry
+
+    @staticmethod
+    def _definition_from_metadata(metadata: TargetMetadata) -> TargetDefinition:
+        supports = set(metadata.supports)
+        return TargetDefinition(
+            name=metadata.name,
+            language=metadata.language,
+            description=metadata.description,
+            generator=metadata.generator or metadata.name,
+            metadata={"source_path": str(metadata.source_path or "")},
+            capabilities=TargetCapability(
+                supports_project_layer="project" in supports,
+                supports_configuration_layer="configuration" in supports,
+                supports_entity_layer="entity" in supports,
+                supports_persistence_layer="persistence" in supports,
+                supports_business_layer="business" in supports,
+                supports_api_layer="api" in supports,
+                supports_auth_layer="auth" in supports,
+            ),
+        )

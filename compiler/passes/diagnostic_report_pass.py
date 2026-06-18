@@ -97,6 +97,9 @@ class DiagnosticReportPass:
             "framework": context.target_profile.get("framework", "none"),
             "generator": context.target_profile.get("generator", ""),
         }
+        if context.generation_contract is not None:
+            context.architecture_report["generation_contract"] = context.generation_contract.to_dict()
+            context.architecture_report["target_contract_mapping"] = dict(context.target_contract_mapping)
         context.architecture_report["compilation"] = {
             "passes": list(context.compiler_passes),
             "generated_components": len(context.generated_components),

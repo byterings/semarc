@@ -35,7 +35,10 @@ Semantic Source
 -> Architecture IR
 -> Optimization Pass
 -> Target Profile Selection
+-> Generation Contract
+-> Target Capability Validation
 -> Target Generator
+-> Generated Artifact Validation
 -> Runnable Project
 ```
 
@@ -95,8 +98,9 @@ Architecture synthesis belongs in `architecture/`.
 - `strategy_engine.py` selects implementation strategy and target profile.
 - `expander.py` expands semantic plans before IR generation.
 - `ir_builder.py` produces language-neutral IR.
+- `contracts/` defines the generation contract, target capability validation, target mappings, and generated artifact validation.
 
-Relationship and migration metadata must stay language-neutral in IR. PHP and FastAPI generators may map that metadata to SQL files, migration classes, SQLAlchemy tables, or ORM relationship methods.
+Relationship and migration metadata must stay language-neutral in IR. PHP and FastAPI generators may map that metadata to SQL files, migration classes, and table definitions. Do not generate runtime relationship helper methods until the target implements the underlying relationship runtime.
 
 Rules must be deterministic and centralized.
 
@@ -106,7 +110,15 @@ Future business capabilities should live in packages, profiles, or stdlib metada
 
 ## Generator Boundaries
 
-Generators consume Architecture IR. They do not parse semantic source and do not make semantic decisions.
+Generators consume Architecture IR after the Generation Contract has validated architecture wiring. They do not parse semantic source and do not make semantic decisions.
+
+For model-backed routes, generated targets must preserve this dependency chain:
+
+```text
+API -> Business -> Persistence -> Entity
+```
+
+Do not generate fake security implementations. Auth output should be honest scaffolding or TODO contracts unless a future target/package explicitly implements real security.
 
 SEMARC Core is the architecture engine. Target generators are runnable project builders. Future target work should focus on project templates and target packages, not lexer/parser/compiler expansion.
 
@@ -128,6 +140,8 @@ Project template foundations live under:
 - `generator/php/project_template/`
 - `generator/fastapi/project_template/`
 - `generator/nestjs/project_template/`
+
+Every generated target should expose `/`, `/health`, and `/routes` and should use `generator/utils/inflector.py` for resource names.
 
 Keep generated projects readable, runnable, and prototype-friendly.
 

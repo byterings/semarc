@@ -1,3 +1,6 @@
+from generator.utils.inflector import pluralize, snake_case
+
+
 class ArchitectureIRBuilder:
     """Builds the implementation IR consumed by target-language generators."""
 
@@ -168,9 +171,4 @@ class ArchitectureIRBuilder:
         return sorted(dependencies)
 
     def _table_name(self, model_name: str) -> str:
-        output = []
-        for index, char in enumerate(model_name):
-            if char.isupper() and index > 0:
-                output.append("_")
-            output.append(char.lower())
-        return "".join(output) + "s"
+        return pluralize(snake_case(model_name))

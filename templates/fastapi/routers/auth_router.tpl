@@ -1,10 +1,8 @@
 from fastapi import APIRouter, HTTPException
 
-from services.token_service import TokenService
 from services.validator import Validator
 
 router = APIRouter()
-tokens = TokenService()
 validator = Validator()
 
 
@@ -18,15 +16,15 @@ def login(payload: dict):
     if errors:
         raise HTTPException(status_code=422, detail=errors)
 
-    return {
-        "token": tokens.generate({
-            "email": payload["email"],
-            "project": "{{project_name}}",
-        }),
-        "project": "{{project_name}}",
-    }
+    raise HTTPException(
+        status_code=501,
+        detail="Authentication implementation is a generated TODO scaffold.",
+    )
 
 
 @router.get("/users")
 def get_users():
-    return {"data": []}
+    raise HTTPException(
+        status_code=501,
+        detail="Connect this route to a generated business service.",
+    )
