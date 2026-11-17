@@ -1,7 +1,15 @@
 """Small helpers for emitting TypeScript source from Architecture IR."""
 from generator.utils.inflector import camel_case, kebab_case, resource_path
 
-TS_TYPES = {"STRING": "string", "TEXT": "string", "INTEGER": "number", "FLOAT": "number", "BOOLEAN": "boolean"}
+TS_TYPES = {
+    "STRING": "string",
+    "TEXT": "string",
+    "INTEGER": "number",
+    "FLOAT": "number",
+    "BOOLEAN": "boolean",
+    "DATE": "string",
+    "DATETIME": "Date",
+}
 
 
 def ts_string(value: str) -> str:

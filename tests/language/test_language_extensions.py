@@ -46,6 +46,15 @@ class FieldModifierTests(unittest.TestCase):
         self.assertEqual(modifiers["bio"], ["OPTIONAL"])
         self.assertEqual(modifiers["name"], [])
 
+    def test_date_types_are_parsed(self):
+        ast = parse("PROJECT Demo\nMODEL Event\n    starts_on DATE\n    begins_at DATETIME OPTIONAL\n")
+        self.assertEqual([(field.name, field.field_type) for field in ast.models[0].fields], [("starts_on", "DATE"), ("begins_at", "DATETIME")])
+
+    def test_min_and_max_are_rejected_on_date_fields(self):
+        with self.assertRaises(SemanticValidationError) as raised:
+            validate("PROJECT Demo\nMODEL Event\n    starts_on DATE\nVALIDATE starts_on MIN 1\n")
+        self.assertIn("MIN validation requires a text or numeric field", str(raised.exception))
+
     def test_unknown_field_modifier_is_rejected(self):
         with self.assertRaises(ParserError):
             parse("PROJECT Demo\nMODEL User\n    email STRING PRIMARY\n")

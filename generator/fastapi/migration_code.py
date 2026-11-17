@@ -7,6 +7,8 @@ ALEMBIC_TYPES = {
     "Integer": "sa.Integer()",
     "Float": "sa.Float()",
     "Boolean": "sa.Boolean()",
+    "Date": "sa.Date()",
+    "DateTime": "sa.DateTime()",
 }
 
 

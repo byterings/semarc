@@ -99,12 +99,14 @@ class FastApiGenerator:
             self._write(f"schemas/{module}.py", schema_code(model), "fastapi schema")
             self._write(f"repositories/{module}_repository.py", repository_code(model), "fastapi repository")
             self._write(f"services/{module}_service.py", service_code(model, ir), "fastapi service")
-            model_imports.append(f"from models.{module} import {model['name']}  # noqa: F401")
+            model_imports.append(f"from models.{module} import {model['name']}")
             router = model_router_code(ir, model)
             if router:
                 self._write(f"routers/{module}.py", router, "fastapi router")
                 routers.append(module)
-        self._write("models/__init__.py", "\n".join(model_imports) + "\n", "fastapi model registry")
+        names = ", ".join(repr(model["name"]) for model in ir["models"])
+        registry = "\n".join(['"""Every model, imported so Alembic sees all tables."""', *model_imports, "", f"__all__ = [{names}]", ""])
+        self._write("models/__init__.py", registry, "fastapi model registry")
         return routers
 
     def _migrations(self, ir: dict) -> None:

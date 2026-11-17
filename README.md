@@ -95,7 +95,7 @@ All targets share one API contract (see [docs/GENERATED_API.md](docs/GENERATED_A
 | `PROFILE` | `PROFILE ECOMMERCE` |
 | `USE` | `USE payment.razorpay` |
 
-Field types are `STRING`, `TEXT`, `INTEGER`, `FLOAT` and `BOOLEAN`. Routes are mapped to
+Field types are `STRING`, `TEXT`, `INTEGER`, `FLOAT`, `BOOLEAN`, `DATE` and `DATETIME`. Routes are mapped to
 operations by shape: `GET|POST /posts`, `GET|PUT|PATCH|DELETE /posts/{id}` and
 `GET /users/{id}/posts`. Any other declared route is generated as an explicit `501` stub.
 With `AUTH JWT`, reads are public and writes need a token unless a route says `PUBLIC` or

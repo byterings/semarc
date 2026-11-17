@@ -34,6 +34,11 @@ final class Cast
         return (bool) $value;
     }
 
+    public static function date(mixed $value): ?string
+    {
+        return $value === null ? null : substr((string) $value, 0, 10);
+    }
+
     public static function timestamp(mixed $value): ?string
     {
         if ($value === null) {

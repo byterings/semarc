@@ -9,6 +9,7 @@ CASTS = {
     "INTEGER": "int",
     "FLOAT": "float",
     "BOOLEAN": "bool",
+    "DATE": "date",
     "DATETIME": "timestamp",
 }
 

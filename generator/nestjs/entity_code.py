@@ -2,6 +2,9 @@
 from generator.nestjs.typescript import TS_TYPES, Imports, file_base, folder, ts_string
 from generator.utils.resource_views import field_rules, output_fields, owner_reference, secret_fields, unique_columns
 
+DATE_PATTERN = r"/^\d{4}-\d{2}-\d{2}$/"
+DATETIME_PATTERN = r"/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?$/"
+
 
 def entity_code(model: dict, reserved: set[str]) -> str:
     imports = Imports(reserved)
@@ -56,7 +59,8 @@ def dto_code(model: dict, reserved: set[str], partial: bool) -> str:
         decorators = _presence(imports, name, model_field["name"], rules["required"], partial)
         decorators.extend(_type_decorators(imports, model_field["name"], rules))
         optional = partial or not rules["required"]
-        annotation = TS_TYPES[rules["type"]] + (" | null" if not rules["required"] else "")
+        base = "string" if rules["type"] == "DATETIME" else TS_TYPES[rules["type"]]
+        annotation = base + (" | null" if not rules["required"] else "")
         lines.extend(decorators + [f"  {model_field['name']}{'?' if optional else '!'}: {annotation};", ""])
 
     for reference in model["references"]:
@@ -103,6 +107,13 @@ def _type_decorators(imports: Imports, field_name: str, rules: dict) -> list[str
             decorators.append(f"  @{imports.use('class-validator', 'Min')}({rules['min']})")
         if rules["max"] is not None:
             decorators.append(f"  @{imports.use('class-validator', 'Max')}({rules['max']})")
+    elif field_type in {"DATE", "DATETIME"}:
+        pattern = DATE_PATTERN if field_type == "DATE" else DATETIME_PATTERN
+        description = "a date (YYYY-MM-DD)" if field_type == "DATE" else "an ISO 8601 date and time"
+        decorators.append(f"  @{imports.use('class-validator', 'Matches')}({pattern}, {{ message: '{field_name} must be {description}' }})")
+        decorators.append(
+            f"  @{imports.use('class-validator', 'IsDateString')}({{ strict: true, strictSeparator: true }}, {{ message: '{field_name} must be {description}' }})"
+        )
     else:
         decorators.append(f"  @{imports.use('class-validator', 'IsBoolean')}()")
     return decorators
@@ -162,6 +173,9 @@ def service_code(model: dict, reserved: set[str]) -> str:
     unique = unique_columns(model)
     if unique:
         lines.append(f"  protected readonly unique = [{', '.join(ts_string(column) for column in unique)}];")
+    datetimes = [model_field["name"] for model_field in model["fields"] if model_field["type"] == "DATETIME"]
+    if datetimes:
+        lines.append(f"  protected readonly dateTimes = [{', '.join(ts_string(field) for field in datetimes)}];")
 
     lines.append("")
     if secrets:

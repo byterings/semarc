@@ -73,6 +73,12 @@ class ApiScenarioTests(unittest.TestCase):
         self.assertIn("create User", names)
         self.assertEqual(step(steps, "create User")["save"], {"user_record_id": "data.id"})
 
+    def test_date_samples_use_iso_formats(self):
+        source = "PROJECT Events\n\nDATABASE SQLITE\n\nMODEL Event\n    starts_on DATE\n    begins_at DATETIME\n\nROUTE POST /events\n"
+        body = step(build(source), "create Event")["body"]
+        self.assertRegex(body["starts_on"], r"^\d{4}-\d{2}-\d{2}$")
+        self.assertRegex(body["begins_at"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
+
     def test_other_users_cannot_change_owned_records(self):
         names = [item["name"] for item in self.steps]
         self.assertIn("register second user", names)

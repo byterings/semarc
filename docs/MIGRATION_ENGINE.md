@@ -25,7 +25,8 @@ Every table also gets `id` (auto-increment primary key), `created_at` and `updat
 | `INTEGER` | INT | INTEGER | INTEGER |
 | `FLOAT` | DOUBLE | DOUBLE PRECISION | REAL |
 | `BOOLEAN` | TINYINT(1) | BOOLEAN | INTEGER/BOOLEAN |
-| timestamps | DATETIME | TIMESTAMP | TEXT/DATETIME |
+| `DATE` | DATE | DATE | TEXT/DATE |
+| `DATETIME` and timestamps | DATETIME | TIMESTAMP | TEXT/DATETIME |
 
 Foreign keys are `INTEGER NOT NULL` with a constraint to the parent's `id` and an index
 (or a unique constraint for `HAS_ONE`). Deletes are restricted; the generated services

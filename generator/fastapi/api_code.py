@@ -32,7 +32,15 @@ def model_router_code(ir: dict, model: dict) -> str | None:
         schemas.append(f"{name}Update")
     lines.extend(
         [
-            "from schemas.base import DataResponse, ListResponse",
+            "from schemas.base import "
+            + ", ".join(
+                name
+                for name, used in [
+                    ("DataResponse", bool(kinds - {"list", "list_related", "delete"})),
+                    ("ListResponse", bool(kinds & {"list", "list_related"})),
+                ]
+                if used
+            ),
             f"from schemas.{module} import {', '.join(schemas)}",
             "from services.base import DEFAULT_LIMIT",
             f"from services.{module}_service import {name}Service",

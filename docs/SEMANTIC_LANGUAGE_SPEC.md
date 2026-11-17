@@ -47,7 +47,7 @@ access        := "PUBLIC" | "PROTECTED"
 validate      := "VALIDATE" (FIELD_NAME | MODEL_NAME "." FIELD_NAME) rule+
 rule          := "REQUIRED" | "EMAIL" | "MIN" INTEGER? | "MAX" INTEGER
 
-TYPE          := "STRING" | "TEXT" | "INTEGER" | "FLOAT" | "BOOLEAN"
+TYPE          := "STRING" | "TEXT" | "INTEGER" | "FLOAT" | "BOOLEAN" | "DATE" | "DATETIME"
 RELATION_TYPE := "HAS_MANY" | "HAS_ONE" | "BELONGS_TO"
 HTTP_METHOD   := "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
 MODEL_NAME    := PascalCase identifier
@@ -113,6 +113,8 @@ MODEL User
 | `INTEGER` | INTEGER | integer |
 | `FLOAT` | DOUBLE / REAL | number |
 | `BOOLEAN` | BOOLEAN | `true` / `false` |
+| `DATE` | DATE | `"2026-01-31"` |
+| `DATETIME` | DATETIME / TIMESTAMP (UTC) | `"2026-01-31T09:30:00Z"`; offsets such as `+05:30` are converted to UTC, values without an offset are UTC |
 
 Modifiers:
 
@@ -236,5 +238,5 @@ Free-form instructions are rejected:
 Create a blog API with users and posts
 ```
 
-Not yet expressible: many-to-many relations without an explicit join model, roles and
-permissions, rate limiting, query filters beyond pagination, and date/time field types.
+Not yet expressible: many-to-many relations without an explicit join model, and roles and
+permissions.

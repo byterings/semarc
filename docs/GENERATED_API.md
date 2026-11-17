@@ -89,7 +89,8 @@ an owner:
 
 - Bodies must be JSON objects. Malformed JSON returns 400. Unknown fields are ignored.
 - Types are strict: `STRING`/`TEXT` need JSON strings, `INTEGER` an integer, `FLOAT` a
-  number, `BOOLEAN` `true`/`false`. `"5"` is not an integer.
+  number, `BOOLEAN` `true`/`false`, `DATE` a `YYYY-MM-DD` string and `DATETIME` an ISO 8601
+  string. `"5"` is not an integer. Date-times are stored in UTC and returned with a `Z` suffix.
 - Fields are required unless declared `OPTIONAL`. `PATCH` accepts any subset but cannot set
   a required field to `null`.
 - `VALIDATE` rules: `REQUIRED` (non-blank string), `EMAIL`, `MIN n` / `MAX n` (length for

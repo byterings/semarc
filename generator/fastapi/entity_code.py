@@ -2,8 +2,25 @@
 from generator.utils.inflector import snake_case
 from generator.utils.resource_views import field_rules, owner_reference, secret_fields, unique_columns
 
-PYTHON_TYPES = {"STRING": "str", "TEXT": "str", "INTEGER": "int", "FLOAT": "float", "BOOLEAN": "bool"}
-COLUMN_TYPES = {"STRING": "String(255)", "TEXT": "Text", "INTEGER": "Integer", "FLOAT": "Float", "BOOLEAN": "Boolean"}
+PYTHON_TYPES = {
+    "STRING": "str",
+    "TEXT": "str",
+    "INTEGER": "int",
+    "FLOAT": "float",
+    "BOOLEAN": "bool",
+    "DATE": "date",
+    "DATETIME": "datetime",
+}
+INPUT_TYPES = {"DATE": "IsoDate", "DATETIME": "IsoDateTime"}
+COLUMN_TYPES = {
+    "STRING": "String(255)",
+    "TEXT": "Text",
+    "INTEGER": "Integer",
+    "FLOAT": "Float",
+    "BOOLEAN": "Boolean",
+    "DATE": "Date",
+    "DATETIME": "DateTime",
+}
 
 
 def module_name(model_name: str) -> str:
@@ -15,7 +32,7 @@ def model_code(model: dict) -> str:
     if model["references"]:
         sql_types = sorted(set(sql_types) | {"ForeignKey"})
     lines = [
-        "from datetime import datetime",
+        "from datetime import date, datetime" if any(model_field["type"] == "DATE" for model_field in model["fields"]) else "from datetime import datetime",
         "",
         f"from sqlalchemy import {', '.join(sql_types)}",
         "from sqlalchemy.orm import Mapped, mapped_column",
@@ -64,36 +81,58 @@ def schema_code(model: dict) -> str:
     required = [field for field, rule in rules.items() if rule["required"]]
     required += [reference["column"] for reference in model["references"] if not reference["owner"]]
 
-    lines = [
-        "from datetime import datetime",
-        "",
-        "from pydantic import Field, field_validator",
-        "",
-        "from schemas.base import InputSchema, OutputSchema, not_empty, not_null, valid_email",
-        "",
-        "",
-        f"class {name}Create(InputSchema):",
-    ]
+    datetimes = [field for field, rule in rules.items() if rule["type"] == "DATETIME"]
+    date_imports = ["date"] if any(rule["type"] == "DATE" for rule in rules.values()) else []
+
+    lines = []
+    if date_imports:
+        lines.extend([f"from datetime import {', '.join(date_imports)}", ""])
+    lines.extend(
+        [
+            "PYDANTIC_IMPORTS",
+            "",
+            "from schemas.base import (",
+            *[f"    {name}," for name in _schema_imports(rules, not_empty, emails, required, datetimes)],
+            ")",
+            "",
+            "",
+            f"class {name}Create(InputSchema):",
+        ]
+    )
     lines.extend(_input_fields(model, rules, optional=False))
-    lines.extend(_validators(not_empty, emails, []))
+    lines.extend(_validators(not_empty, emails, [], datetimes))
     lines.extend(["", "", f"class {name}Update(InputSchema):"])
     lines.extend(_input_fields(model, rules, optional=True))
-    lines.extend(_validators(not_empty, emails, required))
+    lines.extend(_validators(not_empty, emails, required, datetimes))
     lines.extend(["", "", f"class {name}Read(OutputSchema):", "    id: int"])
     for model_field in model["fields"]:
         if model_field.get("secret", False):
             continue
-        annotation = PYTHON_TYPES[model_field["type"]] + ("" if model_field["required"] else " | None")
+        base = "UtcDateTime" if model_field["type"] == "DATETIME" else PYTHON_TYPES[model_field["type"]]
+        annotation = base + ("" if model_field["required"] else " | None")
         lines.append(f"    {model_field['name']}: {annotation}")
     lines.extend(f"    {reference['column']}: int" for reference in model["references"])
-    lines.extend(["    created_at: datetime", "    updated_at: datetime", ""])
-    return "\n".join(lines)
+    lines.extend(["    created_at: UtcDateTime", "    updated_at: UtcDateTime", ""])
+    body = "\n".join(lines)
+    pydantic = [name for name in ["Field", "field_validator"] if f"{name}(" in body]
+    return body.replace("PYDANTIC_IMPORTS\n\n", f"from pydantic import {', '.join(pydantic)}\n\n" if pydantic else "")
+
+
+def _schema_imports(rules: dict, not_empty: list, emails: list, required: list, datetimes: list) -> list[str]:
+    types = {rule["type"] for rule in rules.values()}
+    names = {"InputSchema", "OutputSchema", "UtcDateTime"}
+    names |= {"IsoDate"} if "DATE" in types else set()
+    names |= {"IsoDateTime", "utc_naive"} if datetimes else set()
+    names |= {"not_empty"} if not_empty else set()
+    names |= {"valid_email"} if emails else set()
+    names |= {"not_null"} if required else set()
+    return sorted(names)
 
 
 def _input_fields(model: dict, rules: dict, optional: bool) -> list[str]:
     lines = []
     for field_name, rule in rules.items():
-        annotation = PYTHON_TYPES[rule["type"]]
+        annotation = INPUT_TYPES.get(rule["type"], PYTHON_TYPES[rule["type"]])
         options = []
         if optional or not rule["required"]:
             annotation += " | None"
@@ -121,12 +160,13 @@ def _input_fields(model: dict, rules: dict, optional: bool) -> list[str]:
     return lines or ["    pass"]
 
 
-def _validators(not_empty: list[str], emails: list[str], required: list[str]) -> list[str]:
+def _validators(not_empty: list[str], emails: list[str], required: list[str], datetimes: list[str]) -> list[str]:
     lines = []
     for attribute, fields, function in [
         ("_not_empty", not_empty, "not_empty"),
         ("_valid_email", emails, "valid_email"),
         ("_not_null", required, "not_null"),
+        ("_utc", datetimes, "utc_naive"),
     ]:
         if fields:
             arguments = ", ".join(f'"{field}"' for field in fields)
@@ -161,7 +201,16 @@ def service_code(model: dict, ir: dict) -> str:
         [
             f"from repositories.{module}_repository import {name}Repository",
             f"from schemas.{module} import {name}Read",
-            "from services.base import Dependent, Reference, ResourceService",
+            "from services.base import "
+            + ", ".join(
+                name
+                for name, used in [
+                    ("Dependent", bool(model["dependents"])),
+                    ("Reference", bool(model["references"])),
+                    ("ResourceService", True),
+                ]
+                if used
+            ),
         ]
     )
     if secrets:

@@ -358,6 +358,10 @@ class ApiScenarioBuilder:
         if field_type == "INTEGER":
             value = (rules.get("min") if rules.get("min") is not None else 1) + variant
             return min(value, rules["max"]) if rules.get("max") is not None else value
+        if field_type == "DATE":
+            return f"2026-01-{10 + variant % 18:02d}"
+        if field_type == "DATETIME":
+            return f"2026-01-{10 + variant % 18:02d}T10:30:00Z"
         if field_type == "FLOAT":
             value = (rules.get("min") if rules.get("min") is not None else 1) + variant + 0.5
             return min(value, rules["max"]) if rules.get("max") is not None else value

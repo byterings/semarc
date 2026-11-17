@@ -8,9 +8,9 @@ declare(strict_types=1);
 final class Schema
 {
     private const TYPES = [
-        'mysql' => ['STRING' => 'VARCHAR(255)', 'TEXT' => 'TEXT', 'INTEGER' => 'INT', 'FLOAT' => 'DOUBLE', 'BOOLEAN' => 'TINYINT(1)', 'DATETIME' => 'DATETIME'],
-        'pgsql' => ['STRING' => 'VARCHAR(255)', 'TEXT' => 'TEXT', 'INTEGER' => 'INTEGER', 'FLOAT' => 'DOUBLE PRECISION', 'BOOLEAN' => 'BOOLEAN', 'DATETIME' => 'TIMESTAMP'],
-        'sqlite' => ['STRING' => 'VARCHAR(255)', 'TEXT' => 'TEXT', 'INTEGER' => 'INTEGER', 'FLOAT' => 'REAL', 'BOOLEAN' => 'INTEGER', 'DATETIME' => 'TEXT'],
+        'mysql' => ['STRING' => 'VARCHAR(255)', 'TEXT' => 'TEXT', 'INTEGER' => 'INT', 'FLOAT' => 'DOUBLE', 'BOOLEAN' => 'TINYINT(1)', 'DATE' => 'DATE', 'DATETIME' => 'DATETIME'],
+        'pgsql' => ['STRING' => 'VARCHAR(255)', 'TEXT' => 'TEXT', 'INTEGER' => 'INTEGER', 'FLOAT' => 'DOUBLE PRECISION', 'BOOLEAN' => 'BOOLEAN', 'DATE' => 'DATE', 'DATETIME' => 'TIMESTAMP'],
+        'sqlite' => ['STRING' => 'VARCHAR(255)', 'TEXT' => 'TEXT', 'INTEGER' => 'INTEGER', 'FLOAT' => 'REAL', 'BOOLEAN' => 'INTEGER', 'DATE' => 'TEXT', 'DATETIME' => 'TEXT'],
     ];
 
     private const PRIMARY_KEYS = [

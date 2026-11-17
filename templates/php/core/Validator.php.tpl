@@ -49,7 +49,11 @@ final class Validator
                 continue;
             }
 
-            $clean[$name] = $rules['type'] === 'FLOAT' ? (float) $value : $value;
+            $clean[$name] = match ($rules['type']) {
+                'FLOAT' => (float) $value,
+                'DATETIME' => self::utc((string) $value),
+                default => $value,
+            };
         }
 
         if ($errors !== []) {
@@ -66,8 +70,39 @@ final class Validator
             'INTEGER' => is_int($value) ? null : "{$name} must be an integer",
             'FLOAT' => is_int($value) || is_float($value) ? null : "{$name} must be a number",
             'BOOLEAN' => is_bool($value) ? null : "{$name} must be a boolean",
+            'DATE' => self::isDate($value) ? null : "{$name} must be a date (YYYY-MM-DD)",
+            'DATETIME' => self::isDateTime($value) ? null : "{$name} must be an ISO 8601 date and time",
             default => null,
         };
+    }
+
+    public static function isDate(mixed $value): bool
+    {
+        if (!is_string($value) || preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $value, $parts) !== 1) {
+            return false;
+        }
+
+        return checkdate((int) $parts[2], (int) $parts[3], (int) $parts[1]);
+    }
+
+    public static function isDateTime(mixed $value): bool
+    {
+        if (!is_string($value)
+            || preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?$/', $value) !== 1
+            || !self::isDate(substr($value, 0, 10))) {
+            return false;
+        }
+        [$hour, $minute, $second] = array_map('intval', explode(':', substr($value, 11, 8)));
+
+        return $hour < 24 && $minute < 60 && $second < 60;
+    }
+
+    /** Converts an ISO 8601 value to the stored UTC form; values without an offset are UTC. */
+    public static function utc(string $value): string
+    {
+        return (new DateTimeImmutable($value, new DateTimeZone('UTC')))
+            ->setTimezone(new DateTimeZone('UTC'))
+            ->format('Y-m-d H:i:s');
     }
 
     /**

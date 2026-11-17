@@ -19,6 +19,7 @@ MODEL Teacher
 MODEL Course
     title STRING
     code STRING UNIQUE
+    starts_on DATE
 
 MODEL Enrollment
     grade STRING OPTIONAL

@@ -7,6 +7,8 @@ MODEL Item
     title STRING
     price FLOAT
     in_stock BOOLEAN
+    available_from DATETIME
+    released DATE OPTIONAL
 
 RELATION Category HAS_MANY Item
 

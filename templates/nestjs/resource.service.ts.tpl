@@ -36,6 +36,7 @@ export abstract class ResourceService<T extends ObjectLiteral> {
   protected readonly references: Reference[] = [];
   protected readonly dependents: Dependent[] = [];
   protected readonly unique: string[] = [];
+  protected readonly dateTimes: string[] = [];
 
   protected constructor(protected readonly repository: ResourceRepository<T>) {}
 
@@ -61,7 +62,7 @@ export abstract class ResourceService<T extends ObjectLiteral> {
   }
 
   async create(input: object, ownerId?: number): Promise<Data> {
-    const data = defined(input);
+    const data = this.toStored(defined(input));
     this.applyOwner(data, ownerId, true, false);
     await this.checkReferences(data);
     await this.checkUnique(data);
@@ -71,7 +72,7 @@ export abstract class ResourceService<T extends ObjectLiteral> {
   async update(id: number, input: object, partial: boolean, ownerId?: number): Promise<Data> {
     const record = await this.find(id);
     this.checkOwner(record, ownerId);
-    const data = defined(input);
+    const data = this.toStored(defined(input));
     this.applyOwner(data, ownerId, !partial, true);
     if (Object.keys(data).length === 0) {
       return this.serialize(record);
@@ -112,6 +113,18 @@ export abstract class ResourceService<T extends ObjectLiteral> {
       throw ApiError.notFound(`${this.name} ${id} not found.`);
     }
     return record;
+  }
+
+  /** ISO 8601 date-time strings are stored as UTC Date values without milliseconds. */
+  private toStored(data: Data): Data {
+    for (const field of this.dateTimes) {
+      if (typeof data[field] === 'string') {
+        const value = new Date(data[field] as string);
+        value.setMilliseconds(0);
+        data[field] = value;
+      }
+    }
+    return data;
   }
 
   /** On protected routes, records with an owner column may only be changed by their owner. */
