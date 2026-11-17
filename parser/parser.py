@@ -1,7 +1,7 @@
 from typing import List
 
 from ast_loader import load_ast_builder, load_semantic_nodes
-from lexer.lexer import Token
+from lexer.lexer import FIELD_MODIFIERS, RESERVED_KEYWORDS, ROUTE_ACCESS, VALIDATION_RULES, Token
 
 nodes = load_semantic_nodes()
 ast_builder = load_ast_builder()
@@ -22,6 +22,9 @@ AstBuilder = ast_builder.AstBuilder
 
 class ParserError(Exception):
     pass
+
+
+LEGACY_MIN_LENGTH = 6
 
 
 class Parser:
@@ -82,6 +85,10 @@ class Parser:
                 relations.append(self._parse_relation(tokens))
             elif command == "VALIDATE":
                 validations.append(self._parse_validation(tokens))
+            elif command in RESERVED_KEYWORDS:
+                raise ParserError(
+                    self._message(first, f"{command} is reserved for a future SEMARC version and is not supported yet")
+                )
             else:
                 raise ParserError(self._message(first, f"Unsupported command {first.value}"))
 
@@ -136,16 +143,30 @@ class Parser:
         return self.builder.model(tokens[1].value, tokens[0])
 
     def _parse_field(self, tokens: List[Token]) -> FieldNode:
-        self._expect_length(tokens, 2, "Model field requires a name and type")
-        self._expect(tokens[0], "IDENTIFIER", "Field name must be an identifier")
+        if len(tokens) < 2:
+            raise ParserError(self._message(tokens[0], "Model field requires a name and type"))
+        if tokens[0].token_type not in {"IDENTIFIER", "KEYWORD"}:
+            raise ParserError(self._message(tokens[0], "Field name must be an identifier"))
         self._expect(tokens[1], "TYPE", "Field type must be a supported semantic type")
-        return self.builder.field(tokens[0].value, tokens[1].value, tokens[0])
+        modifiers = []
+        for token in tokens[2:]:
+            if token.value not in FIELD_MODIFIERS:
+                supported = ", ".join(sorted(FIELD_MODIFIERS))
+                raise ParserError(self._message(token, f"Field modifier must be one of: {supported}"))
+            modifiers.append(token.value)
+        return self.builder.field(tokens[0].value, tokens[1].value, tokens[0], modifiers)
 
     def _parse_route(self, tokens: List[Token]) -> RouteNode:
-        self._expect_length(tokens, 3, "ROUTE requires an HTTP method and path")
+        if len(tokens) not in {3, 4}:
+            raise ParserError(self._message(tokens[0], "ROUTE requires an HTTP method, a path, and an optional PUBLIC or PROTECTED"))
         self._expect(tokens[1], "HTTP_METHOD", "ROUTE method must be an HTTP method")
         self._expect(tokens[2], "STRING", "ROUTE path must start with /")
-        return self.builder.route(tokens[1].value, tokens[2].value, tokens[0])
+        access = None
+        if len(tokens) == 4:
+            if tokens[3].value not in ROUTE_ACCESS:
+                raise ParserError(self._message(tokens[3], "ROUTE access must be PUBLIC or PROTECTED"))
+            access = tokens[3].value
+        return self.builder.route(tokens[1].value, tokens[2].value, tokens[0], access)
 
     def _parse_relation(self, tokens: List[Token]) -> RelationNode:
         self._expect_length(tokens, 4, "RELATION requires source model, relation type, and target model")
@@ -158,10 +179,38 @@ class Parser:
         if len(tokens) < 3:
             raise ParserError(self._message(tokens[0], "VALIDATE requires a field and at least one rule"))
         self._expect(tokens[1], "IDENTIFIER", "VALIDATE field must be an identifier")
-        for token in tokens[2:]:
-            if token.value.upper() not in {"REQUIRED", "EMAIL", "MIN"}:
-                raise ParserError(self._message(token, "VALIDATE rule must be supported"))
-        return self.builder.validation(tokens[1].value, [token.value for token in tokens[2:]], tokens[0])
+        model_name, field_name = self._validation_target(tokens[1])
+
+        rules: list[str] = []
+        parameters: dict[str, int] = {}
+        index = 2
+        while index < len(tokens):
+            token = tokens[index]
+            rule = token.value.upper()
+            if rule not in VALIDATION_RULES:
+                supported = ", ".join(sorted(VALIDATION_RULES))
+                raise ParserError(self._message(token, f"VALIDATE rule must be one of: {supported}"))
+            rules.append(rule)
+            index += 1
+
+            if rule in {"MIN", "MAX"}:
+                if index < len(tokens) and tokens[index].token_type == "NUMBER":
+                    parameters[rule] = int(tokens[index].value)
+                    index += 1
+                elif rule == "MIN":
+                    parameters[rule] = LEGACY_MIN_LENGTH
+                else:
+                    raise ParserError(self._message(token, "MAX requires a numeric value, for example MAX 255"))
+
+        return self.builder.validation(field_name, rules, tokens[0], model_name, parameters)
+
+    def _validation_target(self, token: Token) -> tuple[str | None, str]:
+        if "." not in token.value:
+            return None, token.value
+        parts = token.value.split(".")
+        if len(parts) != 2 or not all(parts):
+            raise ParserError(self._message(token, "VALIDATE target must be field or Model.field"))
+        return parts[0], parts[1]
 
     def _expect_length(self, tokens: List[Token], expected: int, message: str) -> None:
         if len(tokens) != expected:

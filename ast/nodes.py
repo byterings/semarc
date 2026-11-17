@@ -98,6 +98,7 @@ class FieldNode(AstNode):
 
     name: str
     field_type: str
+    modifiers: List[str] = field(default_factory=list)
     location: SourceLocation = field(default_factory=SourceLocation)
     metadata: Dict[str, Any] = field(default_factory=dict)
 
@@ -118,6 +119,7 @@ class RouteNode(AstNode):
 
     method: str
     path: str
+    access: Optional[str] = None
     location: SourceLocation = field(default_factory=SourceLocation)
     metadata: Dict[str, Any] = field(default_factory=dict)
 
@@ -139,6 +141,8 @@ class ValidationNode(AstNode):
 
     field_name: str
     rules: List[str] = field(default_factory=list)
+    model_name: Optional[str] = None
+    parameters: Dict[str, int] = field(default_factory=dict)
     location: SourceLocation = field(default_factory=SourceLocation)
     metadata: Dict[str, Any] = field(default_factory=dict)
 

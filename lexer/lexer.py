@@ -19,6 +19,10 @@ KEYWORDS = {
 TYPES = {"STRING", "INTEGER", "BOOLEAN", "FLOAT", "TEXT"}
 HTTP_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE"}
 RELATION_TYPES = {"HAS_MANY", "BELONGS_TO", "HAS_ONE"}
+FIELD_MODIFIERS = {"UNIQUE", "OPTIONAL"}
+ROUTE_ACCESS = {"PUBLIC", "PROTECTED"}
+VALIDATION_RULES = {"REQUIRED", "EMAIL", "MIN", "MAX"}
+RESERVED_KEYWORDS = {"CONFIG", "SERVICE"}
 
 
 @dataclass(frozen=True)
@@ -75,4 +79,6 @@ class Lexer:
             return "RELATION_TYPE"
         if value.startswith("/"):
             return "STRING"
+        if value.isdigit():
+            return "NUMBER"
         return "IDENTIFIER"

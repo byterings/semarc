@@ -41,17 +41,19 @@ class AstBuilder:
     def model(self, name: str, token) -> ModelNode:
         return ModelNode(name=name, location=self._location(token))
 
-    def field(self, name: str, field_type: str, token) -> FieldNode:
+    def field(self, name: str, field_type: str, token, modifiers: list[str] | None = None) -> FieldNode:
         return FieldNode(
             name=name,
             field_type=field_type.upper(),
+            modifiers=[modifier.upper() for modifier in modifiers or []],
             location=self._location(token),
         )
 
-    def route(self, method: str, path: str, token) -> RouteNode:
+    def route(self, method: str, path: str, token, access: str | None = None) -> RouteNode:
         return RouteNode(
             method=method.upper(),
             path=path,
+            access=access.upper() if access else None,
             location=self._location(token),
         )
 
@@ -63,10 +65,19 @@ class AstBuilder:
             location=self._location(token),
         )
 
-    def validation(self, field_name: str, rules: list[str], token) -> ValidationNode:
+    def validation(
+        self,
+        field_name: str,
+        rules: list[str],
+        token,
+        model_name: str | None = None,
+        parameters: dict[str, int] | None = None,
+    ) -> ValidationNode:
         return ValidationNode(
             field_name=field_name,
             rules=[rule.upper() for rule in rules],
+            model_name=model_name,
+            parameters={key.upper(): value for key, value in (parameters or {}).items()},
             location=self._location(token),
         )
 

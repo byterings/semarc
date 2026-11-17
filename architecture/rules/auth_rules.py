@@ -1,3 +1,13 @@
+AUTH_MODEL = "User"
+AUTH_IDENTITY_FIELD = "email"
+AUTH_SECRET_FIELD = "password"
+AUTH_ROUTES = {
+    ("POST", "/register"): "register",
+    ("POST", "/login"): "login",
+    ("GET", "/me"): "me",
+}
+
+
 def apply_auth_rules(architecture, plan: dict, graph) -> None:
     if not architecture.auth:
         return
