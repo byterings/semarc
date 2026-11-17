@@ -48,7 +48,7 @@ def test_api_scenario() -> None:
 
     for step in scenario["steps"]:
         path = re.sub(r"\$\{(\w+)\}", lambda match: str(variables.get(match.group(1), "")), step["path"])
-        headers = {}
+        headers = dict(step.get("headers", {}))
         if step.get("auth"):
             headers["Authorization"] = f"Bearer {variables.get(step.get('auth_as', 'token'), '')}"
         if "token" in step:
@@ -62,7 +62,10 @@ def test_api_scenario() -> None:
         payload = response.json() if is_json and response.content else None
         label = f"{step['name']} ({step['method']} {path}): {response.text[:300]}"
 
-        assert response.status_code == step["expect"], label
+        expected = step["expect"] if isinstance(step["expect"], list) else [step["expect"]]
+        assert response.status_code in expected, label
+        for name, value in step.get("expect_headers", {}).items():
+            assert response.headers.get(name) == value, f"{label}\n  header {name}: expected {value!r}"
         for json_path, expected in step.get("equals", {}).items():
             expected = resolve(expected, variables)
             actual = dig(payload, json_path)

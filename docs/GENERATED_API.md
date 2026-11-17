@@ -17,6 +17,16 @@ project (see [Verification](#verification)).
 
 These paths are reserved and cannot be declared with `ROUTE`.
 
+## CORS
+
+Browser clients are allowed by default. `CORS_ORIGINS` is `*` (any origin) or a comma
+separated list such as `https://app.example.com,https://admin.example.com`. Allowed
+responses carry `Access-Control-Allow-Origin`; preflight `OPTIONS` requests are answered with
+the allowed methods (`GET, POST, PUT, PATCH, DELETE, OPTIONS`), headers (`Authorization,
+Content-Type`) and a 600 second max age. Because authentication uses bearer tokens rather
+than cookies, `*` does not expose credentials; restrict it to your frontend's origin in
+production anyway.
+
 ## Route operations
 
 Declared routes are mapped to operations by their shape. `{param}` is any path parameter.

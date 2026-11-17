@@ -10,7 +10,9 @@ interface Step {
   name: string;
   method: string;
   path: string;
-  expect: number;
+  expect: number | number[];
+  headers?: Record<string, string>;
+  expect_headers?: Record<string, string>;
   auth?: boolean;
   auth_as?: string;
   token?: string;
@@ -66,8 +68,11 @@ describe('API scenario (test/api_scenario.json)', () => {
     const variables: Record<string, unknown> = {};
     for (const step of scenario.steps) {
       const path = step.path.replace(/\$\{(\w+)\}/g, (_match, name: string) => String(variables[name] ?? ''));
-      const method = step.method.toLowerCase() as 'get' | 'post' | 'put' | 'patch' | 'delete';
+      const method = step.method.toLowerCase() as 'get' | 'post' | 'put' | 'patch' | 'delete' | 'options';
       let call = request(app.getHttpServer())[method](path);
+      for (const [name, value] of Object.entries(step.headers ?? {})) {
+        call = call.set(name, value);
+      }
       if (step.auth) {
         call = call.set('Authorization', `Bearer ${String(variables[step.auth_as ?? 'token'] ?? '')}`);
       }
@@ -77,7 +82,11 @@ describe('API scenario (test/api_scenario.json)', () => {
       const response = step.body !== undefined ? await call.send(resolve(step.body, variables) as object) : await call;
       const label = `${step.name} (${step.method} ${path}): ${response.text.slice(0, 300)}`;
 
-      expect({ step: label, status: response.status }).toEqual({ step: label, status: step.expect });
+      const expected = Array.isArray(step.expect) ? step.expect : [step.expect];
+      expect({ step: label, status: expected.includes(response.status) }).toEqual({ step: label, status: true });
+      for (const [name, value] of Object.entries(step.expect_headers ?? {})) {
+        expect({ step: label, header: name, value: response.headers[name.toLowerCase()] }).toEqual({ step: label, header: name, value });
+      }
       for (const [jsonPath, expected] of Object.entries(step.equals ?? {})) {
         expect({ step: label, path: jsonPath, value: dig(response.body, jsonPath) }).toEqual({
           step: label,

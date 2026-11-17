@@ -7,6 +7,7 @@ CORE_FILES = [
     "HttpException",
     "Request",
     "Response",
+    "Cors",
     "Router",
     "Cast",
     "Database",

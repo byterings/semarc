@@ -46,6 +46,9 @@ $passed = 0;
 foreach ($scenario['steps'] as $step) {
     $path = preg_replace_callback('/\$\{(\w+)\}/', static fn (array $m): string => (string) ($vars[$m[1]] ?? ''), $step['path']);
     $headers = ['content-type' => 'application/json'];
+    foreach ($step['headers'] ?? [] as $name => $value) {
+        $headers[strtolower($name)] = $value;
+    }
     if (!empty($step['auth'])) {
         $headers['authorization'] = 'Bearer ' . ($vars[$step['auth_as'] ?? 'token'] ?? '');
     }
@@ -62,8 +65,14 @@ foreach ($scenario['steps'] as $step) {
     $json = $response->contentType === 'application/json' && $content !== '' ? json_decode($content, true) : null;
 
     $problems = [];
-    if ($response->status !== $step['expect']) {
-        $problems[] = "expected status {$step['expect']}, got {$response->status}";
+    $expected = (array) $step['expect'];
+    if (!in_array($response->status, $expected, true)) {
+        $problems[] = 'expected status ' . implode(' or ', $expected) . ", got {$response->status}";
+    }
+    foreach ($step['expect_headers'] ?? [] as $name => $value) {
+        if ($response->header($name) !== $value) {
+            $problems[] = "header {$name}: expected {$value}, got " . ($response->header($name) ?? 'nothing');
+        }
     }
     foreach ($step['equals'] ?? [] as $jsonPath => $expected) {
         $expected = $resolve($expected, $vars);

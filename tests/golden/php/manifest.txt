@@ -9,6 +9,7 @@ config/database.php
 controllers/AuthController.php
 controllers/UserController.php
 core/Cast.php
+core/Cors.php
 core/Database.php
 core/Env.php
 core/HomePage.php

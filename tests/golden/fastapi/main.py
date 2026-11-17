@@ -1,9 +1,11 @@
 from html import escape
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from sqlalchemy import text
 
+from config.settings import settings
 from core.errors import register_error_handlers
 from database import engine
 from routers.auth import router as auth_router
@@ -19,6 +21,13 @@ PROJECT = {
 
 app = FastAPI(title=PROJECT["project"], version="0.1.0")
 register_error_handlers(app)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
+    max_age=600,
+)
 
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)

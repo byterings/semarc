@@ -12,7 +12,9 @@ Step format:
     auth     send the saved bearer token
     auth_as  name of the saved token to send instead of "token"
     body     JSON body; {"$ref": "var"} is replaced with a saved value
-    expect   expected HTTP status
+    expect   expected HTTP status, or a list of acceptable statuses
+    headers  extra request headers
+    expect_headers  response headers that must have the given values
     equals   {"dotted.path": value-or-$ref} assertions on the JSON response
     absent   dotted paths that must not exist in the JSON response
     save     {"var": "dotted.path"} values captured from the JSON response
@@ -21,6 +23,7 @@ from generator.utils.inflector import snake_case
 from generator.utils.resource_views import input_fields, models_in_migration_order, owner_reference, unique_columns
 
 MISSING_ID = 999999
+CORS_ORIGIN = "https://app.example.com"
 
 
 class ApiScenarioBuilder:
@@ -45,6 +48,22 @@ class ApiScenarioBuilder:
         self._step("health check", "GET", "/health", 200, equals={"status": "ok", "database": "ok"})
         self._step("route discovery", "GET", "/routes", 200)
         self._step("unknown route", "GET", "/semarc-missing-route", 404)
+        self._step(
+            "CORS headers on requests from a browser",
+            "GET",
+            "/health",
+            200,
+            headers={"Origin": CORS_ORIGIN},
+            expect_headers={"access-control-allow-origin": "*"},
+        )
+        self._step(
+            "CORS preflight",
+            "OPTIONS",
+            "/health",
+            [200, 204],
+            headers={"Origin": CORS_ORIGIN, "Access-Control-Request-Method": "GET"},
+            expect_headers={"access-control-allow-origin": "*"},
+        )
 
     def _auth_steps(self) -> None:
         auth = self.ir.get("auth")
@@ -410,8 +429,15 @@ class ApiScenarioBuilder:
             save=save,
         )
 
-    def _step(self, name, method, path, expect, auth=False, body=None, equals=None, absent=None, save=None, token=None, auth_as=None) -> None:
+    def _step(
+        self, name, method, path, expect, auth=False, body=None, equals=None, absent=None, save=None, token=None, auth_as=None,
+        headers=None, expect_headers=None,
+    ) -> None:
         step = {"name": name, "method": method, "path": path, "expect": expect}
+        if headers:
+            step["headers"] = headers
+        if expect_headers:
+            step["expect_headers"] = expect_headers
         if auth:
             step["auth"] = True
         if auth_as:

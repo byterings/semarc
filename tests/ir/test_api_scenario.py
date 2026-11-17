@@ -24,6 +24,13 @@ class ApiScenarioTests(unittest.TestCase):
     def test_scenario_is_deterministic(self):
         self.assertEqual(build(BLOG), self.steps)
 
+    def test_cors_is_checked_for_simple_and_preflight_requests(self):
+        simple = step(self.steps, "CORS headers on requests from a browser")
+        preflight = step(self.steps, "CORS preflight")
+        self.assertEqual(simple["expect_headers"], {"access-control-allow-origin": "*"})
+        self.assertEqual(preflight["method"], "OPTIONS")
+        self.assertEqual(preflight["expect"], [200, 204])
+
     def test_experience_endpoints_come_first(self):
         self.assertEqual([item["path"] for item in self.steps[:3]], ["/", "/health", "/routes"])
 

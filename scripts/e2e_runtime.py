@@ -55,7 +55,7 @@ class ScenarioClient:
         variables: dict = {}
         for step in scenario["steps"]:
             path = re.sub(r"\$\{(\w+)\}", lambda match: str(variables.get(match.group(1), "")), step["path"])
-            headers = {"Accept": "application/json"}
+            headers = {"Accept": "application/json", **step.get("headers", {})}
             if step.get("auth"):
                 headers["Authorization"] = f"Bearer {variables.get(step.get('auth_as', 'token'), '')}"
             if "token" in step:
@@ -65,10 +65,14 @@ class ScenarioClient:
                 body = json.dumps(self._resolve(step["body"], variables)).encode()
                 headers["Content-Type"] = "application/json"
 
-            status, payload, raw = self._request(step["method"], path, headers, body)
+            status, payload, raw, response_headers = self._request(step["method"], path, headers, body)
             problems = []
-            if status != step["expect"]:
+            expected = step["expect"] if isinstance(step["expect"], list) else [step["expect"]]
+            if status not in expected:
                 problems.append(f"expected status {step['expect']}, got {status}")
+            for name, value in step.get("expect_headers", {}).items():
+                if response_headers.get(name) != value:
+                    problems.append(f"header {name}: expected {value!r}, got {response_headers.get(name)!r}")
             for json_path, expected in step.get("equals", {}).items():
                 expected = self._resolve(expected, variables)
                 actual = self._dig(payload, json_path)
@@ -88,19 +92,17 @@ class ScenarioClient:
                 print(f"    PASS {step['name']}")
         return len(scenario["steps"])
 
-    def _request(self, method: str, path: str, headers: dict, body: bytes | None) -> tuple[int, object, str]:
+    def _request(self, method: str, path: str, headers: dict, body: bytes | None) -> tuple[int, object, str, object]:
         request = urllib.request.Request(self.base_url + path, data=body, method=method, headers=headers)
         try:
             with urllib.request.urlopen(request, timeout=30) as response:
-                status, raw = response.status, response.read().decode()
-                content_type = response.headers.get("Content-Type", "")
+                status, raw, response_headers = response.status, response.read().decode(), response.headers
         except urllib.error.HTTPError as error:
-            status, raw = error.code, error.read().decode()
-            content_type = error.headers.get("Content-Type", "")
+            status, raw, response_headers = error.code, error.read().decode(), error.headers
         payload = None
-        if raw and "json" in content_type:
+        if raw and "json" in response_headers.get("Content-Type", ""):
             payload = json.loads(raw)
-        return status, payload, raw
+        return status, payload, raw, response_headers
 
     def _resolve(self, value, variables: dict):
         if isinstance(value, dict):

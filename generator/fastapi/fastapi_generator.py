@@ -186,6 +186,7 @@ class FastApiGenerator:
             f'        self.db_database = env("DB_DATABASE", {settings["database"]!r})',
             f'        self.db_username = env("DB_USERNAME", {settings["username"]!r})',
             '        self.db_password = env("DB_PASSWORD", "")',
+            '        self.cors_origins = [origin.strip() for origin in env("CORS_ORIGINS", "*").split(",") if origin.strip()]',
         ]
         if ir.get("auth"):
             lines.extend(

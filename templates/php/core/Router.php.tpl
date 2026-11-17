@@ -36,6 +36,15 @@ final class Router
 
     public function dispatch(Request $request): Response
     {
+        if (Cors::isPreflight($request)) {
+            return Cors::preflight($request);
+        }
+
+        return Cors::apply($request, $this->handle($request));
+    }
+
+    private function handle(Request $request): Response
+    {
         try {
             $allowed = [];
             foreach ($this->routes as $route) {

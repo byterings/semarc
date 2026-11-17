@@ -4,11 +4,34 @@ declare(strict_types=1);
 
 final class Response
 {
+    /**
+     * @param array<string, string> $headers
+     */
     public function __construct(
         public readonly int $status,
         public readonly mixed $body,
         public readonly string $contentType = 'application/json',
+        public readonly array $headers = [],
     ) {
+    }
+
+    /**
+     * @param array<string, string> $headers
+     */
+    public function withHeaders(array $headers): self
+    {
+        return new self($this->status, $this->body, $this->contentType, $headers + $this->headers);
+    }
+
+    public function header(string $name): ?string
+    {
+        foreach ($this->headers as $key => $value) {
+            if (strcasecmp($key, $name) === 0) {
+                return $value;
+            }
+        }
+
+        return null;
     }
 
     public static function json(mixed $body, int $status = 200): self
@@ -54,6 +77,9 @@ final class Response
     public function send(): void
     {
         http_response_code($this->status);
+        foreach ($this->headers as $name => $value) {
+            header($name . ': ' . $value);
+        }
         if ($this->status !== 204) {
             header('Content-Type: ' . $this->contentType);
             echo $this->content();

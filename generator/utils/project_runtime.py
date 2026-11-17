@@ -56,6 +56,7 @@ def env_values(ir: dict) -> dict[str, str]:
         "DB_DATABASE": settings["database"],
         "DB_USERNAME": settings["username"],
         "DB_PASSWORD": settings["password"],
+        "CORS_ORIGINS": "*",
     }
     if ir.get("auth"):
         values["JWT_SECRET"] = DEV_JWT_SECRET
@@ -67,6 +68,7 @@ def env_example(ir: dict) -> str:
     lines = [
         "# Copy to .env and adjust. Environment variables override this file.",
         "# DB_CONNECTION accepts mysql, pgsql or sqlite.",
+        "# CORS_ORIGINS is * or a comma separated list such as https://app.example.com.",
     ]
     if ir.get("auth"):
         lines.append("# JWT_SECRET must be at least 32 characters; replace it before deploying.")
@@ -87,6 +89,7 @@ def docker_compose(ir: dict, port: int) -> str:
         "    environment:",
         f"      APP_NAME: {ir['project']}",
         "      APP_ENV: production",
+        "      CORS_ORIGINS: ${CORS_ORIGINS:-*}",
     ]
 
     if engine == "SQLITE":

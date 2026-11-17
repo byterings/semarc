@@ -517,6 +517,7 @@ def settings_code(ir: dict, settings: dict, port: int) -> str:
         f"  dbDatabase: env('DB_DATABASE', {ts_string(settings['database'])}),",
         f"  dbUsername: env('DB_USERNAME', {ts_string(settings['username'])}),",
         "  dbPassword: env('DB_PASSWORD', ''),",
+        "  corsOrigins: env('CORS_ORIGINS', '*').split(',').map((origin) => origin.trim()).filter(Boolean),",
     ]
     if ir.get("auth"):
         lines.extend(
