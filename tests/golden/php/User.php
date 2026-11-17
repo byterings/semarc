@@ -10,7 +10,7 @@ final class User
     public const FIELDS = [
         'email' => ['type' => 'STRING', 'required' => true, 'not_empty' => false, 'email' => false, 'min' => null, 'max' => 255],
         'name' => ['type' => 'STRING', 'required' => true, 'not_empty' => false, 'email' => false, 'min' => null, 'max' => 255],
-        'password' => ['type' => 'STRING', 'required' => true, 'not_empty' => false, 'email' => false, 'min' => null, 'max' => 255],
+        'password' => ['type' => 'STRING', 'required' => true, 'not_empty' => false, 'email' => false, 'min' => null, 'max' => 72],
     ];
 
     /** Foreign key columns and the model they reference. */

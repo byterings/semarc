@@ -131,7 +131,7 @@ ROUTE GET /users
 
             self.assertIn("RelationshipPass", context.compiler_passes)
             self.assertIn("ConstraintPass", context.compiler_passes)
-            self.assertTrue((output_dir / "migrations" / "create_posts_table.py").exists())
+            self.assertEqual(len(list((output_dir / "migrations" / "versions").glob("*_create_posts_table.py"))), 1)
             self.assertTrue((output_dir / "models" / "post.py").exists())
             self.assertIn("foreign_keys", context.ir)
 
@@ -140,10 +140,10 @@ ROUTE GET /users
             first_output = self._compile_to(first)
             second_output = self._compile_to(second)
 
-            first_migration = (first_output / "migrations" / "create_posts_table.py").read_text(
+            first_migration = next((first_output / "migrations" / "versions").glob("*_create_posts_table.py")).read_text(
                 encoding="utf-8"
             )
-            second_migration = (second_output / "migrations" / "create_posts_table.py").read_text(
+            second_migration = next((second_output / "migrations" / "versions").glob("*_create_posts_table.py")).read_text(
                 encoding="utf-8"
             )
 

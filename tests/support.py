@@ -109,7 +109,12 @@ class GeneratorValidationSuite:
             "generator_manifest.json",
             "requirements.txt",
             "main.py",
+            "database.py",
+            "migrate.py",
+            "alembic.ini",
             "config/settings.py",
+            "tests/test_api.py",
+            "tests/api_scenario.json",
         ],
         "nestjs": [
             "README.md",
@@ -141,13 +146,13 @@ class GeneratorValidationSuite:
         "fastapi": [
             "tests",
             "config",
+            "core",
             "routers",
             "models",
             "schemas",
             "services",
             "repositories",
-            "middleware",
-            "migrations",
+            "migrations/versions",
         ],
         "nestjs": ["src", "src/modules", "test"],
     }

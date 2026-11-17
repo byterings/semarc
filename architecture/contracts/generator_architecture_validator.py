@@ -108,7 +108,7 @@ class GeneratorArchitectureValidator:
         content = path.read_text(encoding="utf-8")
         required = {
             "php": ["$router->add('GET', '/',", "$router->add('GET', '/health',", "$router->add('GET', '/routes',"],
-            "fastapi": ['@app.get("/")', '@app.get("/health")', '@app.get("/routes")'],
+            "fastapi": ['@app.get("/",', '@app.get("/health")', '@app.get("/routes")'],
             "nestjs": ["@Get()", "@Get('health')", "@Get('routes')"],
         }[target]
         return [

@@ -90,6 +90,7 @@ class GenerationContractComplianceTests(unittest.TestCase):
 
     REAL_AUTH_MARKERS = {
         "php": ["hash_hmac('sha256'", "hash_equals(", "password_hash($plain, PASSWORD_BCRYPT)", "password_verify("],
+        "fastapi": ['jwt.encode(claims, self._secret(), algorithm="HS256")', 'algorithms=["HS256"]', "bcrypt.hashpw(", "bcrypt.checkpw("],
     }
 
     def test_auth_generation_uses_real_signed_tokens_and_hashed_passwords(self):
@@ -124,7 +125,9 @@ class GenerationContractComplianceTests(unittest.TestCase):
             router = (output / "routers" / "customer.py").read_text(encoding="utf-8")
             service = (output / "services" / "customer_service.py").read_text(encoding="utf-8")
             self.assertIn("CustomerService", router)
-            self.assertIn("customer_service.list()", router)
+            self.assertIn("return CustomerService(db)", router)
+            self.assertIn("return service.list(limit, offset)", router)
+            self.assertIn("super().__init__(CustomerRepository(session))", service)
             self.assertIn("CustomerRepository", service)
 
     def test_nestjs_target_wires_controller_service_repository_entity(self):
@@ -157,7 +160,7 @@ class GenerationContractComplianceTests(unittest.TestCase):
                     self.assertIn("$router->add('GET', '/routes',", content)
                 elif target == "fastapi":
                     content = (output / "main.py").read_text(encoding="utf-8")
-                    self.assertIn('@app.get("/")', content)
+                    self.assertIn('@app.get("/",', content)
                     self.assertIn('@app.get("/health")', content)
                     self.assertIn('@app.get("/routes")', content)
                 else:

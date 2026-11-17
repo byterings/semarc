@@ -6,6 +6,7 @@ rules (for example the implicit 255 character limit of STRING columns).
 """
 
 STRING_MAX_LENGTH = 255
+SECRET_MAX_LENGTH = 72  # bcrypt only uses the first 72 bytes of a password
 DEFAULT_PAGE_SIZE = 20
 MAX_PAGE_SIZE = 100
 
@@ -15,6 +16,8 @@ def field_rules(model_field: dict) -> dict:
     maximum = rules.get("max")
     if model_field["type"] == "STRING":
         maximum = STRING_MAX_LENGTH if maximum is None else min(maximum, STRING_MAX_LENGTH)
+    if model_field.get("secret", False):
+        maximum = min(maximum or SECRET_MAX_LENGTH, SECRET_MAX_LENGTH)
     return {
         "type": model_field["type"],
         "required": model_field["required"],
