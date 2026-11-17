@@ -1,413 +1,213 @@
+import json
 from pathlib import Path
-import shutil
 
-from generator.nestjs.name_utils import camel_case, pascal_case, pluralize, segment_name, typescript_type
-from generator.php.template_engine import TemplateEngine
+from generator.nestjs.api_code import (
+    app_controller_code,
+    app_module_code,
+    auth_code,
+    controller_code,
+    custom_code,
+    data_source_code,
+    migration_class,
+    migration_code,
+    settings_code,
+)
+from generator.nestjs.entity_code import dto_code, entity_code, module_code, repository_code, service_code
+from generator.nestjs.typescript import file_base, folder
 from generator.project_files import ProjectFileWriter
-from generator.utils.project_experience import SEMARC_VERSION, complete_routes, model_names, module_names, profile_names, route_lines
+from generator.utils.api_scenario import ApiScenarioBuilder
 from generator.utils.inflector import kebab_case
+from generator.utils.project_runtime import database_settings, docker_compose, env_example, readme
+from generator.utils.resource_views import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
+from generator.utils.template_engine import TemplateEngine
+
+PORT = 3000
+DEPENDENCIES = {
+    "@nestjs/common": "11.2.10",
+    "@nestjs/core": "11.2.10",
+    "@nestjs/platform-express": "11.2.10",
+    "@nestjs/typeorm": "11.0.3",
+    "better-sqlite3": "12.11.1",
+    "class-transformer": "0.5.1",
+    "class-validator": "0.14.4",
+    "mysql2": "3.24.6",
+    "pg": "8.23.1",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2",
+    "typeorm": "0.3.31",
+}
+AUTH_DEPENDENCIES = {"@nestjs/jwt": "11.0.2", "bcryptjs": "3.0.3"}
+DEV_DEPENDENCIES = {
+    "@nestjs/cli": "11.0.24",
+    "@nestjs/testing": "11.2.10",
+    "@types/express": "5.0.6",
+    "@types/jest": "30.0.0",
+    "@types/node": "24.19.2",
+    "@types/supertest": "7.2.1",
+    "jest": "30.5.2",
+    "supertest": "7.3.2",
+    "ts-jest": "29.4.15",
+    "ts-node": "10.9.2",
+    "typescript": "5.9.3",
+}
 
 
 class NestJSGenerator:
-    """Generates a minimal NestJS application structure from language-neutral IR."""
-
-    HTTP_DECORATORS = {
-        "GET": "Get",
-        "POST": "Post",
-        "PUT": "Put",
-        "PATCH": "Patch",
-        "DELETE": "Delete",
-    }
+    """Maps Architecture IR to a runnable NestJS + TypeORM project."""
 
     def __init__(self, output_dir: str = "output", debug: bool = False) -> None:
         self.output_dir = Path(output_dir)
-        self.src_dir = self.output_dir / "src"
-        self.template_engine = TemplateEngine(template_dir="templates/nestjs")
+        self.template_engine = TemplateEngine("nestjs")
         self.debug = debug
         self.generated_components: list[dict[str, str]] = []
 
     def generate(self, ir: dict) -> None:
         self.generated_components = []
-        self._prepare_output_dirs()
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        reserved = {model["name"] for model in ir["models"]}
 
-        module_imports = []
-        app_module_names = []
-        routes = complete_routes(ir)
-
-        for model in ir["models"]:
-            module_name = self._write_model_module(model, routes)
-            module_imports.append(
-                f"import {{ {module_name} }} from './modules/{self._folder_name(model['name'])}/{self._folder_name(model['name'])}.module';"
-            )
-            app_module_names.append(module_name)
-
-        if ir.get("middlewares") or any(route["path"] == "/login" for route in routes):
-            self._write_auth_scaffold()
-            module_imports.append("import { AuthModule } from './modules/auth/auth.module';")
-            app_module_names.append("AuthModule")
-
-        self._write(
-            self.src_dir / "app.module.ts",
-            "app.module.tpl",
-            {
-                "module_imports": "\n".join(module_imports),
-                "modules": self._module_array(app_module_names),
-            },
-        )
-        self._write(
-            self.src_dir / "app.controller.ts",
-            "app.controller.tpl",
-            {
-                "project_name": ir["project"],
-                "semarc_version": SEMARC_VERSION,
-                "models": self._ts_array(model_names(ir)),
-                "routes": self._ts_array(["GET /", "GET /health", "GET /routes"] + route_lines(ir)),
-                "profiles": self._ts_array(profile_names(ir)),
-                "modules": self._ts_array(module_names(ir)),
-            },
-        )
-        self._generate_project_template(ir)
+        self._runtime(ir)
+        modules = self._modules(ir, reserved)
+        self._database(ir)
+        self._write("src/app.module.ts", app_module_code(ir, modules, reserved), "nestjs app module")
+        self._write("src/app.controller.ts", app_controller_code(ir, reserved), "nestjs app controller")
+        self._project(ir)
+        ProjectFileWriter(self.output_dir, self._record).write_manifest(ir, "nestjs")
 
         if self.debug:
-            print("\n[NestJS Generator]")
+            print("\n[Generator]")
             for component in self.generated_components:
                 print(f"Created: {component['created']}")
                 print(f"Template: {component['template']}")
 
-    def _prepare_output_dirs(self) -> None:
-        self.output_dir.mkdir(parents=True, exist_ok=True)
+    def _runtime(self, ir: dict) -> None:
+        self._render("src/main.ts", "main.ts.tpl")
+        self._render("src/app.setup.ts", "app.setup.ts.tpl")
+        self._write("src/config/settings.ts", settings_code(ir, database_settings(ir), PORT), "nestjs settings")
+        self._render("src/common/api-error.ts", "api-error.ts.tpl")
+        self._render("src/common/api-exception.filter.ts", "api-exception.filter.ts.tpl")
+        self._render("src/common/validation.ts", "validation.ts.tpl")
+        self._render("src/common/id.pipe.ts", "id.pipe.ts.tpl")
+        self._render("src/common/resource.repository.ts", "resource.repository.ts.tpl")
+        self._render(
+            "src/common/resource.service.ts",
+            "resource.service.ts.tpl",
+            {"default_limit": DEFAULT_PAGE_SIZE, "max_limit": MAX_PAGE_SIZE},
+        )
+        self._render("src/database/column-types.ts", "column-types.ts.tpl")
 
-        for legacy_file in ["routes.php", "main.py"]:
-            path = self.output_dir / legacy_file
-            if path.exists():
-                path.unlink()
-
-        if self.src_dir.exists():
-            shutil.rmtree(self.src_dir)
-        self.src_dir.mkdir(parents=True, exist_ok=True)
-
-        for cache_dir in self.output_dir.rglob("__pycache__"):
-            shutil.rmtree(cache_dir)
-
-        for directory in [
-            "controllers",
-            "models",
-            "middleware",
-            "config",
-            "services",
-            "repositories",
-            "validators",
-            "migrations",
-            "routers",
-            "schemas",
-        ]:
-            target = self.output_dir / directory
-            if target.exists():
-                shutil.rmtree(target)
-
-    def _generate_project_template(self, ir: dict) -> None:
-        writer = ProjectFileWriter(self.output_dir, self._record_project_file)
-        (self.output_dir / "test").mkdir(parents=True, exist_ok=True)
-        writer.write_text(
-            "package.json",
-            "\n".join(
-                [
-                    "{",
-                    f"  \"name\": \"{self._package_name(ir['project'])}\",",
-                    "  \"version\": \"0.1.0\",",
-                    "  \"private\": true,",
-                    "  \"scripts\": {",
-                    "    \"start\": \"nest start\",",
-                    "    \"start:dev\": \"nest start --watch\",",
-                    "    \"test\": \"jest\"",
-                    "  },",
-                    "  \"dependencies\": {",
-                    "    \"@nestjs/common\": \"latest\",",
-                    "    \"@nestjs/core\": \"latest\",",
-                    "    \"reflect-metadata\": \"latest\",",
-                    "    \"rxjs\": \"latest\"",
-                    "  },",
-                    "  \"devDependencies\": {",
-                    "    \"@nestjs/cli\": \"latest\",",
-                    "    \"typescript\": \"latest\"",
-                    "  }",
-                    "}",
-                    "",
-                ]
-            ),
-            "nestjs package json",
-        )
-        writer.write_text(
-            "nest-cli.json",
-            "{\n  \"collection\": \"@nestjs/schematics\",\n  \"sourceRoot\": \"src\"\n}\n",
-            "nestjs cli config",
-        )
-        writer.write_text(
-            "tsconfig.json",
-            "\n".join(
-                [
-                    "{",
-                    "  \"compilerOptions\": {",
-                    "    \"module\": \"commonjs\",",
-                    "    \"target\": \"ES2021\",",
-                    "    \"emitDecoratorMetadata\": true,",
-                    "    \"experimentalDecorators\": true,",
-                    "    \"strict\": true,",
-                    "    \"outDir\": \"./dist\"",
-                    "  }",
-                    "}",
-                    "",
-                ]
-            ),
-            "nestjs tsconfig",
-        )
-        writer.write_text(
-            "test/app.e2e-spec.ts",
-            "\n".join(
-                [
-                    "describe('Generated app scaffold', () => {",
-                    "    const expectedRoutes = " + self._ts_array(["GET /", "GET /health", "GET /routes"] + route_lines(ir)) + ";",
-                    "",
-                    "    it('documents generated routes', () => {",
-                    "        expect(expectedRoutes).toContain('GET /health');",
-                    "    });",
-                    "",
-                    "    it('keeps generated layers explicit', () => {",
-                    "        expect(expectedRoutes.length).toBeGreaterThan(0);",
-                    "    });",
-                    "});",
-                    "",
-                ]
-            ),
-            "nestjs scaffold tests",
-        )
-        writer.write_readme(ir, "nestjs")
-        writer.write_env_example(
-            ir,
-            {
-                "APP_NAME": ir["project"],
-                "PORT": "3000",
-                "DB_HOST": "127.0.0.1",
-                "DB_PORT": "3306",
-            },
-        )
-        writer.write_text(
-            "Dockerfile",
-            "\n".join(
-                [
-                    "FROM node:20-alpine",
-                    "WORKDIR /app",
-                    "COPY package.json .",
-                    "RUN npm install",
-                    "COPY . .",
-                    "EXPOSE 3000",
-                    "CMD [\"npm\", \"run\", \"start\"]",
-                    "",
-                ]
-            ),
-            "nestjs Dockerfile",
-        )
-        writer.write_text(
-            "docker-compose.yml",
-            "\n".join(
-                [
-                    "services:",
-                    "  app:",
-                    "    build: .",
-                    "    ports:",
-                    "      - \"3000:3000\"",
-                    "",
-                ]
-            ),
-            "nestjs docker compose",
-        )
-        writer.write_manifest(ir, "nestjs")
-
-    def _record_project_file(self, path: Path, template: str) -> None:
-        self.generated_components.append(
-            {
-                "created": str(path.relative_to(self.output_dir)),
-                "template": template,
-            }
-        )
-
-    def _write_model_module(self, model: dict, routes: list[dict]) -> str:
-        model_name = pascal_case(model["name"])
-        folder = self._folder_name(model_name)
-        module_dir = self.src_dir / "modules" / folder
-        service_class = f"{model_name}Service"
-        controller_class = f"{model_name}Controller"
-        module_class = f"{model_name}Module"
-        model_class = model_name
-
-        self._write(
-            module_dir / f"{self._file_stem(model_name)}.model.ts",
-            "model.tpl",
-            {
-                "model_name": model_class,
-                "fields": self._model_fields(model),
-            },
-        )
-        self._write(
-            module_dir / f"{folder}.repository.ts",
-            "repository.tpl",
-            {
-                "repository_name": f"{model_name}Repository",
-                "model_name": model_class,
-                "model_file": self._file_stem(model_name),
-                "property_name": camel_case(model_name),
-            },
-        )
-        self._write(
-            module_dir / f"{folder}.service.ts",
-            "service.tpl",
-            {
-                "service_name": service_class,
-                "repository_name": f"{model_name}Repository",
-                "repository_file": folder,
-                "model_name": model_class,
-                "model_file": self._file_stem(model_name),
-                "property_name": camel_case(model_name),
-            },
-        )
-        self._write(
-            module_dir / f"{folder}.controller.ts",
-            "controller.tpl",
-            {
-                "decorator_imports": self._controller_imports(model_name, routes),
-                "controller_name": controller_class,
-                "service_name": service_class,
-                "service_file": folder,
-                "service_property": camel_case(service_class),
-                "route_prefix": folder,
-                "methods": self._controller_methods(model_name, routes),
-            },
-        )
-        self._write(
-            module_dir / f"{folder}.module.ts",
-            "module.tpl",
-            {
-                "module_name": module_class,
-                "controller_name": controller_class,
-                "service_name": service_class,
-                "module_file": folder,
-            },
-        )
-        return module_class
-
-    def _write_auth_scaffold(self) -> None:
-        guards_dir = self.src_dir / "guards"
-        auth_dir = self.src_dir / "modules" / "auth"
-        self._write(guards_dir / "auth.guard.ts", "auth.guard.tpl", {})
-        self._write(auth_dir / "auth.service.ts", "auth.service.tpl", {})
-        self._write(auth_dir / "auth.controller.ts", "auth.controller.tpl", {})
-        self._write(auth_dir / "auth.module.ts", "auth.module.tpl", {})
-
-    def _model_fields(self, model: dict) -> str:
-        if not model["fields"]:
-            return "    id!: number;"
-        return "\n".join(
-            f"    {field['name']}!: {typescript_type(field['type'])};"
-            for field in model["fields"]
-        )
-
-    def _controller_imports(self, model_name: str, routes: list[dict]) -> str:
-        decorators = {"Controller"}
-        for route in self._routes_for_model(model_name, routes):
-            decorators.add(self.HTTP_DECORATORS.get(route["method"], "Get"))
-        return ", ".join(sorted(decorators))
-
-    def _controller_methods(self, model_name: str, routes: list[dict]) -> str:
-        blocks = []
-        for route in self._routes_for_model(model_name, routes):
-            decorator = self.HTTP_DECORATORS.get(route["method"], "Get")
-            subpath = self._subpath_for_route(model_name, route["path"])
-            method_name = self._method_name(route["method"], model_name, subpath)
-            decorator_call = f"@{decorator}()" if not subpath else f"@{decorator}('{subpath}')"
-            blocks.append(
-                "\n".join(
-                    [
-                        f"    {decorator_call}",
-                        f"    {method_name}() {{",
-                        f"        return this.{camel_case(model_name)}Service.findAll();",
-                        "    }",
-                    ]
-                )
+        auth = ir.get("auth")
+        if auth:
+            self._render("src/common/password-hasher.ts", "password-hasher.ts.tpl")
+            self._render("src/common/current-user.decorator.ts", "current-user.decorator.ts.tpl")
+            self._render("src/modules/auth/token.service.ts", "token.service.ts.tpl")
+            self._render(
+                "src/guards/auth.guard.ts",
+                "auth.guard.ts.tpl",
+                {"auth_model": auth["model"], "auth_folder": folder(auth["model"]), "auth_file": file_base(auth["model"])},
             )
-        if not blocks:
-            blocks.append(
-                "\n".join(
-                    [
-                        "    findAll() {",
-                        f"        return this.{camel_case(model_name)}Service.findAll();",
-                        "    }",
-                    ]
-                )
-            )
-        return "\n\n".join(blocks)
 
-    def _routes_for_model(self, model_name: str, routes: list[dict]) -> list[dict]:
-        folder = self._folder_name(model_name)
-        singular = segment_name(model_name)
-        return [
-            route
-            for route in routes
-            if self._first_segment(route["path"]) in {folder, singular}
-        ]
+    def _modules(self, ir: dict, reserved: set[str]) -> list[tuple[str, str]]:
+        modules: list[tuple[str, str]] = []
+        custom = custom_code(ir, reserved)
+        if custom:
+            self._write("src/modules/custom/custom.controller.ts", custom[0], "nestjs custom controller")
+            self._write("src/modules/custom/custom.module.ts", custom[1], "nestjs custom module")
+            modules.append(("CustomModule", "./modules/custom/custom.module"))
+        if ir.get("auth"):
+            for path, content in auth_code(ir, reserved).items():
+                self._write(path, content, "nestjs auth")
+            modules.append(("AuthModule", "./modules/auth/auth.module"))
 
-    def _subpath_for_route(self, model_name: str, path: str) -> str:
-        segments = [segment for segment in path.strip("/").split("/") if segment]
-        if not segments:
-            return ""
-        if segments[0] in {self._folder_name(model_name), segment_name(model_name)}:
-            return "/".join(segments[1:])
-        return "/".join(segments)
+        for model in ir["models"]:
+            name, directory, base = model["name"], folder(model["name"]), file_base(model["name"])
+            root = f"src/modules/{directory}"
+            self._write(f"{root}/{base}.entity.ts", entity_code(model, reserved), "nestjs entity")
+            self._write(f"{root}/dto/create-{base}.dto.ts", dto_code(model, reserved, partial=False), "nestjs create dto")
+            self._write(f"{root}/dto/update-{base}.dto.ts", dto_code(model, reserved, partial=True), "nestjs update dto")
+            self._write(f"{root}/{directory}.repository.ts", repository_code(model, reserved), "nestjs repository")
+            self._write(f"{root}/{directory}.service.ts", service_code(model, reserved), "nestjs service")
+            controller = controller_code(ir, model, reserved)
+            if controller:
+                self._write(f"{root}/{directory}.controller.ts", controller, "nestjs controller")
+            self._write(f"{root}/{directory}.module.ts", module_code(model, reserved, controller is not None), "nestjs module")
+            modules.append((f"{name}Module", f"./modules/{directory}/{directory}.module"))
+        return modules
 
-    def _method_name(self, method: str, model_name: str, subpath: str) -> str:
-        if method == "GET" and not subpath:
-            return "findAll"
-        if method == "GET":
-            return "findOne"
-        if method == "POST":
-            return f"create{pascal_case(model_name)}"
-        if method == "PUT":
-            return f"update{pascal_case(model_name)}"
-        if method == "PATCH":
-            return f"patch{pascal_case(model_name)}"
-        if method == "DELETE":
-            return f"delete{pascal_case(model_name)}"
-        return f"handle{pascal_case(method.lower())}{pascal_case(model_name)}"
+    def _database(self, ir: dict) -> None:
+        for table in ir["migrations"]["tables"]:
+            _, file_name = migration_class(table)
+            self._write(f"src/database/migrations/{file_name}.ts", migration_code(table), "typeorm migration")
+        self._write("src/database/data-source.ts", data_source_code(ir), "typeorm data source")
 
-    def _module_array(self, module_names: list[str]) -> str:
-        if not module_names:
-            return "[]"
-        entries = "\n".join(f"        {module_name}," for module_name in module_names)
-        return "[\n" + entries + "\n    ]"
+    def _project(self, ir: dict) -> None:
+        dependencies = {**DEPENDENCIES, **(AUTH_DEPENDENCIES if ir.get("auth") else {})}
+        package = {
+            "name": kebab_case(ir["project"]),
+            "version": "0.1.0",
+            "private": True,
+            "scripts": {
+                "build": "nest build",
+                "start": "node dist/main.js",
+                "start:dev": "nest start --watch",
+                "test": "jest --runInBand",
+                "migration:run": "typeorm-ts-node-commonjs migration:run -d src/database/data-source.ts",
+            },
+            "dependencies": dict(sorted(dependencies.items())),
+            "devDependencies": dict(sorted(DEV_DEPENDENCIES.items())),
+            "jest": {
+                "moduleFileExtensions": ["js", "json", "ts"],
+                "rootDir": ".",
+                "testRegex": "test/.*\\.e2e-spec\\.ts$",
+                "transform": {"^.+\\.ts$": "ts-jest"},
+                "testEnvironment": "node",
+                "setupFiles": ["<rootDir>/test/setup-env.ts"],
+            },
+        }
+        self._write("package.json", json.dumps(package, indent=2) + "\n", "nestjs package json")
+        self._render("tsconfig.json", "tsconfig.json.tpl")
+        self._render("tsconfig.build.json", "tsconfig.build.json.tpl")
+        self._render("nest-cli.json", "nest-cli.json.tpl")
+        self._render("test/setup-env.ts", "setup-env.ts.tpl")
+        self._render("test/api.e2e-spec.ts", "api.e2e-spec.ts.tpl")
+        self._write("test/api_scenario.json", json.dumps(ApiScenarioBuilder().build(ir), indent=2) + "\n", "api scenario")
+        self._write("storage/.gitignore", "*\n!.gitignore\n", "storage gitignore")
+        self._write(".gitignore", ".env\nnode_modules/\ndist/\nstorage/*.sqlite\n", "gitignore")
+        self._write(".env.example", env_example(ir), "env example")
+        self._render("Dockerfile", "Dockerfile.tpl")
+        self._write("docker-compose.yml", docker_compose(ir, PORT), "docker compose")
+        self._write(
+            "README.md",
+            readme(
+                ir,
+                "NestJS 11 + TypeORM (Node.js 22+)",
+                {
+                    "local": [
+                        "npm install",
+                        "cp .env.example .env",
+                        "npm run start:dev",
+                    ],
+                    "test": ["npm test"],
+                },
+                [
+                    "`src/app.module.ts` wires the database and every feature module",
+                    "`src/modules/<resource>/` entity, DTOs, repository, service, controller and module per model",
+                    "`src/common/` shared validation, errors and the generic resource service",
+                    "`src/database/migrations/` TypeORM migrations, applied automatically on start",
+                ],
+                scenario_path="test/api_scenario.json",
+            ),
+            "project README",
+        )
 
-    def _folder_name(self, model_name: str) -> str:
-        return pluralize(segment_name(model_name))
+    def _render(self, relative_path: str, template: str, values: dict | None = None) -> None:
+        self._write(relative_path, self.template_engine.render(template, values), template)
 
-    def _file_stem(self, model_name: str) -> str:
-        return segment_name(model_name)
-
-    def _first_segment(self, path: str) -> str:
-        parts = [part for part in path.strip("/").split("/") if part]
-        return parts[0].lower() if parts else ""
-
-    def _package_name(self, project_name: str) -> str:
-        return kebab_case(project_name)
-
-    def _ts_array(self, values: list[str]) -> str:
-        if not values:
-            return "[]"
-        return "[" + ", ".join("'" + value.replace("'", "\\'") + "'" for value in values) + "]"
-
-    def _write(self, path: Path, template: str, values: dict) -> None:
+    def _write(self, relative_path: str, content: str, template: str) -> None:
+        path = self.output_dir / relative_path
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(self.template_engine.render(template, values), encoding="utf-8")
-        self.generated_components.append(
-            {
-                "created": str(path.relative_to(self.output_dir)),
-                "template": template,
-            }
-        )
+        path.write_text(content, encoding="utf-8")
+        self._record(path, template)
+
+    def _record(self, path: Path, template: str) -> None:
+        self.generated_components.append({"created": str(path.relative_to(self.output_dir)), "template": template})

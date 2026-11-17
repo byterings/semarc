@@ -152,7 +152,13 @@ def docker_compose(ir: dict, port: int) -> str:
     return "\n".join(lines)
 
 
-def readme(ir: dict, target_label: str, commands: dict[str, list[str]], layout: list[str]) -> str:
+def readme(
+    ir: dict,
+    target_label: str,
+    commands: dict[str, list[str]],
+    layout: list[str],
+    scenario_path: str = "tests/api_scenario.json",
+) -> str:
     auth = ir.get("auth")
     lines = [
         f"# {ir['project']}",
@@ -182,7 +188,7 @@ def readme(ir: dict, target_label: str, commands: dict[str, list[str]], layout: 
         *commands["test"],
         "```",
         "",
-        "`tests/api_scenario.json` is the behaviour contract SEMARC derived from the specification;",
+        f"`{scenario_path}` is the behaviour contract SEMARC derived from the specification;",
         "the test runner replays it against the application.",
         "",
         "## Configuration",

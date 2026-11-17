@@ -125,7 +125,11 @@ class GeneratorValidationSuite:
             "package.json",
             "nest-cli.json",
             "tsconfig.json",
+            "src/main.ts",
             "src/app.module.ts",
+            "src/database/data-source.ts",
+            "test/api.e2e-spec.ts",
+            "test/api_scenario.json",
         ],
     }
 
@@ -154,7 +158,7 @@ class GeneratorValidationSuite:
             "repositories",
             "migrations/versions",
         ],
-        "nestjs": ["src", "src/modules", "test"],
+        "nestjs": ["src", "src/modules", "src/common", "src/database/migrations", "test"],
     }
 
     def validate(self, context: CompilerContext, target: str) -> None:
@@ -221,5 +225,5 @@ class GeneratorValidationSuite:
             content = path.read_text(encoding="utf-8")
             if content.count("{") != content.count("}"):
                 raise AssertionError(f"Unbalanced braces in {path.relative_to(output_dir)}")
-            if path.relative_to(output_dir).parts[0] == "src" and "export " not in content:
+            if path.relative_to(output_dir).parts[0] == "src" and path.name != "main.ts" and "export " not in content:
                 raise AssertionError(f"Missing TypeScript export in {path.relative_to(output_dir)}")

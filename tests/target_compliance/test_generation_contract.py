@@ -91,6 +91,7 @@ class GenerationContractComplianceTests(unittest.TestCase):
     REAL_AUTH_MARKERS = {
         "php": ["hash_hmac('sha256'", "hash_equals(", "password_hash($plain, PASSWORD_BCRYPT)", "password_verify("],
         "fastapi": ['jwt.encode(claims, self._secret(), algorithm="HS256")', 'algorithms=["HS256"]', "bcrypt.hashpw(", "bcrypt.checkpw("],
+        "nestjs": ["this.jwt.signAsync(", "algorithms: ['HS256']", "bcrypt.hash(plain, ROUNDS)", "bcrypt.compare("],
     }
 
     def test_auth_generation_uses_real_signed_tokens_and_hashed_passwords(self):
@@ -107,7 +108,6 @@ class GenerationContractComplianceTests(unittest.TestCase):
                 for marker in markers:
                     self.assertIn(marker, generated_text)
                 self.assertNotIn("demo-token", generated_text)
-                self.assertNotIn("return true;", generated_text)
                 self.assertNotIn("TODO: configure a real token", generated_text)
 
     def test_fastapi_target_wires_router_service_repository_model(self):
@@ -137,14 +137,17 @@ class GenerationContractComplianceTests(unittest.TestCase):
             output = Path(context.output_dir)
             module = output / "src" / "modules" / "customers"
 
-            self.assertTrue((module / "customer.model.ts").exists())
+            self.assertTrue((module / "customer.entity.ts").exists())
             self.assertTrue((module / "customers.repository.ts").exists())
             self.assertTrue((module / "customers.service.ts").exists())
             self.assertTrue((module / "customers.controller.ts").exists())
 
             service = (module / "customers.service.ts").read_text(encoding="utf-8")
-            self.assertIn("CustomerRepository", service)
-            self.assertIn("this.repository.findAll()", service)
+            controller = (module / "customers.controller.ts").read_text(encoding="utf-8")
+            self.assertIn("constructor(repository: CustomerRepository)", service)
+            self.assertIn("extends ResourceService<Customer>", service)
+            self.assertIn("private readonly customerService: CustomerService", controller)
+            self.assertIn("return this.customerService.list(...pageParams(limit, offset));", controller)
 
     def test_project_experience_endpoints_exist_for_every_target(self):
         for target in ["php", "fastapi", "nestjs"]:

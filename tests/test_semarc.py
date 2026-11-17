@@ -211,7 +211,7 @@ ROUTE GET /users
         )
         users_dir = Path(context.output_dir) / "src" / "modules" / "users"
 
-        model = (users_dir / "user.model.ts").read_text(encoding="utf-8")
+        model = (users_dir / "user.entity.ts").read_text(encoding="utf-8")
         service = (users_dir / "users.service.ts").read_text(encoding="utf-8")
         controller = (users_dir / "users.controller.ts").read_text(encoding="utf-8")
 
@@ -219,8 +219,9 @@ ROUTE GET /users
         self.assertIn("email!: string;", model)
         self.assertIn("@Injectable()", service)
         self.assertIn("export class UserService", service)
-        self.assertIn("@Controller('users')", controller)
-        self.assertIn("@Get()", controller)
+        self.assertIn("@Entity({ name: 'users' })", model)
+        self.assertIn("@Controller()", controller)
+        self.assertIn("@Get('users')", controller)
         self.assertIn("export class UserController", controller)
 
     def test_nestjs_auth_scaffold_generation(self):
@@ -237,6 +238,8 @@ ROUTE GET /users
         self.assertTrue((output_dir / "src" / "modules" / "auth" / "auth.module.ts").exists())
         self.assertIn("AuthModule", app_module)
         self.assertIn("export class AuthGuard implements CanActivate", guard)
+        self.assertIn("this.tokens.userIdFrom(", guard)
+        self.assertIn("throw ApiError.unauthorized('Missing bearer token.')", guard)
 
     def test_nestjs_app_module_registers_generated_modules(self):
         context = self._compile_context_with_source(

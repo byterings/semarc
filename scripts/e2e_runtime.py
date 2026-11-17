@@ -177,7 +177,8 @@ def run_case(source_path: Path, target: str, database: str, keep: bool, verbose:
     except SemanticValidationError as error:
         reason = str(error).replace("[Semantic Error]", "").strip().splitlines()[0]
         return None, f"{label}: not applicable ({reason})"
-    scenario = json.loads((output_dir / "tests" / "api_scenario.json").read_text(encoding="utf-8"))
+    scenario_file = next(path for path in [output_dir / "tests" / "api_scenario.json", output_dir / "test" / "api_scenario.json"] if path.exists())
+    scenario = json.loads(scenario_file.read_text(encoding="utf-8"))
 
     port = free_port()
     name = re.sub(r"[^a-z0-9]", "", f"semarce2e{source_path.stem}{target}{database}".lower())

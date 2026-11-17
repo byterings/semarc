@@ -294,7 +294,7 @@ ROUTE POST /login
         self.assertTrue(any((output_dir / "src" / "modules").rglob("*.module.ts")))
         self.assertTrue(any((output_dir / "src" / "modules").rglob("*.service.ts")))
         self.assertTrue(any((output_dir / "src" / "modules").rglob("*.controller.ts")))
-        self.assertTrue(any((output_dir / "src" / "modules").rglob("*.model.ts")))
+        self.assertTrue(any((output_dir / "src" / "modules").rglob("*.entity.ts")))
         self.assertTrue((output_dir / "architecture_report.json").exists())
 
     def _load_report(self, output_dir: Path) -> dict:
