@@ -58,7 +58,7 @@ Optimization Passes
 Target Generator
     |
     v
-Generated Backend
+Runnable Project
 ```
 
 ## Layer Responsibilities
@@ -143,6 +143,17 @@ Output: graph nodes, dependency edges, traversal order.
 
 Boundary: dependency graph describes architecture dependencies, not import statements.
 
+### Resource Planning
+
+Purpose: decide what the generated API does.
+
+Input: AST, foreign keys from the relationship engine.
+
+Output: auth settings, final model specs (fields, rules, references, dependents) and one
+operation plus access policy per route (`architecture/resource_planner.py`).
+
+Boundary: decisions are target-neutral; generators only translate them.
+
 ### Architecture Expansion
 
 Purpose: expand compact semantic intent into component plans.
@@ -175,11 +186,11 @@ Boundary: optimizations must preserve semantic meaning.
 
 ### Target Generators
 
-Purpose: map IR to backend code.
+Purpose: map IR to a runnable project.
 
-Input: Architecture IR.
+Input: Architecture IR, after the generation contract has been validated.
 
-Output: files under `output/`.
+Output: a project directory (default `output/`, configurable with `--output`).
 
 Boundary: generators do not parse source and do not invent architecture rules.
 
@@ -204,16 +215,11 @@ generator/*
 ```text
 Architecture IR
     |
-    +-- PHP Generator
-    |       +-- routes.php
-    |       +-- models/
-    |       +-- repositories/
-    |       +-- migrations/
-    |
-    +-- FastAPI Generator
-            +-- main.py
-            +-- routers/
-            +-- models/
-            +-- schemas/
-            +-- migrations/
+    +-- PHP Generator      -> PHP 8.1+ API (PDO, JWT, migrations, tests/run.php)
+    +-- FastAPI Generator  -> FastAPI + SQLAlchemy 2 + Alembic API (pytest)
+    +-- NestJS Generator   -> NestJS 11 + TypeORM API (jest)
 ```
+
+Every target produces the same API behaviour (see `GENERATED_API.md`), supports MySQL,
+PostgreSQL and SQLite, and ships Docker configuration and a test runner for the generated
+`api_scenario.json`.

@@ -64,6 +64,10 @@ DiagnosticReportPass
 
 `ConstraintPass` evaluates source-level architecture decisions. `DiagnosticReportPass` refreshes diagnostics after IR and dependency graph metadata exist, then writes the JSON report.
 
+The full pass order is listed in `COMPILER_PASSES.md`. Warnings and recommendations never
+stop compilation; diagnostic **errors** (for example `AUTH002`) block `GenerationPass`
+before any file is written.
+
 ## Diagnostic Model
 
 Diagnostics are structured records:

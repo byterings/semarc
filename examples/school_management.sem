@@ -10,21 +10,34 @@ AUTH JWT
 
 MODEL Student
     name STRING
-    email STRING
+    email STRING UNIQUE
 
 MODEL Teacher
     name STRING
-    email STRING
+    email STRING UNIQUE
 
 MODEL Course
     title STRING
-    code STRING
+    code STRING UNIQUE
 
-RELATION Student HAS_MANY Course
+MODEL Enrollment
+    grade STRING OPTIONAL
+
 RELATION Teacher HAS_MANY Course
+RELATION Course HAS_MANY Enrollment
+RELATION Student HAS_MANY Enrollment
 
 VALIDATE email REQUIRED EMAIL
+VALIDATE code REQUIRED MAX 16
 
 ROUTE GET /students
+ROUTE POST /students
 ROUTE GET /teachers
+ROUTE POST /teachers
 ROUTE GET /courses
+ROUTE GET /courses/{id}
+ROUTE POST /courses
+ROUTE GET /teachers/{id}/courses
+ROUTE POST /enrollments
+ROUTE GET /students/{id}/enrollments
+ROUTE DELETE /enrollments/{id}

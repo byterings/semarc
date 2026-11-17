@@ -1,239 +1,94 @@
 # Project Template System
 
-SEMARC v0.12.0 introduces the Project Template Foundation.
+SEMARC Core is the architecture engine; targets are runnable project builders. Core owns
+parsing, validation, profiles, modules, relationships, resource planning, diagnostics and
+the Architecture IR. Targets own framework code, runtime files, Docker files, package
+manifests and project layout.
 
-This changes the target generator direction from:
-
-```text
-Architecture IR -> generated code files
-```
-
-to:
-
-```text
-Architecture IR -> runnable project foundation
-```
-
-The compiler core remains stable. Project templates live in the generator layer.
-
-## SEMARC Core
-
-SEMARC Core is the architecture engine.
-
-It owns:
-
-- lexical analysis
-- parsing
-- semantic AST construction
-- semantic validation
-- profile composition
-- stdlib module resolution
-- module dependency resolution
-- module constraint validation
-- relationship planning
-- architecture intelligence
-- Architecture IR generation
-
-SEMARC Core does not own framework bootstrap files, Docker files, runtime package manifests, or target-specific project layout.
-
-## Target System
-
-Targets are runnable project builders.
-
-Current built-in targets:
-
-- `php`
-- `fastapi`
-- `nestjs`
-
-Target metadata is represented by:
-
-- `TargetDefinition`
-- `TargetMetadata`
-- `TargetRegistry`
-- `TargetLoader`
-
-The foundation exists so future target packages can be described with metadata before SEMARC supports installable target packages.
-
-Example target metadata:
-
-```yaml
-name: fastapi
-language: Python
-description: Runnable FastAPI project generator
-```
-
-## Project Templates
-
-Each target owns its project template foundation under the generator layer.
-
-```text
-generator/
-├── php/
-│   └── project_template/
-├── fastapi/
-│   └── project_template/
-└── nestjs/
-    └── project_template/
-```
-
-Project templates provide:
-
-- README files
-- `.env.example`
-- Dockerfile
-- `docker-compose.yml`
-- framework bootstrap files
-- project metadata
-- test placeholders
-- generator manifest
-
-Target templates remain deterministic and local. They do not download dependencies or call remote services.
-
-## Runnable Project Generation
-
-### PHP
-
-PHP output now includes a runnable project foundation:
-
-```text
-output/
-├── public/
-│   ├── index.php
-│   └── .htaccess
-├── config/
-│   ├── app.php
-│   └── database.php
-├── tests/
-├── controllers/
-├── models/
-├── repositories/
-├── services/
-├── validators/
-├── migrations/
-├── routes.php
-├── README.md
-├── .env.example
-├── Dockerfile
-├── docker-compose.yml
-└── generator_manifest.json
-```
-
-PHP exposes `/`, `/health`, and `/routes` from `routes.php`.
-
-### FastAPI
-
-FastAPI output now includes direct project modules:
-
-```text
-output/
-├── main.py
-├── routers/
-├── models/
-├── schemas/
-├── services/
-├── middleware/
-├── repositories/
-├── tests/
-├── requirements.txt
-├── README.md
-├── .env.example
-├── Dockerfile
-├── docker-compose.yml
-└── generator_manifest.json
-```
-
-FastAPI exposes `/`, `/health`, and `/routes` from `main.py`.
-
-### NestJS
-
-NestJS output now includes project bootstrap files:
-
-```text
-output/
-├── src/
-├── test/
-├── package.json
-├── nest-cli.json
-├── tsconfig.json
-├── README.md
-├── .env.example
-├── Dockerfile
-├── docker-compose.yml
-└── generator_manifest.json
-```
-
-## Generator Manifest
+## Shared Project Files
 
 Every target writes:
 
+| File | Purpose |
+| --- | --- |
+| `README.md` | quick start, Docker, tests, configuration, auth, API table, layout |
+| `.env.example` | `APP_NAME`, `APP_ENV`, `DB_CONNECTION`, `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`, and with auth `JWT_SECRET`, `JWT_TTL` |
+| `Dockerfile` | production image; applies migrations on start |
+| `docker-compose.yml` | the app plus MySQL 8.4 or PostgreSQL 17 (with health checks), or a SQLite volume; host port overridable with `APP_PORT` |
+| `api_scenario.json` | behavioural test plan, replayed by the project's test runner |
+| `.gitignore`, `storage/` | ignores `.env`, build output and SQLite files |
+| `generator_manifest.json` | generator, SEMARC version, project, profiles, modules |
+| `architecture_report.json` | diagnostics written by `DiagnosticReportPass` |
+
+`DB_CONNECTION` accepts `mysql`, `pgsql` or `sqlite`. Relative SQLite paths resolve against
+the project root. Environment variables take precedence over `.env`.
+
+## PHP
+
 ```text
-generator_manifest.json
+public/index.php        front controller (php -S ... public/index.php)
+bootstrap.php           loads .env and every class
+routes.php              routes, access flags, /, /health, /routes
+core/                   Router, Request, Response, Database, Schema, Migrator,
+                        Repository, ResourceService, Cast, Env, HttpException, HomePage, Jwt
+models/ repositories/ services/ controllers/ validators/ middleware/
+migrations/             NNN_create_<table>_table.php table definitions
+bin/migrate.php         waits for the database, applies pending migrations
+config/app.php, config/database.php
+tests/run.php           replays tests/api_scenario.json in-process on SQLite
 ```
 
-Example:
+Run: `php bin/migrate.php && php -S 127.0.0.1:8000 -t public public/index.php`.
+Tests: `php tests/run.php` (needs `pdo_sqlite`). PHP 8.1+ with `pdo_mysql`, `pdo_pgsql` or
+`pdo_sqlite`; no Composer packages are required.
 
-```json
-{
-  "generator": "fastapi",
-  "semarc_version": "0.12.0",
-  "project": "Shop",
-  "generated_at": "1970-01-01T00:00:00Z",
-  "profiles": [],
-  "modules": []
-}
+## FastAPI
+
+```text
+main.py                 app, error handlers, routers, /, /health, /routes
+database.py             engine, session, Base
+config/settings.py      environment settings and database URL
+core/errors.py          ApiError and exception handlers
+models/ schemas/ repositories/ services/ routers/ middleware/
+migrations/             Alembic env and versions/NNNN_create_<table>_table.py
+alembic.ini, migrate.py waits for the database, runs alembic upgrade head
+tests/test_api.py       replays tests/api_scenario.json with TestClient on SQLite
+requirements.txt        pinned dependencies
 ```
 
-The timestamp is deterministic in v0.12.0 so golden tests remain stable.
+Run: `pip install -r requirements.txt && python migrate.py && uvicorn main:app`.
+Tests: `pytest`. Interactive docs at `/docs`.
 
-## Validation
+## NestJS
 
-The release validation suite checks that generated projects contain:
+```text
+src/main.ts, src/app.setup.ts, src/app.module.ts, src/app.controller.ts
+src/config/settings.ts
+src/common/             ApiError, exception filter, validation pipe, id pipe,
+                        ResourceRepository, ResourceService, password hasher, CurrentUserId
+src/database/           column types, data source, migrations/
+src/modules/<resource>/ entity, dto/, repository, service, controller, module
+src/modules/auth/       auth controller, module, token service, login DTO
+src/guards/auth.guard.ts
+test/api.e2e-spec.ts    replays test/api_scenario.json with supertest on in-memory SQLite
+package.json, tsconfig.json, tsconfig.build.json, nest-cli.json
+```
 
-- README
-- `.env.example`
-- Dockerfile
-- `docker-compose.yml`
-- generator manifest
-- required target folders
-- non-empty generated files
-- no unresolved template placeholders
-- no duplicate generated output paths
+Run: `npm install && npm run start:dev` (migrations run on start). Tests: `npm test`.
+Build: `npm run build && npm start`. Node.js 22+.
 
-Where local tooling exists, generated syntax is checked:
+## Pinned Toolchains
 
-- PHP files with `php -l`
-- Python files with `py_compile`
-- TypeScript files with structural checks
+| Target | Versions |
+| --- | --- |
+| PHP | PHP 8.3 image; no third-party packages |
+| FastAPI | FastAPI 0.163, SQLAlchemy 2.1, Alembic 1.20, Pydantic 2.14, PyJWT 2.15, bcrypt 5, pytest 9 |
+| NestJS | NestJS 11.2, TypeORM 0.3.31, @nestjs/jwt 11, class-validator 0.14, TypeScript 5.9, Jest 30 |
 
-No validation requires internet access.
-
-## Future Target Packages
-
-The target foundation prepares SEMARC for future target packages.
-
-Future target packages may provide:
-
-- target metadata
-- project templates
-- framework bootstrap files
-- target-specific validation rules
-- optional generator adapters
-
-v0.12.0 does not implement target downloads, target version resolution, marketplaces, or remote registries.
+Versions are pinned exactly in `generator/fastapi/fastapi_generator.py` and
+`generator/nestjs/nestjs_generator.py` so that generated projects are reproducible.
 
 ## Boundary
 
-Project templates must stay in the generator layer.
-
-They must not modify:
-
-- lexer behavior
-- parser behavior
-- semantic AST
-- Architecture IR semantics
-- module resolution
-- profile composition
-- architecture intelligence
-
-SEMARC Core remains the architecture engine. Targets build runnable project foundations from the stable Architecture IR.
+Project templates stay in the generator layer. They must not change lexer, parser, AST, IR
+semantics, module resolution, profile composition or diagnostics.

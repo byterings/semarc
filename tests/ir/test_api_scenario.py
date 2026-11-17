@@ -66,6 +66,26 @@ class ApiScenarioTests(unittest.TestCase):
         self.assertIn("create User", names)
         self.assertEqual(step(steps, "create User")["save"], {"user_record_id": "data.id"})
 
+    def test_models_with_only_optional_fields_are_supported(self):
+        source = """PROJECT School
+
+DATABASE SQLITE
+
+MODEL Student
+    name STRING
+
+MODEL Enrollment
+    grade STRING OPTIONAL
+
+RELATION Student HAS_MANY Enrollment
+
+ROUTE POST /students
+ROUTE POST /enrollments
+"""
+        create = step(build(source), "create Enrollment")
+        self.assertEqual(create["body"], {"student_id": {"$ref": "student_id"}})
+        self.assertNotIn("equals", create)
+
     def test_children_without_creatable_parents_are_skipped(self):
         source = """PROJECT Shop
 

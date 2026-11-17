@@ -1,10 +1,9 @@
 # Relationship Engine
 
-The relationship engine makes SEMARC relationship-aware. It converts semantic relationship declarations into graph data, foreign keys, repository dependency metadata, and migration metadata.
+The relationship engine (`architecture/relationship_engine.py`) turns semantic relations
+into a relationship graph, foreign keys and migration metadata.
 
-## Input
-
-Semantic relations:
+## Supported Relationships
 
 ```text
 RELATION User HAS_MANY Post
@@ -12,126 +11,40 @@ RELATION Post BELONGS_TO User
 RELATION User HAS_ONE Profile
 ```
 
-AST nodes:
-
-```text
-RelationNode(source_model, relation_type, target_model)
-```
-
-## Supported Relationships
-
-```text
-HAS_MANY
-BELONGS_TO
-HAS_ONE
-```
-
-## Example Expansion
-
-Input:
-
-```text
-MODEL User
-    name STRING
-
-MODEL Post
-    title STRING
-
-RELATION User HAS_MANY Post
-```
-
-Relationship engine output:
-
-```json
-{
-  "relationships": [
-    {"source": "User", "type": "HAS_MANY", "target": "Post"}
-  ],
-  "foreign_keys": [
-    {
-      "table": "posts",
-      "column": "user_id",
-      "references_table": "users",
-      "references_column": "id"
-    }
-  ]
-}
-```
-
-## Generated Architecture Effects
-
-`User HAS_MANY Post` should synthesize:
-
-- `posts.user_id` foreign key
-- `UserRepository` dependency on `PostRepository`
-- ORM relationship on `User`
-- inverse ORM relationship on `Post`
-- migration metadata for `posts`
-
-## Relationship Graph
-
-```text
-User
-    HAS_MANY -> Post
-
-Post
-    []
-```
-
-The graph is used for debugging and future architecture analysis.
-
 ## Foreign Key Rules
 
-For `A HAS_MANY B`:
+| Declaration | Column |
+| --- | --- |
+| `A HAS_MANY B` | `b_table.a_id` |
+| `B BELONGS_TO A` | `b_table.a_id` |
+| `A HAS_ONE B` | `b_table.a_id`, unique |
 
-```text
-B table receives a_id
-```
+Declaring both directions (`User HAS_MANY Post` and `Post BELONGS_TO User`) produces one
+column. Foreign key columns are required.
 
-For `B BELONGS_TO A`:
+## Validation
 
-```text
-B table receives a_id
-```
+The validator rejects undefined models, duplicate relationships, invalid relation types,
+circular ownership and child fields that collide with a generated foreign key column.
 
-For `A HAS_ONE B`:
+## Effects on the Generated API
 
-```text
-B table receives a_id
-```
+The resource planner records each foreign key twice in the IR model specs:
 
-## Validation Rules
+- as a `reference` on the child, used for input validation (the parent must exist, else
+  422), unique checks for `HAS_ONE` (409) and token ownership when the parent is the auth
+  model;
+- as a `dependent` on the parent, used to refuse deletes while children exist (409).
 
-The validator detects:
+A route shaped `GET /<parents>/{id}/<children>` lists the children of one parent when the
+child references the parent.
 
-- undefined source model
-- undefined target model
-- duplicate relationships
-- invalid relationship type
-- circular ownership relationships
-
-Example:
-
-```text
-[Semantic Error]
-Undefined model: Post
-Line: 18
-```
+The dependency graph records the child entity depending on the parent and the child
+service depending on the parent repository.
 
 ## Target Mapping
 
-Relationship engine output remains target-neutral.
-
-PHP generator maps relationships to metadata comments and migration foreign keys:
-
-```php
-// Relation metadata: User HAS_MANY Post
-```
-
-FastAPI generator maps relationships to schema/table metadata and migration foreign keys:
-
-```python
-# Relation metadata: User HAS_MANY Post
-```
-
-Runtime relationship helper methods are not emitted until target runtime support exists.
+Relationship metadata stays target-neutral. Targets render foreign key columns and
+constraints in migrations, reference checks in services and relation comments in models.
+ORM relationship objects and lazy-loading helpers are intentionally not generated; nested
+data is reached through the nested list routes.

@@ -19,10 +19,14 @@ Core operations:
 
 ```python
 graph.add_node("AuthMiddleware")
-graph.add_dependency("AuthMiddleware", "TokenService")
+graph.add_dependency("AuthMiddleware", "TokenService")     # records repeated edges as duplicates
+graph.ensure_dependency("PostController", "PostService")   # idempotent, for facts derived repeatedly
 graph.validate()
 graph.traverse()
 ```
+
+Since v0.14.0 the graph also contains model services, controllers per route, the auth
+middleware for protected routes, and child entities depending on their parents.
 
 ## Nodes
 

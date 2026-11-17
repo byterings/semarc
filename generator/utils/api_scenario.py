@@ -123,7 +123,7 @@ class ApiScenarioBuilder:
             (
                 model_field
                 for model_field in model["fields"]
-                if not model_field.get("secret", False)
+                if not model_field.get("secret", False) and model_field["name"] in body
             ),
             None,
         )
