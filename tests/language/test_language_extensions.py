@@ -54,6 +54,10 @@ class FieldModifierTests(unittest.TestCase):
         ast = parse("PROJECT Demo\nMODEL Ticket\n    service STRING\n    status STRING\n")
         self.assertEqual([field.name for field in ast.models[0].fields], ["service", "status"])
 
+    def test_model_named_like_a_keyword_is_allowed(self):
+        ast = parse("PROJECT Demo\nMODEL Profile\n    bio TEXT\nMODEL Route\n    name STRING\n")
+        self.assertEqual([model.name for model in ast.models], ["Profile", "Route"])
+
     def test_implicit_columns_cannot_be_declared(self):
         with self.assertRaises(SemanticValidationError) as raised:
             validate("PROJECT Demo\nMODEL Post\n    id INTEGER\n")

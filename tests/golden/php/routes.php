@@ -8,7 +8,7 @@ $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 
 if ($method === 'GET' && $path === '/') {
     header('Content-Type: text/html; charset=utf-8');
-    $project = ['project' => 'GoldenAPI', 'target' => 'PHP', 'semarc_version' => '0.13.0', 'models' => ['User'], 'routes' => ['GET /', 'GET /health', 'GET /routes', 'POST /login', 'GET /users'], 'profiles' => [], 'modules' => [], 'status' => 'Running'];
+    $project = ['project' => 'GoldenAPI', 'target' => 'PHP', 'semarc_version' => '0.13.0', 'models' => ['User'], 'routes' => ['GET /', 'GET /health', 'GET /routes', 'POST /login', 'GET /users', 'POST /register', 'GET /me'], 'profiles' => [], 'modules' => [], 'status' => 'Running'];
     echo '<h1>SEMARC Generated Project</h1>';
     echo '<p><strong>Project:</strong> ' . htmlspecialchars($project['project']) . '</p>';
     echo '<p><strong>Target:</strong> ' . htmlspecialchars($project['target']) . '</p>';
@@ -29,7 +29,7 @@ if ($method === 'GET' && $path === '/health') {
 
 if ($method === 'GET' && $path === '/routes') {
     header('Content-Type: application/json');
-    echo json_encode(['routes' => ['GET /', 'GET /health', 'GET /routes', 'POST /login', 'GET /users']]);
+    echo json_encode(['routes' => ['GET /', 'GET /health', 'GET /routes', 'POST /login', 'GET /users', 'POST /register', 'GET /me']]);
     exit;
 }
 
@@ -42,6 +42,20 @@ if ($method === 'POST' && $path === '/login') {
 if ($method === 'GET' && $path === '/users') {
     $controller = new UserController();
     $controller->index();
+    exit;
+}
+
+if ($method === 'POST' && $path === '/register') {
+    http_response_code(501);
+    header('Content-Type: application/json');
+    echo json_encode(['error' => 'Generated TODO: connect this route to a business service.']);
+    exit;
+}
+
+if ($method === 'GET' && $path === '/me') {
+    http_response_code(501);
+    header('Content-Type: application/json');
+    echo json_encode(['error' => 'Generated TODO: connect this route to a business service.']);
     exit;
 }
 

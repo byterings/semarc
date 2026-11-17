@@ -1,10 +1,18 @@
-from generator.utils.inflector import pluralize, snake_case
-
-
 class ArchitectureIRBuilder:
     """Builds the implementation IR consumed by target-language generators."""
 
     def build(self, expanded_architecture: dict) -> dict:
+        resource_plan = expanded_architecture["resource_plan"]
+        foreign_keys = expanded_architecture.get("migration_plan", {}).get("foreign_keys", [])
+        relationships = [
+            {
+                "source": relationship["source"] if isinstance(relationship, dict) else relationship.source_model,
+                "type": relationship["type"] if isinstance(relationship, dict) else relationship.relation_type,
+                "target": relationship["target"] if isinstance(relationship, dict) else relationship.target_model,
+            }
+            for relationship in expanded_architecture["relationships"]
+        ]
+
         ir = {
             "project": expanded_architecture["project"],
             "target": expanded_architecture.get("target", "PHP"),
@@ -12,14 +20,15 @@ class ArchitectureIRBuilder:
             "config": {
                 "database": expanded_architecture["database"],
             },
+            "auth": resource_plan["auth"],
             "controllers": [],
             "services": [],
             "models": [],
             "middlewares": [],
             "repositories": [],
             "validators": [],
-            "relationships": [],
-            "foreign_keys": [],
+            "relationships": relationships,
+            "foreign_keys": foreign_keys,
             "migrations": {},
             "profiles": [
                 {
@@ -54,33 +63,28 @@ class ArchitectureIRBuilder:
                 for middleware in auth["middlewares"]
             )
 
-        for model in expanded_architecture["models"]:
+        for model in resource_plan["models"]:
             ir["models"].append(
                 {
-                    "name": model.name,
-                    "fields": [
-                        {"name": field.name, "type": field.field_type}
-                        for field in model.fields
+                    "name": model["name"],
+                    "table": model["table"],
+                    "resource": model["resource"],
+                    "origin": model["origin"],
+                    "fields": [dict(model_field) for model_field in model["fields"]],
+                    "relations": self._relations_for(model["name"], relationships),
+                    "foreign_keys": [
+                        foreign_key for foreign_key in foreign_keys if foreign_key["table"] == model["table"]
                     ],
-                    "relations": self._relations_for(model.name, expanded_architecture["relationships"]),
-                    "foreign_keys": self._foreign_keys_for(
-                        model.name,
-                        expanded_architecture.get("migration_plan", {}).get("foreign_keys", []),
-                    ),
+                    "references": [dict(reference) for reference in model["references"]],
+                    "dependents": [dict(dependent) for dependent in model["dependents"]],
                 }
             )
-
-        for repository in expanded_architecture["repositories"]:
-            model_name = repository.removesuffix("Repository")
             ir["repositories"].append(
                 {
-                    "name": repository,
-                    "model": model_name,
-                    "type": "memory",
-                    "dependencies": self._repository_dependencies(
-                        model_name,
-                        expanded_architecture["relationships"],
-                    ),
+                    "name": f"{model['name']}Repository",
+                    "model": model["name"],
+                    "type": "sql",
+                    "dependencies": self._repository_dependencies(model["name"], relationships),
                 }
             )
 
@@ -89,7 +93,7 @@ class ArchitectureIRBuilder:
                 {
                     "name": validator,
                     "type": "input",
-                    "rules": ["required", "email", "min"],
+                    "rules": ["required", "email", "min", "max"],
                 }
             )
 
@@ -98,77 +102,79 @@ class ArchitectureIRBuilder:
                 {
                     "name": "Validator",
                     "type": "input",
+                    "model": validation.model_name,
                     "field": validation.field_name,
                     "rules": validation.rules,
+                    "parameters": dict(validation.parameters),
                 }
             )
 
-        ir["relationships"] = [
-            {
-                "source": relationship["source"] if isinstance(relationship, dict) else relationship.source_model,
-                "type": relationship["type"] if isinstance(relationship, dict) else relationship.relation_type,
-                "target": relationship["target"] if isinstance(relationship, dict) else relationship.target_model,
-            }
-            for relationship in expanded_architecture["relationships"]
-        ]
-        ir["foreign_keys"] = expanded_architecture.get("migration_plan", {}).get("foreign_keys", [])
-        ir["migrations"] = expanded_architecture.get("migration_plan", {})
+        ir["migrations"] = {
+            "tables": [
+                {
+                    "model": model["name"],
+                    "table": model["table"],
+                    "fields": [
+                        {
+                            "name": model_field["name"],
+                            "type": model_field["type"],
+                            "required": model_field["required"],
+                            "unique": model_field["unique"],
+                        }
+                        for model_field in model["fields"]
+                    ],
+                    "foreign_keys": [
+                        foreign_key for foreign_key in foreign_keys if foreign_key["table"] == model["table"]
+                    ],
+                }
+                for model in resource_plan["models"]
+            ],
+            "foreign_keys": foreign_keys,
+        }
 
-        for route in expanded_architecture["routes"]:
+        for route in resource_plan["routes"]:
             ir["routes"].append(
                 {
-                    "method": route.method,
-                    "path": route.path,
-                    "handler": self._handler_for(route),
+                    "method": route["method"],
+                    "path": route["path"],
+                    "origin": route["origin"],
+                    "access": route["access"],
+                    "parameters": list(route["parameters"]),
+                    "operation": dict(route["operation"]),
+                    "handler": self._handler_for(route["operation"]),
                 }
             )
 
         return ir
 
-    def _handler_for(self, route) -> dict:
-        if route.method == "POST" and route.path == "/login":
+    def _handler_for(self, operation: dict) -> dict:
+        kind = operation["kind"]
+        if kind.startswith("auth_"):
             return {
                 "type": "controller",
                 "component": "AuthController",
-                "action": "login",
+                "action": kind.removeprefix("auth_"),
             }
-        if route.method == "GET":
-            return {"type": "json", "payload": "data"}
-        return {"type": "json", "payload": "message"}
+        if operation.get("model"):
+            return {
+                "type": "controller",
+                "component": f"{operation['model']}Controller",
+                "action": kind,
+            }
+        return {"type": "todo", "action": "custom"}
 
-    def _relations_for(self, model_name: str, relationships: list) -> list[dict]:
-        model_relations = []
-        for relationship in relationships:
-            source = relationship["source"] if isinstance(relationship, dict) else relationship.source_model
-            target = relationship["target"] if isinstance(relationship, dict) else relationship.target_model
-            relation_type = relationship["type"] if isinstance(relationship, dict) else relationship.relation_type
-            if source == model_name or target == model_name:
-                model_relations.append(
-                    {
-                        "source": source,
-                        "type": relation_type,
-                        "target": target,
-                    }
-                )
-        return model_relations
+    def _relations_for(self, model_name: str, relationships: list[dict]) -> list[dict]:
+        return [
+            dict(relationship)
+            for relationship in relationships
+            if relationship["source"] == model_name or relationship["target"] == model_name
+        ]
 
-    def _foreign_keys_for(self, model_name: str, foreign_keys: list[dict]) -> list[dict]:
-        table_name = self._table_name(model_name)
-        return [foreign_key for foreign_key in foreign_keys if foreign_key["table"] == table_name]
-
-    def _repository_dependencies(self, model_name: str, relationships: list) -> list[str]:
+    def _repository_dependencies(self, model_name: str, relationships: list[dict]) -> list[str]:
         dependencies = set()
         for relationship in relationships:
-            source = relationship["source"] if isinstance(relationship, dict) else relationship.source_model
-            target = relationship["target"] if isinstance(relationship, dict) else relationship.target_model
-            relation_type = relationship["type"] if isinstance(relationship, dict) else relationship.relation_type
-
-            if source == model_name and relation_type in {"HAS_MANY", "HAS_ONE"}:
-                dependencies.add(f"{target}Repository")
-            if target == model_name and relation_type == "BELONGS_TO":
-                dependencies.add(f"{source}Repository")
-
+            if relationship["source"] == model_name and relationship["type"] in {"HAS_MANY", "HAS_ONE"}:
+                dependencies.add(f"{relationship['target']}Repository")
+            if relationship["target"] == model_name and relationship["type"] == "BELONGS_TO":
+                dependencies.add(f"{relationship['source']}Repository")
         return sorted(dependencies)
-
-    def _table_name(self, model_name: str) -> str:
-        return pluralize(snake_case(model_name))

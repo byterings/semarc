@@ -21,6 +21,12 @@ class DependencyGraph:
             self.duplicate_dependencies.add((component, dependency))
         self.dependencies[component].add(dependency)
 
+    def ensure_dependency(self, component: str, dependency: str) -> None:
+        """Adds a dependency once; repeated semantic facts are not duplicates."""
+        self.add_node(component)
+        self.add_node(dependency)
+        self.dependencies[component].add(dependency)
+
     def validate(self) -> None:
         errors = []
         missing = []

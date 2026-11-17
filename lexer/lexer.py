@@ -69,7 +69,7 @@ class Lexer:
     def _classify(self, value: str) -> str:
         upper_value = value.upper()
 
-        if upper_value in KEYWORDS:
+        if value in KEYWORDS:
             return "KEYWORD"
         if value == upper_value and upper_value in TYPES:
             return "TYPE"

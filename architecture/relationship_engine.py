@@ -7,7 +7,7 @@ class RelationshipEngine:
     def build(self, architecture) -> dict:
         models = {model.name: model for model in architecture.models}
         relationships = [self._relationship(relation) for relation in architecture.relations]
-        foreign_keys = [self._foreign_key(relation) for relation in relationships]
+        foreign_keys = self._unique_foreign_keys(self._foreign_key(relation) for relation in relationships)
 
         return {
             "graph": self._graph(models, relationships),
@@ -38,7 +38,18 @@ class RelationshipEngine:
             "references_column": "id",
             "source_model": parent,
             "target_model": child,
+            "unique": relation["type"] == "HAS_ONE",
         }
+
+    def _unique_foreign_keys(self, foreign_keys) -> list[dict]:
+        unique: dict[tuple[str, str], dict] = {}
+        for foreign_key in foreign_keys:
+            key = (foreign_key["table"], foreign_key["column"])
+            if key in unique:
+                unique[key]["unique"] = unique[key]["unique"] or foreign_key["unique"]
+                continue
+            unique[key] = foreign_key
+        return list(unique.values())
 
     def _graph(self, models: dict, relationships: list[dict]) -> dict:
         graph = {name: [] for name in sorted(models)}

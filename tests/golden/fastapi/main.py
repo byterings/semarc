@@ -19,7 +19,7 @@ def home():
         "target": "FastAPI",
         "semarc_version": "0.13.0",
         "models": ['User'],
-        "routes": ['GET /', 'GET /health', 'GET /routes', 'POST /login', 'GET /users'],
+        "routes": ['GET /', 'GET /health', 'GET /routes', 'POST /login', 'GET /users', 'POST /register', 'GET /me'],
         "profiles": [],
         "modules": [],
         "status": "Running",
@@ -33,4 +33,4 @@ def health():
 
 @app.get("/routes")
 def routes():
-    return {"routes": ['GET /', 'GET /health', 'GET /routes', 'POST /login', 'GET /users']}
+    return {"routes": ['GET /', 'GET /health', 'GET /routes', 'POST /login', 'GET /users', 'POST /register', 'GET /me']}

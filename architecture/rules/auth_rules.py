@@ -32,5 +32,6 @@ def apply_auth_rules(architecture, plan: dict, graph) -> None:
     graph.add_dependency("AuthController", "TokenService")
     graph.add_dependency("AuthController", "PasswordHasher")
     graph.add_dependency("AuthController", "Validator")
+    graph.add_dependency("AuthController", f"{AUTH_MODEL}Repository")
     graph.add_dependency("AuthMiddleware", "TokenService")
     graph.add_dependency("TokenService", "Validator")

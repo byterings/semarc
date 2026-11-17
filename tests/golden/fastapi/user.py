@@ -9,3 +9,4 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String)
     name = Column(String)
+    password = Column(String)

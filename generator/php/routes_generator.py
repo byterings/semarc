@@ -47,9 +47,10 @@ class RoutesGenerator:
         handler = route.get("handler", {})
         lines = [f"if ($method === '{route['method']}' && $path === '{route['path']}') {{"]
 
-        if handler.get("type") == "controller":
+        legacy_actions = {"list": "index", "create": "store", "login": "login"}
+        if handler.get("type") == "controller" and handler["action"] in legacy_actions:
             controller = handler["component"]
-            action = handler["action"]
+            action = legacy_actions[handler["action"]]
             lines.extend(
                 [
                     f"    $controller = new {controller}();",
@@ -57,7 +58,7 @@ class RoutesGenerator:
                 ]
             )
         else:
-            model_name = self._model_for_route(route, ir["models"])
+            model_name = None if handler.get("type") == "controller" else self._model_for_route(route, ir["models"])
             if model_name:
                 action = "store" if route["method"] == "POST" else "index"
                 lines.extend(
