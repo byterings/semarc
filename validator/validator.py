@@ -14,7 +14,7 @@ class SemanticValidator:
 
     SUPPORTED_DATABASES = {"MYSQL", "POSTGRESQL", "SQLITE"}
     SUPPORTED_AUTH = {"JWT", "SESSION"}
-    SUPPORTED_TARGETS = {"PHP", "FASTAPI", "LARAVEL", "NODE", "NESTJS"}
+    SUPPORTED_TARGETS = {"PHP", "FASTAPI", "NESTJS"}
 
     def __init__(self, module_registry=None) -> None:
         self.module_registry = module_registry
@@ -44,7 +44,7 @@ class SemanticValidator:
         if architecture.target and architecture.target.name not in self.SUPPORTED_TARGETS:
             errors.append(
                 self._error(
-                    f"Unsupported target profile: {architecture.target.name}",
+                    self.unsupported_target_message(architecture.target.name),
                     architecture.target,
                 )
             )
@@ -57,6 +57,16 @@ class SemanticValidator:
 
         if errors:
             raise SemanticValidationError("\n\n".join(errors))
+
+    def validate_target_override(self, target_override: str | None) -> None:
+        if target_override and target_override.upper() not in self.SUPPORTED_TARGETS:
+            raise SemanticValidationError(
+                "[Semantic Error]\n" + self.unsupported_target_message(target_override.upper())
+            )
+
+    def unsupported_target_message(self, target: str) -> str:
+        available = ", ".join(sorted(self.SUPPORTED_TARGETS))
+        return f"Unsupported target profile: {target} (available: {available})"
 
     def _validate_duplicate_models(self, architecture: ArchitectureNode, errors: list[str]) -> None:
         seen = {}

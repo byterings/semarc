@@ -1,7 +1,5 @@
+from compiler.version import SEMARC_VERSION
 from generator.utils.inflector import resource_path
-
-
-SEMARC_VERSION = "v0.13.0"
 
 
 def complete_routes(ir: dict) -> list[dict]:

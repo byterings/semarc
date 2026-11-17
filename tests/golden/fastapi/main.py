@@ -17,7 +17,7 @@ def home():
         "title": "SEMARC Generated Project",
         "project": "GoldenAPI",
         "target": "FastAPI",
-        "semarc_version": "v0.13.0",
+        "semarc_version": "0.13.0",
         "models": ['User'],
         "routes": ['GET /', 'GET /health', 'GET /routes', 'POST /login', 'GET /users'],
         "profiles": [],

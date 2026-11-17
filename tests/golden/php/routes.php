@@ -8,7 +8,7 @@ $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 
 if ($method === 'GET' && $path === '/') {
     header('Content-Type: text/html; charset=utf-8');
-    $project = ['project' => 'GoldenAPI', 'target' => 'PHP', 'semarc_version' => 'v0.13.0', 'models' => ['User'], 'routes' => ['GET /', 'GET /health', 'GET /routes', 'POST /login', 'GET /users'], 'profiles' => [], 'modules' => [], 'status' => 'Running'];
+    $project = ['project' => 'GoldenAPI', 'target' => 'PHP', 'semarc_version' => '0.13.0', 'models' => ['User'], 'routes' => ['GET /', 'GET /health', 'GET /routes', 'POST /login', 'GET /users'], 'profiles' => [], 'modules' => [], 'status' => 'Running'];
     echo '<h1>SEMARC Generated Project</h1>';
     echo '<p><strong>Project:</strong> ' . htmlspecialchars($project['project']) . '</p>';
     echo '<p><strong>Target:</strong> ' . htmlspecialchars($project['target']) . '</p>';

@@ -5,6 +5,7 @@ from generator.nestjs.name_utils import camel_case, pascal_case, pluralize, segm
 from generator.php.template_engine import TemplateEngine
 from generator.project_files import ProjectFileWriter
 from generator.utils.project_experience import SEMARC_VERSION, complete_routes, model_names, module_names, profile_names, route_lines
+from generator.utils.inflector import kebab_case
 
 
 class NestJSGenerator:
@@ -394,7 +395,7 @@ class NestJSGenerator:
         return parts[0].lower() if parts else ""
 
     def _package_name(self, project_name: str) -> str:
-        return segment_name(project_name).replace("_", "-")
+        return kebab_case(project_name)
 
     def _ts_array(self, values: list[str]) -> str:
         if not values:

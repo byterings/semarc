@@ -7,6 +7,7 @@ from typing import Any
 class CompilerContext:
     source_path: Path
     output_dir: str = "output"
+    force_output: bool = False
     debug: bool = False
     target_override: str | None = None
     source: str = ""

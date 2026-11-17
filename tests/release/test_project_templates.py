@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from compiler.version import SEMARC_VERSION
 from generator.targets import TargetLoader, TargetRegistry
 from tests.support import GeneratorValidationSuite, ROOT, compile_source
 
@@ -53,5 +54,5 @@ class ProjectTemplateFoundationTests(unittest.TestCase):
 
                 manifest = json.loads((output_dir / "generator_manifest.json").read_text(encoding="utf-8"))
                 self.assertEqual(manifest["generator"], target)
-                self.assertEqual(manifest["semarc_version"], "0.12.0")
+                self.assertEqual(manifest["semarc_version"], SEMARC_VERSION)
                 self.assertEqual(manifest["project"], "TemplateDemo")

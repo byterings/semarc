@@ -6,7 +6,9 @@ from validator.validator import SemanticValidationError
 class ValidationPass:
     def run(self, context) -> None:
         context.compiler_passes.append("ValidationPass")
-        SemanticValidator(module_registry=context.module_registry).validate(context.ast)
+        validator = SemanticValidator(module_registry=context.module_registry)
+        validator.validate_target_override(context.target_override)
+        validator.validate(context.ast)
         direct_modules = []
         seen_modules = set()
         if context.module_registry is None:
