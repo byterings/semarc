@@ -137,7 +137,8 @@ the same relationship produces a single column. A child must not declare a field
 foreign key's name. Relationships must not form ownership cycles.
 
 Foreign keys drive migration order, reference checks (422 for a missing parent), delete
-protection (409 while children exist), nested list routes and token ownership (see
+protection (409 while children exist), nested list routes and ownership: a model that
+references `User` is owned by that user, who alone may change it on protected routes (see
 [GENERATED_API.md](GENERATED_API.md)).
 
 ## ROUTE

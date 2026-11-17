@@ -9,6 +9,7 @@ TOKEN_TTL_SECONDS = 3600
 
 COLLECTION_OPERATIONS = {"GET": "list", "POST": "create"}
 ITEM_OPERATIONS = {"GET": "read", "PUT": "replace", "PATCH": "update", "DELETE": "delete"}
+OWNER_ONLY_KINDS = {"replace", "update", "delete"}
 
 
 class ResourcePlanner:
@@ -160,14 +161,21 @@ class ResourcePlanner:
 
     def _route(self, method: str, path: str, access: str | None, origin: str, auth: dict | None, models: list[dict]) -> dict:
         operation = self._operation(method, path, auth, models)
+        resolved_access = self._access(method, access, operation, auth)
+        if resolved_access == "protected" and operation["kind"] in OWNER_ONLY_KINDS and self._has_owner(operation, models):
+            operation["owner_only"] = True
         return {
             "method": method,
             "path": path,
             "origin": origin,
             "parameters": self._parameters(path),
             "operation": operation,
-            "access": self._access(method, access, operation, auth),
+            "access": resolved_access,
         }
+
+    def _has_owner(self, operation: dict, models: list[dict]) -> bool:
+        model = next((spec for spec in models if spec["name"] == operation.get("model")), None)
+        return model is not None and any(reference["owner"] for reference in model["references"])
 
     def _operation(self, method: str, path: str, auth: dict | None, models: list[dict]) -> dict:
         if auth and (method, path) in AUTH_ROUTES:

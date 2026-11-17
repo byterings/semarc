@@ -338,7 +338,7 @@ ROUTE POST /login
                 "",
                 "## Potential Architecture Gaps",
                 "",
-                "- Access control is authenticated-or-public; there is no per-record ownership check on update and delete.",
+                "- Access control covers authentication and record ownership; there are no roles or permissions.",
                 "- List routes support pagination but not filtering or sorting.",
                 "- Custom routes are generated as 501 stubs to be implemented by hand.",
                 "",

@@ -68,6 +68,7 @@ class ResourceService(Generic[ModelT]):
 
     def update(self, record_id: int, payload: BaseModel, partial: bool, owner_id: int | None = None) -> dict:
         record = self.find(record_id)
+        self._check_owner(record, owner_id)
         data = payload.model_dump(exclude_unset=partial)
         self._apply_owner(data, owner_id, require=not partial, keep_existing=True)
         if not data:
@@ -76,8 +77,9 @@ class ResourceService(Generic[ModelT]):
         self._check_unique(data, record_id)
         return self.serialize(self.repository.update(record, self.before_write(data)))
 
-    def delete(self, record_id: int) -> None:
+    def delete(self, record_id: int, owner_id: int | None = None) -> None:
         record = self.find(record_id)
+        self._check_owner(record, owner_id)
         for dependent in self.dependents:
             if self.repository.count_in(dependent.model, dependent.column, record_id) > 0:
                 raise ApiError.conflict(
@@ -97,6 +99,14 @@ class ResourceService(Generic[ModelT]):
         if record is None:
             raise ApiError.not_found(f"{self.name} {record_id} not found.")
         return record
+
+    def _check_owner(self, record: ModelT, owner_id: int | None) -> None:
+        """On protected routes, records with an owner column may only be changed by their owner."""
+        if owner_id is None:
+            return
+        for reference in self.references:
+            if reference.owner and getattr(record, reference.column) != owner_id:
+                raise ApiError.forbidden(f"Only the owner can modify this {self.name}.")
 
     def _apply_owner(self, data: dict[str, Any], owner_id: int | None, require: bool, keep_existing: bool = False) -> None:
         for reference in self.references:

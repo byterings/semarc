@@ -97,7 +97,7 @@ def _route_function(route: dict, name: str, module: str, used_names: set[str]) -
         "create": f"    return {{\"data\": service.create(payload, {owner})}}",
         "replace": f"    return {{\"data\": service.update({parameter}, payload, partial=False, owner_id={owner})}}",
         "update": f"    return {{\"data\": service.update({parameter}, payload, partial=True, owner_id={owner})}}",
-        "delete": f"    service.delete({parameter})\n    return Response(status_code=204)",
+        "delete": f"    service.delete({parameter}, {owner})\n    return Response(status_code=204)",
         "list_related": (
             f"    return service.list_for_parent({operation.get('parent_model')}, \"{operation.get('parent_model')}\", "
             f"\"{operation.get('foreign_key')}\", {parameter}, limit, offset)"

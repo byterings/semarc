@@ -66,6 +66,15 @@ class ApiScenarioTests(unittest.TestCase):
         self.assertIn("create User", names)
         self.assertEqual(step(steps, "create User")["save"], {"user_record_id": "data.id"})
 
+    def test_other_users_cannot_change_owned_records(self):
+        names = [item["name"] for item in self.steps]
+        self.assertIn("register second user", names)
+        forbidden = step(self.steps, "update Post of another user is forbidden")
+        self.assertEqual(forbidden["expect"], 403)
+        self.assertEqual(forbidden["auth_as"], "other_token")
+        self.assertEqual(step(self.steps, "replace Post of another user is forbidden")["body"], step(self.steps, "create Post")["body"])
+        self.assertNotIn("delete Post of another user is forbidden", names)
+
     def test_models_with_only_optional_fields_are_supported(self):
         source = """PROJECT School
 

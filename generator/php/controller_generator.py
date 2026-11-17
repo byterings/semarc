@@ -50,7 +50,7 @@ class ControllerGenerator:
             ]))
         if "delete" in kinds:
             methods.append(self._method("delete", "Request $request, string $id", "Response", [
-                "$this->service->delete(self::id($id));",
+                "$this->service->delete(self::id($id), $request->userId);",
                 "",
                 "return Response::noContent();",
             ]))

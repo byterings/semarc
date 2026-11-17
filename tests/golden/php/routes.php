@@ -11,7 +11,7 @@ $router->useAuthenticator(static function (Request $request): void {
 $project = [
     'project' => 'GoldenAPI',
     'target' => 'PHP',
-    'semarc_version' => '0.13.0',
+    'semarc_version' => '0.14.0',
     'models' => ['User'],
     'routes' => ['GET /', 'GET /health', 'GET /routes', 'POST /login', 'GET /users', 'POST /register', 'GET /me'],
 ];

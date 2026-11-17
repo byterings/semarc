@@ -109,6 +109,8 @@ created it.
 - `access`: `public` or `protected`, after applying the access policy.
 - `operation.kind`: `list`, `read`, `create`, `replace`, `update`, `delete`, `list_related`,
   `auth_register`, `auth_login`, `auth_me` or `custom`.
+- `operation.owner_only`: present and true on protected `replace`, `update` and `delete`
+  operations of models that reference the auth model; only the owner may perform them.
 - `handler` is kept for compatibility with the generation contract and debug output. Custom
   routes without a model use `{"type": "todo", "action": "custom"}`.
 

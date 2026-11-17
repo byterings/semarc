@@ -31,6 +31,10 @@ class ApiError(Exception):
         return cls(401, "unauthorized", message)
 
     @classmethod
+    def forbidden(cls, message: str) -> "ApiError":
+        return cls(403, "forbidden", message)
+
+    @classmethod
     def not_found(cls, message: str = "Resource not found.") -> "ApiError":
         return cls(404, "not_found", message)
 

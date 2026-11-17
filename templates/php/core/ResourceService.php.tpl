@@ -84,7 +84,7 @@ abstract class ResourceService
      */
     public function update(int $id, array $input, bool $partial, ?int $ownerId = null): array
     {
-        $this->find($id);
+        $this->assertOwner($this->find($id), $ownerId);
         $owner = $this->ownerColumn($ownerId);
         $data = $this->validator->validate($input, ($this->model)::inputRules($owner), $partial);
         if ($data === []) {
@@ -97,9 +97,9 @@ abstract class ResourceService
         return ($this->model)::toArray($this->repository->update($id, $this->beforeWrite($data)));
     }
 
-    public function delete(int $id): void
+    public function delete(int $id, ?int $ownerId = null): void
     {
-        $this->find($id);
+        $this->assertOwner($this->find($id), $ownerId);
         foreach (($this->model)::DEPENDENTS as $dependent) {
             if ($this->repository->countIn($dependent['table'], $dependent['column'], $id) > 0) {
                 throw HttpException::conflict(
@@ -127,6 +127,19 @@ abstract class ResourceService
     protected function find(int $id): array
     {
         return $this->repository->findById($id) ?? throw HttpException::notFound("{$this->name()} {$id} not found.");
+    }
+
+    /**
+     * On protected routes, records with an owner column may only be changed by their owner.
+     *
+     * @param array<string, mixed> $record
+     */
+    private function assertOwner(array $record, ?int $ownerId): void
+    {
+        $column = $this->ownerColumn($ownerId);
+        if ($column !== null && (int) $record[$column] !== $ownerId) {
+            throw HttpException::forbidden("Only the owner can modify this {$this->name()}.");
+        }
     }
 
     private function ownerColumn(?int $ownerId): ?string

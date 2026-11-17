@@ -56,7 +56,8 @@ cd blog-api && docker compose up --build
 
 The generated API stores data in PostgreSQL, exposes `POST /register`, `POST /login` and
 `GET /me`, requires a bearer token for writes, validates input, sets `posts.user_id` from
-the token, and refuses to delete a user who still owns posts.
+the token, lets only the author edit or delete a post, and refuses to delete a user who
+still owns posts.
 
 ## What gets generated
 
@@ -76,7 +77,8 @@ All targets share one API contract (see [docs/GENERATED_API.md](docs/GENERATED_A
 
 - `GET /`, `GET /health` (with a database check) and `GET /routes`
 - `{"data": ...}` responses; lists add `meta` with `total`, `limit`, `offset`
-- an `error` object with `code`, `message` and field `details` for 400, 401, 404, 409, 422 and 501
+- an `error` object with `code`, `message` and field `details` for 400, 401, 403, 404, 409, 422 and 501
+- owner-only changes for records that belong to a user
 
 ## Semantic language
 

@@ -68,8 +68,8 @@ class RouteOperationTests(unittest.TestCase):
             ("GET", "/posts"): {"kind": "list", "model": "Post"},
             ("POST", "/posts"): {"kind": "create", "model": "Post"},
             ("GET", "/posts/{id}"): {"kind": "read", "model": "Post", "parameter": "id"},
-            ("PUT", "/posts/{id}"): {"kind": "replace", "model": "Post", "parameter": "id"},
-            ("PATCH", "/posts/{id}"): {"kind": "update", "model": "Post", "parameter": "id"},
+            ("PUT", "/posts/{id}"): {"kind": "replace", "model": "Post", "parameter": "id", "owner_only": True},
+            ("PATCH", "/posts/{id}"): {"kind": "update", "model": "Post", "parameter": "id", "owner_only": True},
             ("DELETE", "/posts/{id}"): {"kind": "delete", "model": "Post", "parameter": "id"},
         }
         for (method, path), operation in expected.items():
@@ -132,6 +132,15 @@ class AccessPolicyTests(unittest.TestCase):
         self.assertEqual(route(self.ir, "POST", "/register")["access"], "public")
         self.assertEqual(route(self.ir, "POST", "/login")["access"], "public")
         self.assertEqual(route(self.ir, "GET", "/me")["access"], "protected")
+
+    def test_protected_writes_on_owned_models_are_owner_only(self):
+        self.assertTrue(route(self.ir, "PATCH", "/posts/{id}")["operation"]["owner_only"])
+        self.assertNotIn("owner_only", route(self.ir, "DELETE", "/posts/{id}")["operation"])
+        self.assertNotIn("owner_only", route(self.ir, "POST", "/posts")["operation"])
+
+    def test_models_without_owner_are_not_owner_only(self):
+        ir = compile_ir(BLOG + "ROUTE PATCH /tags/{id}\n")
+        self.assertNotIn("owner_only", route(ir, "PATCH", "/tags/{id}")["operation"])
 
     def test_everything_is_public_without_auth(self):
         ir = compile_ir(BLOG.replace("AUTH JWT\n", "").replace(" PUBLIC", "").replace("VALIDATE password REQUIRED MIN 8\n", ""))

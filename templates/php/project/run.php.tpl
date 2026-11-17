@@ -47,7 +47,7 @@ foreach ($scenario['steps'] as $step) {
     $path = preg_replace_callback('/\$\{(\w+)\}/', static fn (array $m): string => (string) ($vars[$m[1]] ?? ''), $step['path']);
     $headers = ['content-type' => 'application/json'];
     if (!empty($step['auth'])) {
-        $headers['authorization'] = 'Bearer ' . ($vars['token'] ?? '');
+        $headers['authorization'] = 'Bearer ' . ($vars[$step['auth_as'] ?? 'token'] ?? '');
     }
     if (isset($step['token'])) {
         $headers['authorization'] = 'Bearer ' . $step['token'];

@@ -10,6 +10,7 @@ Step format:
     method   HTTP method
     path     concrete path; ${var} is replaced with a saved value
     auth     send the saved bearer token
+    auth_as  name of the saved token to send instead of "token"
     body     JSON body; {"$ref": "var"} is replaced with a saved value
     expect   expected HTTP status
     equals   {"dotted.path": value-or-$ref} assertions on the JSON response
@@ -34,6 +35,7 @@ class ApiScenarioBuilder:
         self._auth_steps()
         for model in models_in_migration_order(ir):
             self._resource_steps(model)
+        self._ownership_steps()
         self._custom_steps()
         self._delete_steps()
         return {"project": ir["project"], "steps": self.steps}
@@ -151,7 +153,7 @@ class ApiScenarioBuilder:
         parents = {value["$ref"] for value in references.values()}
         if protected and owner and self.has_token:
             parents.add("user_id")
-        self.created.append({"model": model, "var": var, "routes": routes, "parents": parents})
+        self.created.append({"model": model, "var": var, "routes": routes, "parents": parents, "body": body})
 
         if unique_columns(model):
             self._call(create, f"create {label} rejects duplicate", 409, path=self._path(create), body=body)
@@ -220,6 +222,44 @@ class ApiScenarioBuilder:
                 body={invalid["name"]: wrong},
             )
         self._call(route, f"update missing {label}", 404, path=self._path(route, str(MISSING_ID)), body={})
+
+    def _ownership_steps(self) -> None:
+        """A second user must not change records owned by the first one."""
+        owned = [
+            entry
+            for entry in self.created
+            if entry["routes"]
+            and any(entry["routes"].get(kind, {}).get("operation", {}).get("owner_only") for kind in ("update", "replace", "delete"))
+        ]
+        if not owned:
+            return
+
+        auth = self.ir["auth"]
+        user = self._model(auth["model"])
+        self._step(
+            "register second user",
+            "POST",
+            "/register",
+            201,
+            body=self._body(user, include_owner=False),
+            save={"other_token": "data.access_token"},
+        )
+        for entry in owned:
+            label = entry["model"]["name"]
+            for kind in ("update", "replace", "delete"):
+                route = entry["routes"].get(kind)
+                if route is None or not route["operation"].get("owner_only"):
+                    continue
+                body = {"update": {}, "replace": entry["body"], "delete": None}[kind]
+                self._step(
+                    f"{kind} {label} of another user is forbidden",
+                    route["method"],
+                    self._path(route, entry["var"]),
+                    403,
+                    auth=True,
+                    auth_as="other_token",
+                    body=body,
+                )
 
     def _custom_steps(self) -> None:
         for route in self.ir["routes"]:
@@ -370,10 +410,12 @@ class ApiScenarioBuilder:
             save=save,
         )
 
-    def _step(self, name, method, path, expect, auth=False, body=None, equals=None, absent=None, save=None, token=None) -> None:
+    def _step(self, name, method, path, expect, auth=False, body=None, equals=None, absent=None, save=None, token=None, auth_as=None) -> None:
         step = {"name": name, "method": method, "path": path, "expect": expect}
         if auth:
             step["auth"] = True
+        if auth_as:
+            step["auth_as"] = auth_as
         if token:
             step["token"] = token
         if body is not None:

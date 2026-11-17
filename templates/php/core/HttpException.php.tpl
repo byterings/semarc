@@ -26,6 +26,11 @@ final class HttpException extends RuntimeException
         return new self(401, 'unauthorized', $message);
     }
 
+    public static function forbidden(string $message): self
+    {
+        return new self(403, 'forbidden', $message);
+    }
+
     public static function notFound(string $message = 'Resource not found.'): self
     {
         return new self(404, 'not_found', $message);

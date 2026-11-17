@@ -60,7 +60,7 @@ def _controller_method(ir: dict, route: dict, name: str, service: str, imports: 
         imports.use("../../common/resource.service", "pageParams")
         parameters.extend([f"@{query}('limit') limit?: string", f"@{query}('offset') offset?: string"])
     owner = "undefined"
-    if protected and kind in {"create", "replace", "update"}:
+    if protected and kind in {"create", "replace", "update", "delete"}:
         imports.use("../../common/current-user.decorator", "CurrentUserId")
         parameters.append("@CurrentUserId() userId?: number")
         owner = "userId"
@@ -77,7 +77,7 @@ def _controller_method(ir: dict, route: dict, name: str, service: str, imports: 
         "create": f"    return {{ data: await this.{service}.create(dto, {owner}) }};",
         "replace": f"    return {{ data: await this.{service}.update(id, dto, false, {owner}) }};",
         "update": f"    return {{ data: await this.{service}.update(id, dto, true, {owner}) }};",
-        "delete": f"    await this.{service}.delete(id);",
+        "delete": f"    await this.{service}.delete(id, {owner});",
         "list_related": (
             f"    return this.{service}.listForParent("
             f"{ts_string(model_by_name(ir, operation['parent_model'])['table']) if kind == 'list_related' else ''}, "

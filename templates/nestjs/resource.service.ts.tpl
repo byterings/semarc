@@ -70,6 +70,7 @@ export abstract class ResourceService<T extends ObjectLiteral> {
 
   async update(id: number, input: object, partial: boolean, ownerId?: number): Promise<Data> {
     const record = await this.find(id);
+    this.checkOwner(record, ownerId);
     const data = defined(input);
     this.applyOwner(data, ownerId, !partial, true);
     if (Object.keys(data).length === 0) {
@@ -80,8 +81,9 @@ export abstract class ResourceService<T extends ObjectLiteral> {
     return this.serialize(await this.repository.update(record, (await this.beforeWrite(data)) as Partial<T>));
   }
 
-  async delete(id: number): Promise<void> {
+  async delete(id: number, ownerId?: number): Promise<void> {
     const record = await this.find(id);
+    this.checkOwner(record, ownerId);
     for (const dependent of this.dependents) {
       if ((await this.repository.countIn(dependent.table, dependent.column, id)) > 0) {
         throw ApiError.conflict(`Cannot delete ${this.name} ${id} while ${dependent.model} records reference it.`);
@@ -110,6 +112,18 @@ export abstract class ResourceService<T extends ObjectLiteral> {
       throw ApiError.notFound(`${this.name} ${id} not found.`);
     }
     return record;
+  }
+
+  /** On protected routes, records with an owner column may only be changed by their owner. */
+  private checkOwner(record: T, ownerId: number | undefined): void {
+    if (ownerId === undefined) {
+      return;
+    }
+    for (const reference of this.references) {
+      if (reference.owner && (record as Data)[reference.column] !== ownerId) {
+        throw ApiError.forbidden(`Only the owner can modify this ${this.name}.`);
+      }
+    }
   }
 
   private applyOwner(data: Data, ownerId: number | undefined, require: boolean, keepExisting: boolean): void {

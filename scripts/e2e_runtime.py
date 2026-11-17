@@ -57,7 +57,7 @@ class ScenarioClient:
             path = re.sub(r"\$\{(\w+)\}", lambda match: str(variables.get(match.group(1), "")), step["path"])
             headers = {"Accept": "application/json"}
             if step.get("auth"):
-                headers["Authorization"] = f"Bearer {variables.get('token', '')}"
+                headers["Authorization"] = f"Bearer {variables.get(step.get('auth_as', 'token'), '')}"
             if "token" in step:
                 headers["Authorization"] = f"Bearer {step['token']}"
             body = None

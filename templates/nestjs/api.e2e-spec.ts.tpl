@@ -12,6 +12,7 @@ interface Step {
   path: string;
   expect: number;
   auth?: boolean;
+  auth_as?: string;
   token?: string;
   body?: unknown;
   equals?: Record<string, unknown>;
@@ -68,7 +69,7 @@ describe('API scenario (test/api_scenario.json)', () => {
       const method = step.method.toLowerCase() as 'get' | 'post' | 'put' | 'patch' | 'delete';
       let call = request(app.getHttpServer())[method](path);
       if (step.auth) {
-        call = call.set('Authorization', `Bearer ${String(variables.token ?? '')}`);
+        call = call.set('Authorization', `Bearer ${String(variables[step.auth_as ?? 'token'] ?? '')}`);
       }
       if (step.token) {
         call = call.set('Authorization', `Bearer ${step.token}`);
