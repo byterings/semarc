@@ -6,22 +6,22 @@ class StrategyEngine:
             "target": "PHP",
             "generator": "php",
             "framework": "none",
-            "auth_strategy": "lightweight_custom_token",
-            "repository_strategy": "in_memory_prototype",
+            "auth_strategy": "jwt_hs256",
+            "repository_strategy": "pdo",
         },
         "FASTAPI": {
             "target": "FASTAPI",
             "generator": "fastapi",
             "framework": "fastapi",
-            "auth_strategy": "lightweight_custom_token",
-            "repository_strategy": "in_memory_prototype",
+            "auth_strategy": "jwt_hs256",
+            "repository_strategy": "sqlalchemy",
         },
         "NESTJS": {
             "target": "NESTJS",
             "generator": "nestjs",
             "framework": "nestjs",
-            "auth_strategy": "placeholder_guard",
-            "repository_strategy": "service_skeleton",
+            "auth_strategy": "jwt_hs256",
+            "repository_strategy": "typeorm",
         },
     }
 

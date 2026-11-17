@@ -179,6 +179,17 @@ class ValidationRuleTests(unittest.TestCase):
             validate(source + "VALIDATE views EMAIL\n")
         self.assertIn("EMAIL validation requires a STRING or TEXT field", str(raised.exception))
 
+    def test_string_max_cannot_exceed_column_size(self):
+        with self.assertRaises(SemanticValidationError) as raised:
+            validate(BASE + "VALIDATE title MAX 500\n")
+        self.assertIn("MAX 500 exceeds the STRING limit of 255", str(raised.exception))
+        validate(BASE + "VALIDATE body MAX 5000\n")
+
+    def test_password_max_cannot_exceed_bcrypt_limit(self):
+        with self.assertRaises(SemanticValidationError) as raised:
+            validate(BASE + "VALIDATE password MAX 100\n")
+        self.assertIn("72 character password limit", str(raised.exception))
+
     def test_min_greater_than_max_is_rejected(self):
         with self.assertRaises(SemanticValidationError) as raised:
             validate(BASE + "VALIDATE title MIN 10 MAX 5\n")

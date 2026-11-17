@@ -3,6 +3,7 @@ import re
 from ast_loader import load_semantic_nodes
 from architecture.rules.auth_rules import AUTH_IDENTITY_FIELD, AUTH_MODEL, AUTH_ROUTES, AUTH_SECRET_FIELD
 from generator.utils.inflector import snake_case
+from generator.utils.resource_views import SECRET_MAX_LENGTH, STRING_MAX_LENGTH
 
 
 nodes = load_semantic_nodes()
@@ -319,6 +320,16 @@ class SemanticValidator:
         return targets
 
     def _validate_rules_for_field(self, validation, owner: str, field_type: str, modifiers: list[str], errors: list[str]) -> None:
+        maximum = validation.parameters.get("MAX")
+        if field_type == "STRING" and maximum is not None and maximum > STRING_MAX_LENGTH:
+            errors.append(
+                self._error(f"MAX {maximum} exceeds the STRING limit of {STRING_MAX_LENGTH} for {owner}; use TEXT", validation)
+            )
+        if owner.endswith(f".{AUTH_SECRET_FIELD}") or owner == AUTH_SECRET_FIELD:
+            if maximum is not None and maximum > SECRET_MAX_LENGTH:
+                errors.append(
+                    self._error(f"MAX {maximum} exceeds the {SECRET_MAX_LENGTH} character password limit for {owner}", validation)
+                )
         for rule in validation.rules:
             if rule == "EMAIL" and field_type not in TEXT_TYPES:
                 errors.append(self._error(f"EMAIL validation requires a STRING or TEXT field: {owner}", validation))
