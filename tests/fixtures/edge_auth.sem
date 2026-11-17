@@ -1,0 +1,39 @@
+PROJECT EdgeCases
+
+AUTH JWT
+
+MODEL User
+    display_name STRING OPTIONAL
+
+MODEL BlogPost
+    headline STRING
+    score FLOAT OPTIONAL
+    pinned BOOLEAN OPTIONAL
+    word_count INTEGER OPTIONAL
+
+MODEL AuthorProfile
+    bio TEXT
+
+MODEL Order
+    reference STRING UNIQUE
+
+RELATION User HAS_MANY BlogPost
+RELATION User HAS_ONE AuthorProfile
+RELATION BlogPost BELONGS_TO User
+
+VALIDATE BlogPost.headline REQUIRED MIN 3 MAX 80
+VALIDATE score MIN 0 MAX 10
+VALIDATE word_count MIN 0
+
+ROUTE GET /blog-posts
+ROUTE POST /blog-posts
+ROUTE GET /blog-posts/{post_id}
+ROUTE PUT /blog-posts/{post_id}
+ROUTE DELETE /blog-posts/{post_id}
+ROUTE GET /users/{user_id}/blog-posts PROTECTED
+ROUTE POST /author-profiles
+ROUTE GET /author-profiles/{id}
+ROUTE POST /orders PUBLIC
+ROUTE GET /orders/{id}
+ROUTE PATCH /orders/{id} PUBLIC
+ROUTE GET /reports/{report_id}/summary PROTECTED

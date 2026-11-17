@@ -1,0 +1,22 @@
+PROJECT PublicCatalog
+
+MODEL Category
+    name STRING UNIQUE
+
+MODEL Item
+    title STRING
+    price FLOAT
+    in_stock BOOLEAN
+
+RELATION Category HAS_MANY Item
+
+VALIDATE price MIN 0
+
+ROUTE GET /categories
+ROUTE POST /categories
+ROUTE DELETE /categories/{id}
+ROUTE GET /categories/{id}/items
+ROUTE POST /items
+ROUTE GET /items/{id}
+ROUTE PATCH /items/{id}
+ROUTE DELETE /items/{id}

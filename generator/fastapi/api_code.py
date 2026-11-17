@@ -77,8 +77,8 @@ def _route_function(route: dict, name: str, module: str, used_names: set[str]) -
         arguments.extend(["limit: int = DEFAULT_LIMIT", "offset: int = 0"])
     owner = "None"
     if route["access"] == "protected":
-        arguments.append("user_id: int = Depends(current_user_id)")
-        owner = "user_id"
+        arguments.append("current_user: int = Depends(current_user_id)")
+        owner = "current_user"
     arguments.append(f"service: {name}Service = Depends(get_service)")
 
     decorator_options = [f'"{route["path"]}"']
@@ -139,7 +139,7 @@ def custom_router_code(ir: dict) -> str | None:
         function = _unique(f"{route['method'].lower()}_{'_'.join(segments) or 'root'}", used_names)
         arguments = [f"{parameter}: str" for parameter in route["parameters"]]
         if route["access"] == "protected":
-            arguments.append("user_id: int = Depends(current_user_id)")
+            arguments.append("current_user: int = Depends(current_user_id)")
         message = (
             f"{route['method']} {route['path']} is declared in the semantic source but has no generated behaviour. "
             f"Implement it in routers/custom.py."
