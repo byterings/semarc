@@ -1,64 +1,30 @@
-from pathlib import Path
-
-from generator.php.template_engine import TemplateEngine
-from generator.utils.inflector import camel_case, pluralize
+from generator.php.base import PHP_HEADER, PhpFileWriter
 
 
 class RepositoryGenerator:
-    def __init__(self, output_dir: Path, template_engine: TemplateEngine, reporter=None) -> None:
-        self.output_dir = output_dir
-        self.template_engine = template_engine
-        self.reporter = reporter
+    """Maps IR persistence components to PDO repositories."""
 
-    def generate(self, ir: dict) -> None:
-        repositories_dir = self.output_dir / "repositories"
-        repositories_dir.mkdir(parents=True, exist_ok=True)
+    def __init__(self, writer: PhpFileWriter) -> None:
+        self.writer = writer
 
-        for repository in ir["repositories"]:
-            template = self._template_for(repository)
-            content = self.template_engine.render(
-                template,
-                {
-                    "class_name": repository["name"],
-                    "model_name": repository["model"],
-                    "collection_name": self._collection_name(repository["model"]),
-                    "create_method": f"create{repository['model']}",
-                    "find_method": f"find{repository['model']}ById",
-                    "list_method": f"get{self._pluralize(repository['model'])}",
-                    "relationship_methods": self._relationship_methods(repository),
-                },
+    def generate(self, ir: dict) -> list[str]:
+        files = []
+        for model in ir["models"]:
+            name = model["name"]
+            path = f"repositories/{name}Repository.php"
+            content = "\n".join(
+                [
+                    PHP_HEADER,
+                    f"final class {name}Repository extends Repository",
+                    "{",
+                    "    public function __construct()",
+                    "    {",
+                    f"        parent::__construct({name}::TABLE);",
+                    "    }",
+                    "}",
+                    "",
+                ]
             )
-            path = repositories_dir / f"{repository['name']}.php"
-            path.write_text(content, encoding="utf-8")
-            self._report(path, template)
-
-    def _template_for(self, repository: dict) -> str:
-        return "repositories/user_repository.tpl"
-
-    def _collection_name(self, model_name: str) -> str:
-        return camel_case(pluralize(model_name))
-
-    def _pluralize(self, model_name: str) -> str:
-        return pluralize(model_name)
-
-    def _relationship_methods(self, repository: dict) -> str:
-        methods = []
-        for dependency in repository.get("dependencies", []):
-            related = dependency.removesuffix("Repository")
-            method = related[0].lower() + related[1:] + "Records"
-            methods.append(
-                "\n".join(
-                    [
-                        "",
-                        f"    public function {method}(int $parentId): array",
-                        "    {",
-                        "        return [];",
-                        "    }",
-                    ]
-                )
-            )
-        return "\n".join(methods)
-
-    def _report(self, path: Path, template: str) -> None:
-        if self.reporter:
-            self.reporter(path, template)
+            self.writer.write(path, content, "php repository")
+            files.append(path)
+        return files

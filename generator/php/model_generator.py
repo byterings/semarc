@@ -1,68 +1,103 @@
-from pathlib import Path
+from generator.php.base import PHP_HEADER, PhpFileWriter
+from generator.php.php_syntax import php_literal
+from generator.utils.resource_views import field_rules, output_fields, secret_fields, unique_columns
 
-from generator.php.template_engine import TemplateEngine
-from generator.utils.inflector import camel_case, pluralize
+
+CASTS = {
+    "STRING": "string",
+    "TEXT": "string",
+    "INTEGER": "int",
+    "FLOAT": "float",
+    "BOOLEAN": "bool",
+    "DATETIME": "timestamp",
+}
 
 
 class ModelGenerator:
-    def __init__(self, output_dir: Path, template_engine: TemplateEngine, reporter=None) -> None:
-        self.output_dir = output_dir
-        self.template_engine = template_engine
-        self.reporter = reporter
+    """Maps IR entities to PHP model classes holding field metadata and casting."""
 
-    def generate(self, ir: dict) -> None:
-        models_dir = self.output_dir / "models"
-        models_dir.mkdir(parents=True, exist_ok=True)
+    def __init__(self, writer: PhpFileWriter) -> None:
+        self.writer = writer
 
+    def generate(self, ir: dict) -> list[str]:
+        files = []
         for model in ir["models"]:
-            properties = []
-            assignments = []
-            relationship_properties = []
-            relationships = []
+            path = f"models/{model['name']}.php"
+            self.writer.write(path, self._model(model), "php model")
+            files.append(path)
+        return files
 
-            for field in model["fields"]:
-                php_type = self._php_type(field["type"])
-                name = field["name"]
-                properties.append(f"    public {php_type} ${name};")
-                assignments.append(f"        $this->{name} = $data['{name}'] ?? '';")
+    def _model(self, model: dict) -> str:
+        fields = {
+            model_field["name"]: {key: value for key, value in field_rules(model_field).items() if key not in {"unique", "secret"}}
+            for model_field in model["fields"]
+        }
+        references = {
+            reference["column"]: {
+                "model": reference["model"],
+                "table": reference["table"],
+                "owner": reference["owner"],
+            }
+            for reference in model["references"]
+        }
+        relation_comments = [
+            f"// Relation metadata: {relation['source']} {relation['type']} {relation['target']}"
+            for relation in model["relations"]
+        ]
+        casts = "\n".join(
+            f"            '{name}' => Cast::{CASTS[field_type]}($row['{name}']),"
+            for name, field_type in output_fields(model)
+        )
 
-            for foreign_key in model.get("foreign_keys", []):
-                name = foreign_key["column"]
-                properties.append(f"    public int ${name};")
-                assignments.append(f"        $this->{name} = $data['{name}'] ?? 0;")
-
-            for relation in model.get("relations", []):
-                relationship_properties.append(
-                    f"    // Relation metadata: {relation['source']} {relation['type']} {relation['target']}"
-                )
-
-            template = "model.tpl"
-            content = self.template_engine.render(
-                template,
-                {
-                    "model_name": model["name"],
-                    "properties": "\n".join(properties),
-                    "relationship_properties": "\n".join(relationship_properties),
-                    "assignments": "\n".join(assignments),
-                    "relationships": "\n\n".join(relationships),
-                },
-            )
-            path = models_dir / f"{model['name']}.php"
-            path.write_text(content, encoding="utf-8")
-            self._report(path, template)
-
-    def _php_type(self, semantic_type: str) -> str:
-        return {
-            "STRING": "string",
-            "TEXT": "string",
-            "INTEGER": "int",
-            "BOOLEAN": "bool",
-            "FLOAT": "float",
-        }.get(semantic_type, "string")
-
-    def _plural_method(self, model_name: str) -> str:
-        return camel_case(pluralize(model_name))
-
-    def _report(self, path: Path, template: str) -> None:
-        if self.reporter:
-            self.reporter(path, template)
+        lines = [PHP_HEADER]
+        if relation_comments:
+            lines.extend(relation_comments + [""])
+        lines.extend(
+            [
+                f"final class {model['name']}",
+                "{",
+                f"    public const TABLE = '{model['table']}';",
+                "",
+                "    /** Declared fields and their validation rules. */",
+                f"    public const FIELDS = {php_literal(fields, 4)};",
+                "",
+                "    /** Foreign key columns and the model they reference. */",
+                f"    public const REFERENCES = {php_literal(references, 4)};",
+                "",
+                "    /** Tables whose rows reference this model; deletes are refused while they exist. */",
+                f"    public const DEPENDENTS = {php_literal(model['dependents'], 4)};",
+                "",
+                f"    public const UNIQUE = {php_literal(unique_columns(model))};",
+                "",
+                f"    public const HIDDEN = {php_literal(secret_fields(model))};",
+                "",
+                "    /**",
+                "     * @return array<string, array<string, mixed>>",
+                "     */",
+                "    public static function inputRules(?string $excludeColumn = null): array",
+                "    {",
+                "        $rules = self::FIELDS;",
+                "        foreach (self::REFERENCES as $column => $reference) {",
+                "            if ($column !== $excludeColumn) {",
+                "                $rules[$column] = ['type' => 'INTEGER', 'required' => true, 'not_empty' => false, 'email' => false, 'min' => 1, 'max' => null];",
+                "            }",
+                "        }",
+                "",
+                "        return $rules;",
+                "    }",
+                "",
+                "    /**",
+                "     * @param array<string, mixed> $row",
+                "     * @return array<string, mixed>",
+                "     */",
+                "    public static function toArray(array $row): array",
+                "    {",
+                "        return [",
+                casts,
+                "        ];",
+                "    }",
+                "}",
+                "",
+            ]
+        )
+        return "\n".join(lines)

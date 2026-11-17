@@ -1,172 +1,87 @@
-from pathlib import Path
-
-from generator.php.template_engine import TemplateEngine
-from generator.utils.inflector import resource_path
-from generator.utils.project_experience import SEMARC_VERSION, complete_routes, model_names, module_names, profile_names, route_lines
+from compiler.version import SEMARC_VERSION
+from generator.php.base import PHP_HEADER, PhpFileWriter
+from generator.php.php_syntax import php_literal
+from generator.utils.inflector import pascal_case
+from generator.utils.resource_views import all_route_labels
 
 
 class RoutesGenerator:
-    def __init__(self, output_dir: Path, template_engine: TemplateEngine, reporter=None) -> None:
-        self.output_dir = output_dir
-        self.template_engine = template_engine
-        self.reporter = reporter
+    """Registers every IR route on the router with its access policy."""
+
+    def __init__(self, writer: PhpFileWriter) -> None:
+        self.writer = writer
 
     def generate(self, ir: dict) -> None:
-        route_blocks = [
-            self._home_route_block(ir),
-            self._health_route_block(ir),
-            self._route_discovery_block(ir),
-        ]
-        route_blocks.extend(self._route_block(route, ir) for route in complete_routes(ir))
-        template = "routes.tpl"
-        content = self.template_engine.render(
-            template,
-            {
-                "requires": self._requires(ir),
-                "route_blocks": "\n".join(route_blocks),
-            },
-        )
-        path = self.output_dir / "routes.php"
-        path.write_text(content, encoding="utf-8")
-        self._report(path, template)
-
-    def _requires(self, ir: dict) -> str:
-        controllers = set()
-        if any(route["path"] == "/login" for route in complete_routes(ir)):
-            controllers.add("AuthController")
-        for route in complete_routes(ir):
-            model_name = self._model_for_route(route, ir["models"])
-            if model_name:
-                controllers.add(f"{model_name}Controller")
-        return "\n".join(
-            f"require_once __DIR__ . '/controllers/{controller}.php';"
-            for controller in sorted(controllers)
-        )
-
-    def _route_block(self, route: dict, ir: dict) -> str:
-        handler = route.get("handler", {})
-        lines = [f"if ($method === '{route['method']}' && $path === '{route['path']}') {{"]
-
-        legacy_actions = {"list": "index", "create": "store", "login": "login"}
-        if handler.get("type") == "controller" and handler["action"] in legacy_actions:
-            controller = handler["component"]
-            action = legacy_actions[handler["action"]]
+        project = {
+            "project": ir["project"],
+            "target": "PHP",
+            "semarc_version": SEMARC_VERSION,
+            "models": [model["name"] for model in ir["models"]],
+            "routes": all_route_labels(ir),
+        }
+        lines = [PHP_HEADER, "$router = new Router();", ""]
+        if ir.get("auth"):
             lines.extend(
                 [
-                    f"    $controller = new {controller}();",
-                    f"    $controller->{action}();",
+                    "$router->useAuthenticator(static function (Request $request): void {",
+                    "    (new AuthMiddleware())->authenticate($request);",
+                    "});",
+                    "",
                 ]
             )
-        else:
-            model_name = None if handler.get("type") == "controller" else self._model_for_route(route, ir["models"])
-            if model_name:
-                action = "store" if route["method"] == "POST" else "index"
-                lines.extend(
-                    [
-                        f"    $controller = new {model_name}Controller();",
-                        f"    $controller->{action}();",
-                    ]
-                )
-            else:
-                lines.extend(
-                    [
-                        "    http_response_code(501);",
-                        "    header('Content-Type: application/json');",
-                        "    echo json_encode(['error' => 'Generated TODO: connect this route to a business service.']);",
-                    ]
-                )
-
-        lines.extend(["    exit;", "}", ""])
-        return "\n".join(lines)
-
-    def _model_for_route(self, route: dict, models: list[dict]) -> str | None:
-        first_segment = route["path"].strip("/").split("/", 1)[0].lower()
-        if not first_segment:
-            return None
-        for model in models:
-            segment = self._segment_name(model["name"])
-            if first_segment in {segment, self._pluralize(segment)}:
-                return model["name"]
-        return None
-
-    def _home_route_block(self, ir: dict) -> str:
-        html = self._php_array(
-            {
-                "project": ir["project"],
-                "target": "PHP",
-                "semarc_version": SEMARC_VERSION,
-                "models": model_names(ir),
-                "routes": ["GET /", "GET /health", "GET /routes"] + route_lines(ir),
-                "profiles": profile_names(ir),
-                "modules": module_names(ir),
-                "status": "Running",
-            }
-        )
-        return "\n".join(
+        lines.extend(
             [
-                "if ($method === 'GET' && $path === '/') {",
-                "    header('Content-Type: text/html; charset=utf-8');",
-                f"    $project = {html};",
-                "    echo '<h1>SEMARC Generated Project</h1>';",
-                "    echo '<p><strong>Project:</strong> ' . htmlspecialchars($project['project']) . '</p>';",
-                "    echo '<p><strong>Target:</strong> ' . htmlspecialchars($project['target']) . '</p>';",
-                "    echo '<p><strong>SEMARC Version:</strong> ' . htmlspecialchars($project['semarc_version']) . '</p>';",
-                "    echo '<h2>Models</h2><ul>';",
-                "    foreach ($project['models'] as $item) { echo '<li>' . htmlspecialchars($item) . '</li>'; }",
-                "    echo '</ul><h2>Routes</h2><ul>';",
-                "    foreach ($project['routes'] as $item) { echo '<li>' . htmlspecialchars($item) . '</li>'; }",
-                "    echo '</ul><p><strong>Status:</strong> ' . htmlspecialchars($project['status']) . '</p>';",
-                "    exit;",
-                "}",
+                f"$project = {php_literal(project, 0)};",
+                "",
+                "$router->add('GET', '/', static fn (): Response => Response::html(HomePage::render($project)));",
+                "$router->add('GET', '/health', static function () use ($project): Response {",
+                "    try {",
+                "        Database::connection()->query('SELECT 1');",
+                "        $database = 'ok';",
+                "    } catch (Throwable $exception) {",
+                "        error_log((string) $exception);",
+                "        $database = 'unavailable';",
+                "    }",
+                "",
+                "    return Response::json(",
+                "        ['status' => $database === 'ok' ? 'ok' : 'degraded', 'project' => $project['project'], 'database' => $database],",
+                "        $database === 'ok' ? 200 : 503,",
+                "    );",
+                "});",
+                "$router->add('GET', '/routes', static fn (): array => ['routes' => $router->routes()]);",
                 "",
             ]
         )
+        lines.extend(self._route(route) for route in ir["routes"])
+        lines.extend(["", "return $router;", ""])
+        self.writer.write("routes.php", "\n".join(lines), "php routes")
 
-    def _health_route_block(self, ir: dict) -> str:
-        return "\n".join(
-            [
-                "if ($method === 'GET' && $path === '/health') {",
-                "    header('Content-Type: application/json');",
-                f"    echo json_encode(['status' => 'ok', 'project' => '{ir['project']}']);",
-                "    exit;",
-                "}",
-                "",
-            ]
-        )
+    def _route(self, route: dict) -> str:
+        operation = route["operation"]
+        kind = operation["kind"]
+        protected = ", true" if route["access"] == "protected" else ""
+        prefix = f"$router->add('{route['method']}', '{route['path']}', "
 
-    def _route_discovery_block(self, ir: dict) -> str:
-        routes = self._php_array(["GET /", "GET /health", "GET /routes"] + route_lines(ir))
-        return "\n".join(
-            [
-                "if ($method === 'GET' && $path === '/routes') {",
-                "    header('Content-Type: application/json');",
-                f"    echo json_encode(['routes' => {routes}]);",
-                "    exit;",
-                "}",
-                "",
-            ]
-        )
+        if kind.startswith("auth_"):
+            action = kind.removeprefix("auth_")
+            return_type = "Response" if action == "register" else "array"
+            return f"{prefix}static fn (Request $request): {return_type} => (new AuthController())->{action}($request){protected});"
 
-    def _segment_name(self, value: str) -> str:
-        output = []
-        for index, char in enumerate(value):
-            if char.isupper() and index > 0:
-                output.append("_")
-            output.append(char.lower())
-        return "".join(output).replace("_", "-")
+        if kind == "custom":
+            message = (
+                f"{route['method']} {route['path']} is declared in the semantic source but has no generated behaviour. "
+                "Implement it in routes.php."
+            )
+            return f"{prefix}static fn (): never => throw HttpException::notImplemented({php_literal(message)}){protected});"
 
-    def _pluralize(self, value: str) -> str:
-        return resource_path(value)
-
-    def _php_array(self, value) -> str:
-        if isinstance(value, dict):
-            entries = ", ".join(f"'{key}' => {self._php_array(item)}" for key, item in value.items())
-            return "[" + entries + "]"
-        if isinstance(value, list):
-            entries = ", ".join(self._php_array(item) for item in value)
-            return "[" + entries + "]"
-        return "'" + str(value).replace("'", "\\'") + "'"
-
-    def _report(self, path: Path, template: str) -> None:
-        if self.reporter:
-            self.reporter(path, template)
+        controller = f"(new {operation['model']}Controller())"
+        if kind == "list":
+            return f"{prefix}static fn (Request $request): array => {controller}->list($request){protected});"
+        if kind == "create":
+            return f"{prefix}static fn (Request $request): Response => {controller}->create($request){protected});"
+        parameter = operation["parameter"]
+        if kind == "list_related":
+            action = f"listBy{pascal_case(operation['parent_model'])}"
+            return f"{prefix}static fn (Request $request, array $params): array => {controller}->{action}($request, $params['{parameter}']){protected});"
+        return_type = "Response" if kind == "delete" else "array"
+        return f"{prefix}static fn (Request $request, array $params): {return_type} => {controller}->{kind}($request, $params['{parameter}']){protected});"

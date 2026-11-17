@@ -107,7 +107,7 @@ class GeneratorArchitectureValidator:
             return [f"Missing project experience endpoint file for target: {target}"]
         content = path.read_text(encoding="utf-8")
         required = {
-            "php": ["$path === '/'", "$path === '/health'", "$path === '/routes'"],
+            "php": ["$router->add('GET', '/',", "$router->add('GET', '/health',", "$router->add('GET', '/routes',"],
             "fastapi": ['@app.get("/")', '@app.get("/health")', '@app.get("/routes")'],
             "nestjs": ["@Get()", "@Get('health')", "@Get('routes')"],
         }[target]

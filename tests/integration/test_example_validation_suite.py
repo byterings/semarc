@@ -265,7 +265,7 @@ ROUTE POST /login
         self.assertTrue((output_dir / "routes.php").exists())
         self.assertTrue(any((output_dir / "models").glob("*.php")))
         self.assertTrue(any((output_dir / "repositories").glob("*.php")))
-        self.assertTrue(any((output_dir / "migrations").glob("*.sql")))
+        self.assertTrue(any((output_dir / "migrations").glob("*.php")))
         self.assertTrue((output_dir / "architecture_report.json").exists())
 
     def _validate_fastapi_output(self, output_dir: Path) -> None:
