@@ -4,9 +4,9 @@ SEMARC stdlib modules are metadata-only semantic extension points.
 
 Current version: v0.5.0 foundation.
 
-The stdlib module system does not generate code, add business behavior, resolve
-module constraints, or alter target generators. It discovers module metadata,
-validates `USE` declarations, and resolves module dependencies.
+The stdlib module system discovers module metadata, validates `USE` declarations,
+resolves module dependencies (v0.6.0) and validates `requires` / `conflicts` constraints
+(`ModuleConstraintPass`). It does not generate code or alter target generators.
 
 ## Purpose
 

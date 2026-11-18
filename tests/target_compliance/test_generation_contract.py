@@ -71,14 +71,13 @@ class GenerationContractComplianceTests(unittest.TestCase):
             service = (output / "services" / "CustomerService.php").read_text(encoding="utf-8")
             repository = (output / "repositories" / "CustomerRepository.php").read_text(encoding="utf-8")
 
-            self.assertIn("new CustomerController()", routes)
-            self.assertIn("$controller->index()", routes)
-            self.assertIn("new AuthController()", routes)
+            self.assertIn("(new CustomerController())->list($request)", routes)
+            self.assertIn("(new AuthController())->login($request)", routes)
             self.assertNotIn("json_encode(['data' => []])", routes)
             self.assertIn("new CustomerService()", controller)
             self.assertIn("new CustomerRepository()", service)
-            self.assertIn("createCustomer", repository)
-            self.assertIn("getCustomers", repository)
+            self.assertIn("extends ResourceService", service)
+            self.assertIn("extends Repository", repository)
             self.assertNotIn("createUser", repository)
 
     def test_php_output_has_no_duplicate_app_tree(self):
@@ -89,8 +88,14 @@ class GenerationContractComplianceTests(unittest.TestCase):
             self.assertFalse((output / "app").exists())
             self.assertFalse((output / "routes" / "web.php").exists())
 
-    def test_auth_generation_is_todo_scaffold_not_fake_token_runtime(self):
-        for target in ["php", "fastapi", "nestjs"]:
+    REAL_AUTH_MARKERS = {
+        "php": ["hash_hmac('sha256'", "hash_equals(", "password_hash($plain, PASSWORD_BCRYPT)", "password_verify("],
+        "fastapi": ['jwt.encode(claims, self._secret(), algorithm="HS256")', 'algorithms=["HS256"]', "bcrypt.hashpw(", "bcrypt.checkpw("],
+        "nestjs": ["this.jwt.signAsync(", "algorithms: ['HS256']", "bcrypt.hash(plain, ROUNDS)", "bcrypt.compare("],
+    }
+
+    def test_auth_generation_uses_real_signed_tokens_and_hashed_passwords(self):
+        for target, markers in self.REAL_AUTH_MARKERS.items():
             with self.subTest(target=target), tempfile.TemporaryDirectory() as tmpdir:
                 source = CONTRACT_SOURCE.replace("TARGET PHP", f"TARGET {target.upper()}")
                 context = compile_source(source, tmpdir, target, generate=True)
@@ -100,10 +105,10 @@ class GenerationContractComplianceTests(unittest.TestCase):
                     if path.is_file() and path.suffix in {".php", ".py", ".ts"}
                 )
 
-                self.assertIn("TODO", generated_text)
+                for marker in markers:
+                    self.assertIn(marker, generated_text)
                 self.assertNotIn("demo-token", generated_text)
-                self.assertNotIn("base64_encode", generated_text)
-                self.assertNotIn("base64.b64encode", generated_text)
+                self.assertNotIn("TODO: configure a real token", generated_text)
 
     def test_fastapi_target_wires_router_service_repository_model(self):
         source = CONTRACT_SOURCE.replace("TARGET PHP", "TARGET FASTAPI")
@@ -120,7 +125,9 @@ class GenerationContractComplianceTests(unittest.TestCase):
             router = (output / "routers" / "customer.py").read_text(encoding="utf-8")
             service = (output / "services" / "customer_service.py").read_text(encoding="utf-8")
             self.assertIn("CustomerService", router)
-            self.assertIn("customer_service.list()", router)
+            self.assertIn("return CustomerService(db)", router)
+            self.assertIn("return service.list(limit, offset, http_request.query_params)", router)
+            self.assertIn("super().__init__(CustomerRepository(session))", service)
             self.assertIn("CustomerRepository", service)
 
     def test_nestjs_target_wires_controller_service_repository_entity(self):
@@ -130,14 +137,17 @@ class GenerationContractComplianceTests(unittest.TestCase):
             output = Path(context.output_dir)
             module = output / "src" / "modules" / "customers"
 
-            self.assertTrue((module / "customer.model.ts").exists())
+            self.assertTrue((module / "customer.entity.ts").exists())
             self.assertTrue((module / "customers.repository.ts").exists())
             self.assertTrue((module / "customers.service.ts").exists())
             self.assertTrue((module / "customers.controller.ts").exists())
 
             service = (module / "customers.service.ts").read_text(encoding="utf-8")
-            self.assertIn("CustomerRepository", service)
-            self.assertIn("this.repository.findAll()", service)
+            controller = (module / "customers.controller.ts").read_text(encoding="utf-8")
+            self.assertIn("constructor(repository: CustomerRepository)", service)
+            self.assertIn("extends ResourceService<Customer>", service)
+            self.assertIn("private readonly customerService: CustomerService", controller)
+            self.assertIn("return this.customerService.list(...pageParams(query.limit, query.offset), query);", controller)
 
     def test_project_experience_endpoints_exist_for_every_target(self):
         for target in ["php", "fastapi", "nestjs"]:
@@ -148,12 +158,12 @@ class GenerationContractComplianceTests(unittest.TestCase):
 
                 if target == "php":
                     content = (output / "routes.php").read_text(encoding="utf-8")
-                    self.assertIn("$path === '/'", content)
-                    self.assertIn("$path === '/health'", content)
-                    self.assertIn("$path === '/routes'", content)
+                    self.assertIn("$router->add('GET', '/',", content)
+                    self.assertIn("$router->add('GET', '/health',", content)
+                    self.assertIn("$router->add('GET', '/routes',", content)
                 elif target == "fastapi":
                     content = (output / "main.py").read_text(encoding="utf-8")
-                    self.assertIn('@app.get("/")', content)
+                    self.assertIn('@app.get("/",', content)
                     self.assertIn('@app.get("/health")', content)
                     self.assertIn('@app.get("/routes")', content)
                 else:
@@ -182,8 +192,8 @@ MODEL Lead
 
                 if target == "php":
                     routes = (output / "routes.php").read_text(encoding="utf-8")
-                    self.assertIn("$path === '/customers'", routes)
-                    self.assertIn("$path === '/leads'", routes)
+                    self.assertIn("$router->add('GET', '/customers',", routes)
+                    self.assertIn("$router->add('GET', '/leads',", routes)
                 elif target == "fastapi":
                     main = (output / "main.py").read_text(encoding="utf-8")
                     self.assertIn("from routers.customer import router as customer_router", main)

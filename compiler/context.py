@@ -7,6 +7,7 @@ from typing import Any
 class CompilerContext:
     source_path: Path
     output_dir: str = "output"
+    force_output: bool = False
     debug: bool = False
     target_override: str | None = None
     source: str = ""
@@ -29,6 +30,7 @@ class CompilerContext:
     architecture_analysis_report: dict = field(default_factory=dict)
     target_profile: dict = field(default_factory=dict)
     architecture_plan: dict = field(default_factory=dict)
+    resource_plan: dict = field(default_factory=dict)
     dependency_graph: Any = None
     expanded_architecture: dict = field(default_factory=dict)
     ir: dict = field(default_factory=dict)

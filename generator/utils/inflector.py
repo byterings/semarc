@@ -23,6 +23,10 @@ def snake_case(value: str) -> str:
     return value.replace("-", "_").lower()
 
 
+def kebab_case(value: str) -> str:
+    return snake_case(value).replace("_", "-")
+
+
 def pluralize(value: str) -> str:
     if value in IRREGULAR_PLURALS:
         return IRREGULAR_PLURALS[value]

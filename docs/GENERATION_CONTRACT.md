@@ -156,7 +156,9 @@ Checks include:
 - persistence components reference entity components
 - duplicate API routes are rejected
 
-Unmatched routes remain backward compatible by generating explicit TODO API scaffolds.
+API components are built from the IR route operations. Auth operations depend on the auth
+layer; protected routes also depend on it. Custom operations (routes that match no
+resource shape) are marked `todo` and generate explicit 501 responses instead of business wiring.
 
 ## Artifact Validation
 
@@ -171,20 +173,23 @@ Checks include:
 
 This prevents generated files from drifting away from the contract.
 
-## Runtime Honesty
+## Runtime Behaviour
 
-The contract foundation does not implement production runtime behavior.
+Since v0.14.0 the generated layers are fully implemented: repositories persist to MySQL,
+PostgreSQL or SQLite, authentication issues and verifies HS256 JWTs with bcrypt password
+hashing, and services enforce validation, uniqueness, reference integrity, ownership and
+safe deletes. The observable behaviour is specified in `GENERATED_API.md`.
 
-SEMARC must not emit fake security claims. Authentication scaffolds are generated as explicit TODO contracts instead of fake JWT, demo token, or base64-token implementations.
+The structural contract (this document) guarantees the wiring; the behavioural contract is
+verified by `api_scenario.json`, which every target ships with a runner and which
+`scripts/e2e_runtime.py` replays against live Docker stacks.
 
-Non-goals:
+SEMARC still does not generate fake security: no demo tokens, no permissive guards, no
+unsigned tokens. Generated projects refuse to sign tokens with a `JWT_SECRET` shorter than 32
+characters.
 
-- real JWT
-- real ORM
-- real database execution
-- migration runners
-- dependency injection containers
-- framework downloads
+Out of scope for the contract: roles and permissions, rate limiting, framework downloads at
+generation time and regeneration into modified projects.
 
 ## Target Development Guide
 
@@ -196,5 +201,6 @@ To add or harden a target:
 4. Render files from Architecture IR according to the contract.
 5. Add target compliance tests under `tests/target_compliance/`.
 6. Ensure generated artifacts pass `GeneratorArchitectureValidator`.
+7. Ship a runner for `api_scenario.json` and make `scripts/e2e_runtime.py` pass for every database.
 
 New targets should not add parser logic or semantic keywords. Target-specific structure belongs in the target renderer and templates.

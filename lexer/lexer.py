@@ -16,9 +16,13 @@ KEYWORDS = {
     "USE",
     "VALIDATE",
 }
-TYPES = {"STRING", "INTEGER", "BOOLEAN", "FLOAT", "TEXT"}
+TYPES = {"STRING", "INTEGER", "BOOLEAN", "FLOAT", "TEXT", "DATE", "DATETIME"}
 HTTP_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE"}
 RELATION_TYPES = {"HAS_MANY", "BELONGS_TO", "HAS_ONE"}
+FIELD_MODIFIERS = {"UNIQUE", "OPTIONAL"}
+ROUTE_ACCESS = {"PUBLIC", "PROTECTED"}
+VALIDATION_RULES = {"REQUIRED", "EMAIL", "MIN", "MAX"}
+RESERVED_KEYWORDS = {"CONFIG", "SERVICE"}
 
 
 @dataclass(frozen=True)
@@ -65,7 +69,7 @@ class Lexer:
     def _classify(self, value: str) -> str:
         upper_value = value.upper()
 
-        if upper_value in KEYWORDS:
+        if value in KEYWORDS:
             return "KEYWORD"
         if value == upper_value and upper_value in TYPES:
             return "TYPE"
@@ -75,4 +79,6 @@ class Lexer:
             return "RELATION_TYPE"
         if value.startswith("/"):
             return "STRING"
+        if value.isdigit():
+            return "NUMBER"
         return "IDENTIFIER"

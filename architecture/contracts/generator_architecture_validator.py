@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from architecture.contracts.contract_error import ContractError
+from generator.utils.inflector import pluralize
 
 
 class GeneratorArchitectureValidator:
@@ -107,8 +108,8 @@ class GeneratorArchitectureValidator:
             return [f"Missing project experience endpoint file for target: {target}"]
         content = path.read_text(encoding="utf-8")
         required = {
-            "php": ["$path === '/'", "$path === '/health'", "$path === '/routes'"],
-            "fastapi": ['@app.get("/")', '@app.get("/health")', '@app.get("/routes")'],
+            "php": ["$router->add('GET', '/',", "$router->add('GET', '/health',", "$router->add('GET', '/routes',"],
+            "fastapi": ['@app.get("/",', '@app.get("/health")', '@app.get("/routes")'],
             "nestjs": ["@Get()", "@Get('health')", "@Get('routes')"],
         }[target]
         return [
@@ -214,8 +215,4 @@ class GeneratorArchitectureValidator:
         return self._snake_case(value).replace("_", "-")
 
     def _pluralize(self, value: str) -> str:
-        if value.endswith("y"):
-            return value[:-1] + "ies"
-        if value.endswith("s"):
-            return value
-        return value + "s"
+        return pluralize(value)

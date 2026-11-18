@@ -1,3 +1,13 @@
+AUTH_MODEL = "User"
+AUTH_IDENTITY_FIELD = "email"
+AUTH_SECRET_FIELD = "password"
+AUTH_ROUTES = {
+    ("POST", "/register"): "register",
+    ("POST", "/login"): "login",
+    ("GET", "/me"): "me",
+}
+
+
 def apply_auth_rules(architecture, plan: dict, graph) -> None:
     if not architecture.auth:
         return
@@ -22,5 +32,6 @@ def apply_auth_rules(architecture, plan: dict, graph) -> None:
     graph.add_dependency("AuthController", "TokenService")
     graph.add_dependency("AuthController", "PasswordHasher")
     graph.add_dependency("AuthController", "Validator")
+    graph.add_dependency("AuthController", f"{AUTH_MODEL}Repository")
     graph.add_dependency("AuthMiddleware", "TokenService")
     graph.add_dependency("TokenService", "Validator")

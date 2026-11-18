@@ -7,7 +7,7 @@ from architecture.rules.route_rules import apply_route_rules
 class ArchitectureRuleEngine:
     """Central rule engine that turns semantic AST intent into architecture plan."""
 
-    def apply(self, architecture) -> tuple[dict, DependencyGraph]:
+    def apply(self, architecture, resource_plan: dict | None = None) -> tuple[dict, DependencyGraph]:
         graph = DependencyGraph()
         plan = {
             "project": architecture.project.name,
@@ -26,8 +26,8 @@ class ArchitectureRuleEngine:
 
         graph.add_node("DatabaseConfig")
         apply_auth_rules(architecture, plan, graph)
-        apply_model_rules(architecture, plan, graph)
-        apply_route_rules(architecture, plan, graph)
+        apply_model_rules(architecture, plan, graph, resource_plan)
+        apply_route_rules(architecture, plan, graph, resource_plan)
 
         for validation in architecture.validations:
             graph.add_node(f"Validation:{validation.field_name}")

@@ -40,7 +40,7 @@ class ContractValidator:
                 for dependency in component.dependencies
                 if dependency in contract.components
             }
-            if component.layer == API_LAYER and component.metadata.get("path") != "/login" and not component.metadata.get("todo"):
+            if component.layer == API_LAYER and not component.metadata.get("auth") and not component.metadata.get("todo"):
                 if BUSINESS_LAYER not in dependency_layers:
                     errors.append(f"API component has no business dependency: {component.name}")
             if component.layer == BUSINESS_LAYER and PERSISTENCE_LAYER not in dependency_layers:

@@ -2,6 +2,12 @@
 
 This report records the stabilization audit for SEMARC's compiler architecture.
 
+> Status update (v0.14.0): the remaining risks below were addressed. Repositories persist to
+> real databases, migrations are ordered topologically by foreign keys, route semantics moved
+> into the architecture layer (`resource_planner.py`), output cleanup moved into
+> `generator/output_directory.py`, and target snapshots plus runtime scenarios cover all
+> three targets. The original audit is kept below for history.
+
 ## Scope
 
 This pass focused on:

@@ -10,17 +10,34 @@ AUTH JWT
 
 MODEL User
     name STRING
-    email STRING
+    email STRING UNIQUE
     password STRING
+    bio TEXT OPTIONAL
 
 MODEL Post
     title STRING
     content TEXT
+    published BOOLEAN OPTIONAL
+
+MODEL Comment
+    body TEXT
 
 RELATION User HAS_MANY Post
+RELATION User HAS_MANY Comment
+RELATION Post HAS_MANY Comment
 
 VALIDATE email REQUIRED EMAIL
-VALIDATE password REQUIRED MIN
+VALIDATE password REQUIRED MIN 8
+VALIDATE Post.title REQUIRED MAX 120
+VALIDATE Comment.body REQUIRED MAX 2000
 
 ROUTE POST /login
 ROUTE GET /posts
+ROUTE GET /posts/{id}
+ROUTE POST /posts
+ROUTE PATCH /posts/{id}
+ROUTE DELETE /posts/{id}
+ROUTE GET /posts/{id}/comments
+ROUTE POST /comments
+ROUTE DELETE /comments/{id}
+ROUTE GET /users/{id}/posts

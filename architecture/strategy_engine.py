@@ -6,39 +6,27 @@ class StrategyEngine:
             "target": "PHP",
             "generator": "php",
             "framework": "none",
-            "auth_strategy": "lightweight_custom_token",
-            "repository_strategy": "in_memory_prototype",
-        },
-        "LARAVEL": {
-            "target": "PHP",
-            "generator": "php",
-            "framework": "laravel-profile-placeholder",
-            "auth_strategy": "lightweight_custom_token",
-            "repository_strategy": "in_memory_prototype",
+            "auth_strategy": "jwt_hs256",
+            "repository_strategy": "pdo",
         },
         "FASTAPI": {
             "target": "FASTAPI",
             "generator": "fastapi",
             "framework": "fastapi",
-            "auth_strategy": "lightweight_custom_token",
-            "repository_strategy": "in_memory_prototype",
+            "auth_strategy": "jwt_hs256",
+            "repository_strategy": "sqlalchemy",
         },
         "NESTJS": {
             "target": "NESTJS",
             "generator": "nestjs",
             "framework": "nestjs",
-            "auth_strategy": "placeholder_guard",
-            "repository_strategy": "service_skeleton",
-        },
-        "NODE": {
-            "target": "NODE",
-            "generator": "node",
-            "framework": "node-profile-placeholder",
-            "auth_strategy": "lightweight_custom_token",
-            "repository_strategy": "in_memory_prototype",
+            "auth_strategy": "jwt_hs256",
+            "repository_strategy": "typeorm",
         },
     }
 
     def select(self, architecture, target_override: str | None = None) -> dict:
         target = target_override.upper() if target_override else architecture.target.name if architecture.target else "PHP"
-        return self.TARGET_PROFILES.get(target, self.TARGET_PROFILES["PHP"])
+        if target not in self.TARGET_PROFILES:
+            raise ValueError(f"No target profile registered for: {target}")
+        return dict(self.TARGET_PROFILES[target])

@@ -95,6 +95,10 @@ class GeneratorValidationSuite:
             "generator_manifest.json",
             "public/index.php",
             "routes.php",
+            "bootstrap.php",
+            "bin/migrate.php",
+            "tests/run.php",
+            "tests/api_scenario.json",
             "config/database.php",
         ],
         "fastapi": [
@@ -105,7 +109,12 @@ class GeneratorValidationSuite:
             "generator_manifest.json",
             "requirements.txt",
             "main.py",
+            "database.py",
+            "migrate.py",
+            "alembic.ini",
             "config/settings.py",
+            "tests/test_api.py",
+            "tests/api_scenario.json",
         ],
         "nestjs": [
             "README.md",
@@ -116,7 +125,11 @@ class GeneratorValidationSuite:
             "package.json",
             "nest-cli.json",
             "tsconfig.json",
+            "src/main.ts",
             "src/app.module.ts",
+            "src/database/data-source.ts",
+            "test/api.e2e-spec.ts",
+            "test/api_scenario.json",
         ],
     }
 
@@ -124,26 +137,28 @@ class GeneratorValidationSuite:
         "php": [
             "public",
             "tests",
+            "core",
+            "bin",
             "controllers",
             "models",
             "services",
             "repositories",
-            "middleware",
+            "validators",
             "migrations",
             "config",
         ],
         "fastapi": [
             "tests",
             "config",
+            "core",
             "routers",
             "models",
             "schemas",
             "services",
             "repositories",
-            "middleware",
-            "migrations",
+            "migrations/versions",
         ],
-        "nestjs": ["src", "src/modules", "test"],
+        "nestjs": ["src", "src/modules", "src/common", "src/database/migrations", "test"],
     }
 
     def validate(self, context: CompilerContext, target: str) -> None:
@@ -210,5 +225,5 @@ class GeneratorValidationSuite:
             content = path.read_text(encoding="utf-8")
             if content.count("{") != content.count("}"):
                 raise AssertionError(f"Unbalanced braces in {path.relative_to(output_dir)}")
-            if path.relative_to(output_dir).parts[0] == "src" and "export " not in content:
+            if path.relative_to(output_dir).parts[0] == "src" and path.name != "main.ts" and "export " not in content:
                 raise AssertionError(f"Missing TypeScript export in {path.relative_to(output_dir)}")

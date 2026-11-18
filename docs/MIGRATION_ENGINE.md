@@ -1,111 +1,47 @@
 # Migration Engine
 
-The migration engine is responsible for converting semantic models and relationships into target-neutral migration metadata, then letting target generators map that metadata into concrete migration files.
+Migrations are planned once, target-neutrally, and rendered by each target in its own
+migration format.
 
-## Input
+## Planning
 
-Models:
+1. `RelationshipEngine` derives one foreign key per relationship (de-duplicated when both
+   directions are declared; unique for `HAS_ONE`).
+2. `ResourcePlanner` produces the final model specs, including fields added by `AUTH JWT`
+   and the auth-created `User` model.
+3. `ArchitectureIRBuilder` writes `ir["migrations"]["tables"]`: one table per model with its
+   fields (`type`, `required`, `unique`) and foreign keys.
+4. `ArchitectureOptimizer` orders the tables topologically so that referenced tables are
+   created first (ties broken by name) and assigns `sequence`.
 
-```text
-MODEL User
-    name STRING
+Every table also gets `id` (auto-increment primary key), `created_at` and `updated_at`.
 
-MODEL Post
-    title STRING
-```
+## Type Mapping
 
-Relationships:
+| Semantic | MySQL | PostgreSQL | SQLite |
+| --- | --- | --- | --- |
+| `STRING` | VARCHAR(255) | VARCHAR(255) | VARCHAR(255) |
+| `TEXT` | TEXT | TEXT | TEXT |
+| `INTEGER` | INT | INTEGER | INTEGER |
+| `FLOAT` | DOUBLE | DOUBLE PRECISION | REAL |
+| `BOOLEAN` | TINYINT(1) | BOOLEAN | INTEGER/BOOLEAN |
+| `DATE` | DATE | DATE | TEXT/DATE |
+| `DATETIME` and timestamps | DATETIME | TIMESTAMP | TEXT/DATETIME |
 
-```text
-RELATION User HAS_MANY Post
-```
+Foreign keys are `INTEGER NOT NULL` with a constraint to the parent's `id` and an index
+(or a unique constraint for `HAS_ONE`). Deletes are restricted; the generated services
+answer 409 before the database would refuse.
 
-## Migration Plan
+## Target Formats
 
-The relationship engine creates migration metadata:
+| Target | Files | Applied by |
+| --- | --- | --- |
+| PHP | `migrations/NNN_create_<table>_table.php` returning a table definition; `core/Schema.php` builds driver-specific DDL | `php bin/migrate.php` (tracks `schema_migrations`) |
+| FastAPI | `migrations/versions/NNNN_create_<table>_table.py` Alembic revisions chained by sequence | `python migrate.py` (`alembic upgrade head`) |
+| NestJS | `src/database/migrations/<timestamp>-create-<table>-table.ts` using TypeORM `Table` | automatically on start (`migrationsRun`), or `npm run migration:run` |
 
-```json
-{
-  "tables": [
-    {
-      "model": "Post",
-      "table": "posts",
-      "fields": [
-        {"name": "title", "type": "STRING"}
-      ],
-      "foreign_keys": [
-        {
-          "table": "posts",
-          "column": "user_id",
-          "references_table": "users",
-          "references_column": "id"
-        }
-      ]
-    }
-  ],
-  "foreign_keys": []
-}
-```
-
-## SQL Type Mapping
-
-Semantic types are target-neutral.
-
-Target generators map them:
-
-```text
-STRING  -> VARCHAR(255) or String
-TEXT    -> TEXT or String
-INTEGER -> INT or Integer
-BOOLEAN -> BOOLEAN or Integer
-FLOAT   -> FLOAT or Integer
-```
-
-## PHP Migration Output
-
-PHP target generates:
-
-```text
-output/migrations/create_users_table.sql
-output/migrations/CreateUsersTable.php
-```
-
-SQL example:
-
-```sql
-CREATE TABLE posts (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    title VARCHAR(255) NOT NULL,
-    user_id INT NOT NULL,
-    INDEX idx_user_id (user_id),
-    FOREIGN KEY (user_id) REFERENCES users(id),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
-```
-
-## FastAPI Migration Output
-
-FastAPI target generates SQLAlchemy table metadata:
-
-```text
-output/migrations/create_posts_table.py
-```
-
-Example:
-
-```python
-posts = Table(
-    "posts",
-    metadata,
-    Column("id", Integer, primary_key=True),
-    Column("title", String),
-    Column("user_id", Integer, ForeignKey("users.id")),
-)
-```
+All three are database-neutral: the same files work on MySQL, PostgreSQL and SQLite.
 
 ## Boundary
 
-Migration metadata is produced before target generation. Target generators render it only.
-
-The migration engine must not contain PHP or FastAPI syntax.
+The migration plan contains no SQL or framework syntax. Targets render it only.

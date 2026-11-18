@@ -265,7 +265,7 @@ ROUTE POST /login
         self.assertTrue((output_dir / "routes.php").exists())
         self.assertTrue(any((output_dir / "models").glob("*.php")))
         self.assertTrue(any((output_dir / "repositories").glob("*.php")))
-        self.assertTrue(any((output_dir / "migrations").glob("*.sql")))
+        self.assertTrue(any((output_dir / "migrations").glob("*.php")))
         self.assertTrue((output_dir / "architecture_report.json").exists())
 
     def _validate_fastapi_output(self, output_dir: Path) -> None:
@@ -294,7 +294,7 @@ ROUTE POST /login
         self.assertTrue(any((output_dir / "src" / "modules").rglob("*.module.ts")))
         self.assertTrue(any((output_dir / "src" / "modules").rglob("*.service.ts")))
         self.assertTrue(any((output_dir / "src" / "modules").rglob("*.controller.ts")))
-        self.assertTrue(any((output_dir / "src" / "modules").rglob("*.model.ts")))
+        self.assertTrue(any((output_dir / "src" / "modules").rglob("*.entity.ts")))
         self.assertTrue((output_dir / "architecture_report.json").exists())
 
     def _load_report(self, output_dir: Path) -> dict:
@@ -332,24 +332,21 @@ ROUTE POST /login
                 "",
                 "## Potential Language Gaps",
                 "",
-                "- No explicit `RATE_LIMIT` semantic command exists, so JWT rate-limit diagnostics cannot be resolved in source yet.",
-                "- `VALIDATE MIN` does not currently carry a numeric threshold.",
-                "- Relationships are direct model relationships; many-to-many join modeling is not formalized yet.",
+                "- Rate limits apply to authentication endpoints only and are configured through environment variables.",
+                "- Many-to-many relationships need an explicit join model.",
                 "",
                 "## Potential Architecture Gaps",
                 "",
-                "- Non-auth route handlers are prototype JSON handlers rather than resource-specific controllers.",
-                "- Repository implementations are generated as lightweight prototype persistence layers.",
-                "- Authentication middleware exists, but route-level protection policy is not yet semantic.",
+                "- Access control covers authentication and record ownership; there are no roles or permissions.",
+                "- List routes support equality filters and sorting, but not ranges or text search.",
+                "- Custom routes are generated as 501 stubs to be implemented by hand.",
                 "",
                 "## Potential Missing Semantic Concepts",
                 "",
-                "- rate limiting",
+                "- per-route rate limiting",
                 "- roles and permissions",
-                "- pagination and filtering",
-                "- request and response schemas",
+                "- range filters and text search",
                 "- many-to-many relationship ownership",
-                "- deployment and environment profiles",
                 "",
             ]
         )

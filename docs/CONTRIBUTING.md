@@ -88,23 +88,25 @@ Must not:
 
 ## Adding a Semantic Command
 
-1. Add lexer keyword.
-2. Add AST node if needed.
-3. Add parser rule.
-4. Add validation.
-5. Add architecture expansion.
-6. Add IR metadata.
-7. Add target mappings.
-8. Add tests.
-9. Update docs.
+Prefer stdlib modules or profiles over new keywords. When a keyword is necessary:
+
+1. Add the lexer keyword (`SERVICE` and `CONFIG` are already reserved).
+2. Add or extend AST nodes and the AST builder.
+3. Add the parser rule.
+4. Add validation in `validator/validator.py`.
+5. Plan its meaning in `architecture/` (usually `resource_planner.py`).
+6. Add IR metadata and document it in `docs/ARCHITECTURE_IR_SPEC.md`.
+7. Map it in every target and extend `generator/utils/api_scenario.py` so the behaviour is tested.
+8. Add language, IR and compliance tests; update docs.
 
 ## Adding a Target
 
-1. Add profile in `strategy_engine.py`.
-2. Add generator under `generator/<target>/`.
-3. Add templates under `templates/<target>/`.
-4. Map existing IR components.
-5. Add compile/lint tests where possible.
+1. Add the profile in `strategy_engine.py` and the name in `SemanticValidator.SUPPORTED_TARGETS`.
+2. Add `generator/<target>/project_template/target.yaml` and the generator.
+3. Register it in `TargetGeneratorFactory`.
+4. Add templates under `templates/<target>/`.
+5. Translate the IR using `generator/utils/` (resource views, scenario, runtime files).
+6. Ship a runner for `api_scenario.json`, add compliance tests, pass `scripts/e2e_runtime.py`.
 
 ## Naming Conventions
 
@@ -116,25 +118,26 @@ Must not:
 
 ## Testing
 
-Run:
-
 ```bash
-python3 -m unittest discover -s tests
-python3 -m compileall main.py architecture compiler generator lexer parser validator tests ast_loader.py
+python3 -m unittest discover -s tests      # all offline tests
+python3 scripts/validate_release.py         # every suite plus compile checks
+python3 scripts/update_goldens.py           # after an intentional generator change; review the diff
+python3 scripts/e2e_runtime.py              # Docker: examples x targets x databases over HTTP
 ```
 
-If PHP output changes, run:
+Narrow an end-to-end run with source paths, `--targets` and `--databases`, for example
+`python3 scripts/e2e_runtime.py examples/blog_api.sem --targets php --databases sqlite`.
 
-```bash
-php -l output/routes.php
-php -l output/models/User.php
-```
+## Continuous Integration
 
-If FastAPI output changes, run:
+`.github/workflows/ci.yml` runs on pushes to `master` and `dev` and on pull requests:
 
-```bash
-python3 -m py_compile output/main.py
-```
+- **Release validation**: `scripts/validate_release.py` on Python 3.12, with PHP for syntax
+  checks and `openapi-spec-validator` for the OpenAPI test.
+- **Runtime**: one job per target runs `scripts/e2e_runtime.py` for `examples/blog_api.sem`
+  and `tests/fixtures/edge_public.sem` on SQLite and PostgreSQL in Docker.
+
+The full matrix (every example, target and database) is slower; run it locally before a release.
 
 ## Documentation
 

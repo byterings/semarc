@@ -89,13 +89,12 @@ Status: complete.
 
 ## v0.7: Optimization Engine
 
-Status: planned.
+Status: complete (delivered with v0.14.0).
 
 - duplicate component elimination
-- migration ordering
-- middleware ordering
-- dependency simplification
-- dead route detection
+- migration ordering by foreign key dependencies
+
+Still open: middleware ordering, dependency simplification, shadowed route detection.
 
 ## v0.8.0: Profile Composition
 
@@ -166,7 +165,7 @@ Status: complete.
 - target metadata foundation
 - validation expanded for runnable project files
 
-## v0.12.0: Generation Contract Foundation
+### v0.12.0 (continued): Generation Contract Foundation
 
 Status: complete.
 
@@ -184,7 +183,7 @@ Status: complete.
 
 ## v0.13.0: Project Experience and Target Foundation
 
-Status: current.
+Status: complete.
 
 - generated `/` home endpoint
 - generated `/health` endpoint
@@ -197,33 +196,61 @@ Status: current.
 - registry-driven target selection
 - expanded dead artifact validation
 
-## v0.14.0: Framework Target Foundation
+## v0.14.0: Runnable Projects
+
+Status: current.
+
+- language: field modifiers `UNIQUE` / `OPTIONAL`, route path parameters, `PUBLIC` /
+  `PROTECTED` access, `VALIDATE MIN n` / `MAX n`, model-scoped validation
+- stricter validation: naming, implicit columns, route syntax, foreign key collisions,
+  column and bcrypt limits, unimplemented targets and `AUTH SESSION` rejected
+- resource planning in the architecture layer: route operations, access policy, auth model,
+  ownership, references and dependents in the IR
+- migration ordering and component de-duplication (v0.7)
+- PHP, FastAPI and NestJS generate runnable APIs: persistence for MySQL, PostgreSQL and
+  SQLite, real JWT auth with bcrypt, validation, consistent errors, pagination, migrations,
+  Docker and a test runner
+- generated `api_scenario.json` and `scripts/e2e_runtime.py` verify every example on every
+  target and database over HTTP
+- CLI `--output` and `--force`; safe output directory handling; diagnostic errors block generation
+- owner-only writes for records that belong to a user
+- `DATE` and `DATETIME` field types
+- equality filters and sorting on list routes
+- CORS, rate limiting on `/register` and `/login`
+- OpenAPI 3.1 document and Swagger UI on every target
+- `semarc` command (`build`, `check`, `targets`, `version`) and GitHub Actions CI
+
+## v0.15.0: Language Depth
 
 Status: planned.
 
-- stronger target package boundaries
-- framework-specific project profiles
-- deeper target compliance fixtures
+- roles and permissions as stdlib modules
+- explicit many-to-many relations
+- range filters and text search on list routes
 
-## v0.15.0: Community Target Architecture
+## v0.15.x: Packaging
 
 Status: planned.
 
-- third-party target structure
-- local target package validation
+- move the compiler under a `semarc/` package namespace so it can ship as a regular wheel
+  (today the `semarc` command needs an editable install)
+
+## v0.16.0: Community Target Architecture
+
+Status: planned.
+
+- third-party target structure and local target package validation
 - target compatibility reports
+- NestJS 12 / TypeORM 1.x target refresh
 
 ## v1.0.0: Architecture-to-Project Generator
 
 Status: planned.
 
 - target packages
-- runnable production project templates
-- Laravel target package
-- Node target package
-- PostgreSQL support
-- Docker output
-- environment configuration
+- Laravel and Node (Express) targets
+- regeneration-safe ownership metadata (see `SEMARC_OWNERSHIP_MODEL.md`)
+- production hardening guides per target
 
 ## Long-Term
 

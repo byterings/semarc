@@ -9,7 +9,6 @@ from architecture.contracts.generation_contract import (
     ContractComponent,
     GenerationContract,
 )
-from generator.utils.inflector import resource_path
 
 
 class ContractDefinition:
@@ -86,7 +85,11 @@ class ContractDefinition:
                     )
                 )
 
-        for route in self._complete_routes(ir):
+        for route in ir.get("routes", []):
+            operation = route.get("operation", {})
+            kind = operation.get("kind", "custom")
+            is_auth = kind.startswith("auth_")
+            model_name = None if is_auth else operation.get("model")
             route_id = f"api:{route['method']}:{route['path']}"
             route_component = contract.add_component(
                 ContractComponent(
@@ -96,21 +99,19 @@ class ContractDefinition:
                     {
                         "method": route["method"],
                         "path": route["path"],
-                        "model": self._model_for_route(route, ir.get("models", [])),
-                        "todo": self._model_for_route(route, ir.get("models", [])) is None
-                        and route["path"] != "/login",
+                        "model": model_name,
+                        "operation": kind,
+                        "access": route.get("access", "public"),
+                        "auth": is_auth,
+                        "todo": kind == "custom",
                     },
                 )
             )
 
-            if route["path"] == "/login" and "auth:authentication" in contract.components:
+            if (is_auth or route.get("access") == "protected") and "auth:authentication" in contract.components:
                 contract.add_dependency(route_component.component_id, "auth:authentication", "api uses auth layer")
-                continue
-
-            model_name = route_component.metadata.get("model")
-            if model_name:
-                business_id = f"business:{model_name}Service"
-                contract.add_dependency(route_component.component_id, business_id, "api uses business layer")
+            if model_name and kind != "custom":
+                contract.add_dependency(route_component.component_id, f"business:{model_name}Service", "api uses business layer")
 
         for relationship in ir.get("relationships", []):
             source_repository = f"persistence:{relationship['source']}Repository"
@@ -119,41 +120,3 @@ class ContractDefinition:
                 contract.add_dependency(source_repository, target_repository, "relationship persistence dependency")
 
         return contract
-
-    def _model_for_route(self, route: dict, models: list[dict]) -> str | None:
-        first_segment = route["path"].strip("/").split("/", 1)[0].lower()
-        if not first_segment:
-            return None
-
-        for model in models:
-            model_name = model["name"]
-            segment = self._segment_name(model_name)
-            if first_segment in {segment, self._pluralize(segment)}:
-                return model_name
-        return None
-
-    def _complete_routes(self, ir: dict) -> list[dict]:
-        routes = list(ir.get("routes", []))
-        existing = {(route["method"], route["path"]) for route in routes}
-        for model in ir.get("models", []):
-            path = "/" + resource_path(model["name"])
-            if ("GET", path) not in existing:
-                routes.append(
-                    {
-                        "method": "GET",
-                        "path": path,
-                        "handler": {"type": "generated_resource", "model": model["name"]},
-                    }
-                )
-        return routes
-
-    def _segment_name(self, value: str) -> str:
-        output = []
-        for index, char in enumerate(value):
-            if char.isupper() and index > 0:
-                output.append("_")
-            output.append(char.lower())
-        return "".join(output).replace("_", "-")
-
-    def _pluralize(self, value: str) -> str:
-        return resource_path(value)
