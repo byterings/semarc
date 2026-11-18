@@ -6,6 +6,7 @@ from generator.fastapi.entity_code import model_code, module_name, repository_co
 from generator.fastapi.migration_code import migration_code, migration_file_name
 from generator.project_files import ProjectFileWriter
 from generator.utils.api_scenario import ApiScenarioBuilder
+from generator.utils.openapi import OpenApiBuilder
 from generator.utils.project_runtime import database_settings, docker_compose, env_example, readme
 from generator.utils.resource_views import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 from generator.utils.template_engine import TemplateEngine
@@ -52,6 +53,7 @@ class FastApiGenerator:
         routers = self._entities_and_routers(ir)
         self._migrations(ir)
         self._write("main.py", main_code(ir, routers), "fastapi main")
+        self._write("openapi.json", json.dumps(OpenApiBuilder().build(ir), indent=2) + "\n", "openapi document")
         self._project(ir)
         ProjectFileWriter(self.output_dir, self._record).write_manifest(ir, "fastapi")
 

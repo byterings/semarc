@@ -35,6 +35,7 @@ src/modules/users/users.controller.ts
 src/modules/users/users.module.ts
 src/modules/users/users.repository.ts
 src/modules/users/users.service.ts
+src/openapi.ts
 test/api.e2e-spec.ts
 test/api_scenario.json
 test/setup-env.ts

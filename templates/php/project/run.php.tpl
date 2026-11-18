@@ -66,7 +66,7 @@ foreach ($scenario['steps'] as $step) {
     $route = (string) parse_url($path, PHP_URL_PATH);
     $response = $router->dispatch(new Request($step['method'], Request::normalizePath($route), $query, $headers, $body));
     $content = $response->content();
-    $json = $response->contentType === 'application/json' && $content !== '' ? json_decode($content, true) : null;
+    $json = str_starts_with($response->contentType, 'application/json') && $content !== '' ? json_decode($content, true) : null;
 
     $problems = [];
     $expected = (array) $step['expect'];

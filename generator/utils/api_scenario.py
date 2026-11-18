@@ -50,6 +50,8 @@ class ApiScenarioBuilder:
         self._step("home page", "GET", "/", 200)
         self._step("health check", "GET", "/health", 200, equals={"status": "ok", "database": "ok"})
         self._step("route discovery", "GET", "/routes", 200)
+        self._step("OpenAPI document", "GET", "/openapi.json", 200, equals={"openapi": "3.1.0", "info.title": self.ir["project"], "components.schemas.Error.type": "object"})
+        self._step("API documentation page", "GET", "/docs", 200)
         self._step("unknown route", "GET", "/semarc-missing-route", 404)
         self._step(
             "CORS headers on requests from a browser",

@@ -49,6 +49,8 @@ class RoutesGenerator:
                 "    );",
                 "});",
                 "$router->add('GET', '/routes', static fn (): array => ['routes' => $router->routes()]);",
+                "$router->add('GET', '/openapi.json', static fn (): Response => Response::file((string) file_get_contents(__DIR__ . '/openapi.json'), 'application/json; charset=utf-8'));",
+                "$router->add('GET', '/docs', static fn (): Response => Response::file((string) file_get_contents(__DIR__ . '/docs.html'), 'text/html; charset=utf-8'));",
                 "",
             ]
         )

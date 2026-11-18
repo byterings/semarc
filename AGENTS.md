@@ -150,7 +150,7 @@ Project template foundations live under:
 - `generator/fastapi/project_template/`
 - `generator/nestjs/project_template/`
 
-Every generated target should expose `/`, `/health`, and `/routes` and should use `generator/utils/inflector.py` for resource names. Shared target-neutral helpers live in `generator/utils/` (resource views, API scenario, project runtime files, template engine).
+Every generated target should expose `/`, `/health`, `/routes`, `/openapi.json` (the shared document from `generator/utils/openapi.py`) and `/docs`, and should use `generator/utils/inflector.py` for resource names. Shared target-neutral helpers live in `generator/utils/` (resource views, API scenario, project runtime files, template engine).
 
 Keep generated projects readable, runnable, and prototype-friendly.
 

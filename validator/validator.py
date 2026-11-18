@@ -14,7 +14,7 @@ FIELD_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
 STATIC_SEGMENT_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 PARAM_SEGMENT_PATTERN = re.compile(r"^\{([a-z][a-z0-9_]*)\}$")
 IMPLICIT_FIELDS = {"id", "created_at", "updated_at"}
-RESERVED_ROUTES = {("GET", "/"), ("GET", "/health"), ("GET", "/routes")}
+RESERVED_ROUTES = {("GET", "/"), ("GET", "/health"), ("GET", "/routes"), ("GET", "/openapi.json"), ("GET", "/docs")}
 TEXT_TYPES = {"STRING", "TEXT"}
 NUMERIC_TYPES = {"INTEGER", "FLOAT"}
 

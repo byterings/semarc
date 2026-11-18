@@ -1,4 +1,6 @@
+import json
 from html import escape
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,10 +18,13 @@ PROJECT = {
     "target": 'FASTAPI',
     "semarc_version": '0.14.0',
     "models": ['User'],
-    "routes": ['GET /', 'GET /health', 'GET /routes', 'POST /login', 'GET /users', 'POST /register', 'GET /me'],
+    "routes": ['GET /', 'GET /health', 'GET /routes', 'GET /openapi.json', 'GET /docs', 'POST /login', 'GET /users', 'POST /register', 'GET /me'],
 }
 
+OPENAPI_DOCUMENT = json.loads((Path(__file__).resolve().parent / "openapi.json").read_text(encoding="utf-8"))
+
 app = FastAPI(title=PROJECT["project"], version="0.1.0")
+app.openapi = lambda: OPENAPI_DOCUMENT  # the SEMARC contract, shared by every target
 register_error_handlers(app)
 app.add_middleware(
     CORSMiddleware,

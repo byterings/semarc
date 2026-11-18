@@ -127,4 +127,4 @@ def route_label(route: dict) -> str:
 
 
 def all_route_labels(ir: dict) -> list[str]:
-    return ["GET /", "GET /health", "GET /routes"] + [route_label(route) for route in ir["routes"]]
+    return ["GET /", "GET /health", "GET /routes", "GET /openapi.json", "GET /docs"] + [route_label(route) for route in ir["routes"]]

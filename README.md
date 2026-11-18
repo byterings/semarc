@@ -75,7 +75,8 @@ selected database, a README, `generator_manifest.json` and `architecture_report.
 
 All targets share one API contract (see [docs/GENERATED_API.md](docs/GENERATED_API.md)):
 
-- `GET /`, `GET /health` (with a database check) and `GET /routes`
+- `GET /`, `GET /health` (with a database check), `GET /routes`, and OpenAPI 3.1 at
+  `GET /openapi.json` with Swagger UI at `GET /docs`
 - `{"data": ...}` responses; lists add `meta` with `total`, `limit`, `offset` and accept
   equality filters (`?status=paid`) and sorting (`?sort=-created_at`)
 - an `error` object with `code`, `message` and field `details` for 400, 401, 403, 404, 409, 422, 429 and 501

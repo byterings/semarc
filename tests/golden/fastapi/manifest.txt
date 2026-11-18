@@ -18,6 +18,7 @@ migrations/env.py
 migrations/versions/0001_create_users_table.py
 models/__init__.py
 models/user.py
+openapi.json
 repositories/__init__.py
 repositories/base.py
 repositories/user_repository.py

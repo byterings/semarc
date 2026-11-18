@@ -44,6 +44,12 @@ final class Response
         return new self($status, $body, 'text/html; charset=utf-8');
     }
 
+    /** A pre-rendered body, such as a JSON or HTML file, sent as-is. */
+    public static function file(string $content, string $contentType): self
+    {
+        return new self(200, $content, $contentType);
+    }
+
     public static function noContent(): self
     {
         return new self(204, null);

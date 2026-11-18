@@ -3,6 +3,7 @@ import json
 from generator.php.base import PHP_HEADER, PhpFileWriter
 from generator.php.php_syntax import php_literal
 from generator.utils.api_scenario import ApiScenarioBuilder
+from generator.utils.openapi import OpenApiBuilder, swagger_html
 from generator.utils.project_runtime import database_settings, docker_compose, env_example, readme
 
 PORT = 8000
@@ -24,6 +25,8 @@ class ProjectGenerator:
         )
         self._config(ir)
         self.writer.render("bin/migrate.php", "project/migrate.php.tpl")
+        self.writer.write("openapi.json", json.dumps(OpenApiBuilder().build(ir), indent=2) + "\n", "openapi document")
+        self.writer.write("docs.html", swagger_html(ir["project"]), "swagger ui page")
         self.writer.render("tests/run.php", "project/run.php.tpl")
         self.writer.write(
             "tests/api_scenario.json",

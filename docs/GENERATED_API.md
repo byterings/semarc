@@ -15,7 +15,16 @@ project (see [Verification](#verification)).
 | GET | `/health` | `{"status": "ok", "project": "...", "database": "ok"}`, or 503 with `database: "unavailable"` |
 | GET | `/routes` | `{"routes": ["GET /", ...]}` |
 
+| GET | `/openapi.json` | OpenAPI 3.1 document of the whole API |
+| GET | `/docs` | Swagger UI for the document |
+
 These paths are reserved and cannot be declared with `ROUTE`.
+
+The OpenAPI document is generated once from the IR (`generator/utils/openapi.py`) and served
+unchanged by every target, including FastAPI, whose own schema generation is replaced so the
+documented envelopes, errors, filters and security match the behaviour. It lists request and
+response schemas with their validation rules, list parameters, bearer security on protected
+operations and the possible error responses.
 
 ## CORS
 

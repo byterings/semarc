@@ -249,7 +249,9 @@ def main_code(ir: dict, routers: list[str]) -> str:
     includes = [f"app.include_router({router}_router)" for router in routers]
     return "\n".join(
         [
+            "import json",
             "from html import escape",
+            "from pathlib import Path",
             "",
             "from fastapi import FastAPI",
             "from fastapi.middleware.cors import CORSMiddleware",
@@ -269,7 +271,10 @@ def main_code(ir: dict, routers: list[str]) -> str:
             f'    "routes": {project["routes"]!r},',
             "}",
             "",
+            'OPENAPI_DOCUMENT = json.loads((Path(__file__).resolve().parent / "openapi.json").read_text(encoding="utf-8"))',
+            "",
             'app = FastAPI(title=PROJECT["project"], version="0.1.0")',
+            "app.openapi = lambda: OPENAPI_DOCUMENT  # the SEMARC contract, shared by every target",
             "register_error_handlers(app)",
             "app.add_middleware(",
             "    CORSMiddleware,",

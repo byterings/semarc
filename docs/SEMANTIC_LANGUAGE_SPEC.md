@@ -155,7 +155,8 @@ ROUTE DELETE /posts/{id} PUBLIC
 
 The route shape decides the operation (list, create, read, replace, update, delete, nested
 list); anything else becomes a custom route returning 501 until implemented. `/`,
-`/health` and `/routes` are reserved. Path parameters are snake_case and unique within a
+`/health`, `/routes`, `/openapi.json` and `/docs` are reserved. Path parameters are
+snake_case and unique within a
 path. `PROTECTED` requires `AUTH JWT`. `POST /register` and `GET /me` require `AUTH JWT`;
 with it they are added automatically. See [GENERATED_API.md](GENERATED_API.md) for the
 full mapping and the default access policy.

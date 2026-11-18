@@ -28,6 +28,7 @@ generator_manifest.json
 middleware/AuthMiddleware.php
 migrations/001_create_users_table.php
 models/User.php
+openapi.json
 public/.htaccess
 public/index.php
 repositories/UserRepository.php
