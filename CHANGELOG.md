@@ -19,6 +19,8 @@ language; such changes are listed under **Changed**.
 ### Changed
 - All compiler code moved into the `semarc` package (`semarc.compiler`, `semarc.generator`,
   ...). `python3 main.py` keeps working in a checkout.
+- Generated PHP projects run on nginx + php-fpm in Docker (production `php.ini`, OPcache)
+  instead of PHP's built-in development server.
 - Generated files always use LF line endings and recorded paths use forward slashes, so
   output is identical on every operating system.
 

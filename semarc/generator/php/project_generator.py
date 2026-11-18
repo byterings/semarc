@@ -7,6 +7,7 @@ from semarc.generator.utils.openapi import OpenApiBuilder, swagger_html
 from semarc.generator.utils.project_runtime import database_settings, docker_compose, env_example, readme
 
 PORT = 8000
+WEB_SERVER = {"image": "nginx:1.28-alpine", "config": "docker/nginx.conf", "mount": "/etc/nginx/conf.d/default.conf"}
 
 
 class ProjectGenerator:
@@ -37,7 +38,8 @@ class ProjectGenerator:
         self.writer.write(".gitignore", ".env\nstorage/*.sqlite\n", "gitignore")
         self.writer.write(".env.example", env_example(ir), "env example")
         self.writer.render("Dockerfile", "project/Dockerfile.tpl")
-        self.writer.write("docker-compose.yml", docker_compose(ir, PORT), "docker compose")
+        self.writer.render("docker/nginx.conf", "project/nginx.conf.tpl")
+        self.writer.write("docker-compose.yml", docker_compose(ir, PORT, WEB_SERVER), "docker compose")
         self.writer.write(
             "README.md",
             readme(

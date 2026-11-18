@@ -38,7 +38,12 @@ config/app.php, config/database.php
 tests/run.php           replays tests/api_scenario.json in-process on SQLite
 ```
 
-Run: `php bin/migrate.php && php -S 127.0.0.1:8000 -t public public/index.php`.
+Run locally: `php bin/migrate.php && php -S 127.0.0.1:8000 -t public public/index.php`.
+
+In Docker the app runs on **php-fpm** (production `php.ini`, OPcache, `clear_env = no` so the
+container environment reaches PHP) and a pinned `nginx:1.28-alpine` service in front of it
+serves HTTP on port 8000 and forwards every request to `public/index.php`
+(`docker/nginx.conf`).
 Tests: `php tests/run.php` (needs `pdo_sqlite`). PHP 8.1+ with `pdo_mysql`, `pdo_pgsql` or
 `pdo_sqlite`; no Composer packages are required.
 

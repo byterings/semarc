@@ -63,7 +63,7 @@ still owns posts.
 
 | | PHP | FastAPI | NestJS |
 | --- | --- | --- | --- |
-| Runtime | PHP 8.1+, no framework | FastAPI, Pydantic v2 | NestJS 11 |
+| Runtime | PHP 8.1+, no framework (nginx + php-fpm in Docker) | FastAPI, Pydantic v2 | NestJS 11 |
 | Persistence | PDO | SQLAlchemy 2 | TypeORM 0.3 |
 | Migrations | `php bin/migrate.php` | Alembic (`python migrate.py`) | TypeORM, run on start |
 | Auth | HS256 JWT, bcrypt | PyJWT, bcrypt | @nestjs/jwt, bcryptjs |

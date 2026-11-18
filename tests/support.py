@@ -97,6 +97,7 @@ class GeneratorValidationSuite:
             "routes.php",
             "bootstrap.php",
             "bin/migrate.php",
+            "docker/nginx.conf",
             "tests/run.php",
             "tests/api_scenario.json",
             "config/database.php",

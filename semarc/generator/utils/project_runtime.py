@@ -78,83 +78,91 @@ def env_example(ir: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-def docker_compose(ir: dict, port: int) -> str:
+def docker_compose(ir: dict, port: int, web_server: dict | None = None) -> str:
+    """Compose file with the app, an optional front web server and the database.
+
+    web_server = {"image": ..., "config": ..., "mount": ...} puts a web server in front of
+    the app (PHP uses nginx in front of php-fpm); the web server then owns the public port.
+    """
     engine = database_engine(ir)
+    lines = ["services:"]
+    lines += _app_service(ir, port, engine, publish_port=web_server is None)
+    if web_server:
+        lines += [
+            "",
+            "  web:",
+            f"    image: {web_server['image']}",
+            "    ports:",
+            f'      - "${{APP_PORT:-{port}}}:{port}"',
+            "    volumes:",
+            f"      - ./{web_server['config']}:{web_server['mount']}:ro",
+            "    depends_on:",
+            "      - app",
+        ]
+    if engine == "SQLITE":
+        lines += ["", "volumes:", "  app-storage:", ""]
+        return "\n".join(lines)
+    lines += _database_service(ir, engine)
+    lines += ["", "volumes:", "  db-data:", ""]
+    return "\n".join(lines)
+
+
+def _app_service(ir: dict, port: int, engine: str, publish_port: bool) -> list[str]:
     project = snake_case(ir["project"])
     settings = DATABASES[engine]
-    lines = [
-        "services:",
-        "  app:",
-        "    build: .",
-        "    ports:",
-        f'      - "${{APP_PORT:-{port}}}:{port}"',
+    lines = ["  app:", "    build: ."]
+    if publish_port:
+        lines += ["    ports:", f'      - "${{APP_PORT:-{port}}}:{port}"']
+    lines += [
         "    environment:",
         f"      APP_NAME: {ir['project']}",
         "      APP_ENV: production",
         "      CORS_ORIGINS: ${CORS_ORIGINS:-*}",
     ]
-
     if engine == "SQLITE":
-        lines.extend(
-            [
-                "      DB_CONNECTION: sqlite",
-                "      DB_DATABASE: storage/database.sqlite",
-            ]
-        )
+        lines += ["      DB_CONNECTION: sqlite", "      DB_DATABASE: storage/database.sqlite"]
     else:
-        lines.extend(
-            [
-                f"      DB_CONNECTION: {settings['connection']}",
-                "      DB_HOST: db",
-                f'      DB_PORT: "{settings["port"]}"',
-                f"      DB_DATABASE: {project}",
-                f"      DB_USERNAME: {project}",
-                "      DB_PASSWORD: secret",
-            ]
-        )
+        lines += [
+            f"      DB_CONNECTION: {settings['connection']}",
+            "      DB_HOST: db",
+            f'      DB_PORT: "{settings["port"]}"',
+            f"      DB_DATABASE: {project}",
+            f"      DB_USERNAME: {project}",
+            "      DB_PASSWORD: secret",
+        ]
     if ir.get("auth"):
         lines.append(f"      JWT_SECRET: ${{JWT_SECRET:-{DEV_JWT_SECRET}}}")
-
     if engine == "SQLITE":
-        lines.extend(["    volumes:", "      - app-storage:/app/storage", "", "volumes:", "  app-storage:", ""])
-        return "\n".join(lines)
-
-    lines.extend(["    depends_on:", "      db:", "        condition: service_healthy", "", "  db:", f"    image: {settings['image']}"])
-    if engine == "MYSQL":
-        lines.extend(
-            [
-                "    environment:",
-                f"      MYSQL_DATABASE: {project}",
-                f"      MYSQL_USER: {project}",
-                "      MYSQL_PASSWORD: secret",
-                "      MYSQL_ROOT_PASSWORD: secret",
-                "    healthcheck:",
-                '      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-psecret"]',
-                "      interval: 5s",
-                "      timeout: 5s",
-                "      retries: 30",
-                "    volumes:",
-                "      - db-data:/var/lib/mysql",
-            ]
-        )
+        lines += ["    volumes:", "      - app-storage:/app/storage"]
     else:
-        lines.extend(
-            [
-                "    environment:",
-                f"      POSTGRES_DB: {project}",
-                f"      POSTGRES_USER: {project}",
-                "      POSTGRES_PASSWORD: secret",
-                "    healthcheck:",
-                f'      test: ["CMD-SHELL", "pg_isready -U {project} -d {project}"]',
-                "      interval: 5s",
-                "      timeout: 5s",
-                "      retries: 30",
-                "    volumes:",
-                "      - db-data:/var/lib/postgresql/data",
-            ]
-        )
-    lines.extend(["", "volumes:", "  db-data:", ""])
-    return "\n".join(lines)
+        lines += ["    depends_on:", "      db:", "        condition: service_healthy"]
+    return lines
+
+
+def _database_service(ir: dict, engine: str) -> list[str]:
+    project = snake_case(ir["project"])
+    lines = ["", "  db:", f"    image: {DATABASES[engine]['image']}", "    environment:"]
+    if engine == "MYSQL":
+        lines += [
+            f"      MYSQL_DATABASE: {project}",
+            f"      MYSQL_USER: {project}",
+            "      MYSQL_PASSWORD: secret",
+            "      MYSQL_ROOT_PASSWORD: secret",
+            "    healthcheck:",
+            '      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-psecret"]',
+        ]
+        volume = "/var/lib/mysql"
+    else:
+        lines += [
+            f"      POSTGRES_DB: {project}",
+            f"      POSTGRES_USER: {project}",
+            "      POSTGRES_PASSWORD: secret",
+            "    healthcheck:",
+            f'      test: ["CMD-SHELL", "pg_isready -U {project} -d {project}"]',
+        ]
+        volume = "/var/lib/postgresql/data"
+    lines += ["      interval: 5s", "      timeout: 5s", "      retries: 30", "    volumes:", f"      - db-data:{volume}"]
+    return lines
 
 
 def readme(
