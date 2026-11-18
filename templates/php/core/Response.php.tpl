@@ -59,7 +59,7 @@ final class Response
             $error['details'] = $exception->details;
         }
 
-        return self::json(['error' => $error], $exception->status);
+        return self::json(['error' => $error], $exception->status)->withHeaders($exception->headers);
     }
 
     public function content(): string

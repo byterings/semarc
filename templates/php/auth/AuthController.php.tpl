@@ -19,6 +19,7 @@ final class AuthController
 
     public function register(Request $request): Response
     {
+        RateLimiter::forAuth()->hit('register|' . $request->ip);
         $user = $this->users->create($request->json());
 
         return Response::json(['data' => ['user' => $user] + $this->tokens->issue($user['id'])], 201);
@@ -29,6 +30,7 @@ final class AuthController
      */
     public function login(Request $request): array
     {
+        RateLimiter::forAuth()->hit('login|' . $request->ip);
         $input = $request->json();
         $errors = [];
         foreach (['{{identity_field}}', '{{secret_field}}'] as $field) {

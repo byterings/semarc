@@ -6,12 +6,14 @@ final class HttpException extends RuntimeException
 {
     /**
      * @param array<string, list<string>> $details
+     * @param array<string, string> $headers extra response headers, such as Retry-After
      */
     public function __construct(
         public readonly int $status,
         public readonly string $errorCode,
         string $message,
         public readonly array $details = [],
+        public readonly array $headers = [],
     ) {
         parent::__construct($message);
     }

@@ -75,6 +75,7 @@ class FastApiGenerator:
         if auth:
             self._write("middleware/__init__.py", '"""Request authentication dependencies."""\n', "python package")
             self._render("services/token_service.py", "token_service.py.tpl")
+            self._render("core/rate_limit.py", "rate_limit.py.tpl")
             self._render("services/password_hasher.py", "password_hasher.py.tpl")
             self._render(
                 "middleware/auth.py",
@@ -195,6 +196,8 @@ class FastApiGenerator:
                 [
                     '        self.jwt_secret = env("JWT_SECRET", "")',
                     f'        self.jwt_ttl = int(env("JWT_TTL", "{ir["auth"]["token_ttl_seconds"]}"))',
+                    f'        self.auth_rate_limit = int(env("AUTH_RATE_LIMIT", "{ir["auth"]["rate_limit"]["attempts"]}"))',
+                    f'        self.auth_rate_window = int(env("AUTH_RATE_WINDOW", "{ir["auth"]["rate_limit"]["window_seconds"]}"))',
                 ]
             )
         lines.extend(

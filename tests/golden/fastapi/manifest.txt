@@ -6,6 +6,7 @@ config/__init__.py
 config/settings.py
 core/__init__.py
 core/errors.py
+core/rate_limit.py
 database.py
 docker-compose.yml
 generator_manifest.json

@@ -1,5 +1,7 @@
 from compiler.diagnostics.diagnostic import DiagnosticError, DiagnosticWarning
 
+GENERATED_AUTH_RATE_LIMITING = True
+
 
 class ConflictingAuthStrategiesRule:
     code = "AUTH002"
@@ -22,14 +24,20 @@ class ConflictingAuthStrategiesRule:
 
 
 class JwtRateLimitRule:
+    """AUTH001: JWT endpoints need rate limiting.
+
+    Every target generates rate limiting for POST /register and POST /login
+    (AUTH_RATE_LIMIT attempts per AUTH_RATE_WINDOW seconds), so a JWT
+    architecture satisfies the rule and no warning is emitted.
+    """
+
     code = "AUTH001"
 
     def evaluate(self, context: dict, result) -> None:
         ast = context["ast"]
-        if not ast or not ast.auth:
+        if not ast or not ast.auth or ast.auth.strategy != "JWT":
             return
-
-        if ast.auth.strategy == "JWT":
+        if not GENERATED_AUTH_RATE_LIMITING:
             result.add_warning(
                 DiagnosticWarning(
                     self.code,

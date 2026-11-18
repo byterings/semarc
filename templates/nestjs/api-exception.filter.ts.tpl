@@ -20,6 +20,7 @@ export class ApiExceptionFilter implements ExceptionFilter {
     const response = host.switchToHttp().getResponse<Response>();
 
     if (exception instanceof ApiError) {
+      response.set(exception.headers);
       this.send(response, exception.status, exception.code, exception.message, exception.details);
       return;
     }

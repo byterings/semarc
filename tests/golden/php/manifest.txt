@@ -16,6 +16,7 @@ core/HomePage.php
 core/HttpException.php
 core/Jwt.php
 core/Migrator.php
+core/RateLimiter.php
 core/Repository.php
 core/Request.php
 core/ResourceService.php

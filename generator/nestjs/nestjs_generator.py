@@ -100,6 +100,7 @@ class NestJSGenerator:
         if auth:
             self._render("src/common/password-hasher.ts", "password-hasher.ts.tpl")
             self._render("src/common/current-user.decorator.ts", "current-user.decorator.ts.tpl")
+            self._render("src/common/rate-limit.guard.ts", "rate-limit.guard.ts.tpl")
             self._render("src/modules/auth/token.service.ts", "token.service.ts.tpl")
             self._render(
                 "src/guards/auth.guard.ts",

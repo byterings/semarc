@@ -148,6 +148,7 @@ def auth_code(ir: dict, reserved: set[str]) -> dict[str, str]:
     imports.use("../../common/api-error", "ApiError")
     imports.use("../../common/current-user.decorator", "CurrentUserId")
     imports.use("../../common/password-hasher", "PasswordHasher")
+    imports.use("../../common/rate-limit.guard", "AuthRateLimitGuard")
     imports.use("../../guards/auth.guard", "AuthGuard")
     imports.use(f"../{model_folder}/{model_folder}.repository", f"{name}Repository")
     imports.use(f"../{model_folder}/{model_folder}.service", f"{name}Service")
@@ -169,6 +170,7 @@ def auth_code(ir: dict, reserved: set[str]) -> dict[str, str]:
             "",
             f"  @{post}('register')",
             f"  @{http_code}(201)",
+            f"  @{use_guards}(AuthRateLimitGuard)",
             f"  async register(@{body}() dto: Create{name}Dto) {{",
             "    const user = await this.users.create(dto);",
             "    const token = await this.tokens.issue(user.id as number);",
@@ -177,6 +179,7 @@ def auth_code(ir: dict, reserved: set[str]) -> dict[str, str]:
             "",
             f"  @{post}('login')",
             f"  @{http_code}(200)",
+            f"  @{use_guards}(AuthRateLimitGuard)",
             f"  async login(@{body}() dto: LoginDto) {{",
             f"    const record = await this.repository.findBy({ts_string(identity)}, dto.{identity});",
             f"    if (!record || !(await this.hasher.verify(dto.{secret}, record.{secret}))) {{",
@@ -524,6 +527,8 @@ def settings_code(ir: dict, settings: dict, port: int) -> str:
             [
                 "  jwtSecret: env('JWT_SECRET', ''),",
                 f"  jwtTtl: Number(env('JWT_TTL', '{ir['auth']['token_ttl_seconds']}')),",
+                f"  authRateLimit: Number(env('AUTH_RATE_LIMIT', '{ir['auth']['rate_limit']['attempts']}')),",
+                f"  authRateWindow: Number(env('AUTH_RATE_WINDOW', '{ir['auth']['rate_limit']['window_seconds']}')),",
             ]
         )
     lines.extend(["};", ""])

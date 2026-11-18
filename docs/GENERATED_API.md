@@ -63,6 +63,12 @@ declared, matching the behaviour of earlier SEMARC versions.
 - Tokens are HS256 JWTs signed with `JWT_SECRET` (at least 32 characters; the server refuses
   to sign with a shorter secret) and expire after `JWT_TTL` seconds (default 3600).
 - Send `Authorization: Bearer <token>`. Missing, malformed, expired or orphaned tokens get 401.
+- `POST /register` and `POST /login` are rate limited per client address: `AUTH_RATE_LIMIT`
+  attempts (default 10) per `AUTH_RATE_WINDOW` seconds (default 60). Further attempts get
+  429 `too_many_requests` with a `Retry-After` header. PHP keeps counters in
+  `storage/rate-limits/`; FastAPI and NestJS keep them in memory per process. Behind a
+  reverse proxy every client shares the proxy's address, so configure the proxy to forward
+  the client address or adjust the limiter.
 
 ### Access policy
 
@@ -136,6 +142,7 @@ Records include `id`, every non-secret field, foreign key columns, `created_at` 
 | 403 | `forbidden` | Changing a record owned by another user |
 | 404 | `not_found` | Unknown route or record |
 | 409 | `conflict` | Unique value taken, or deleting a record that others still reference |
+| 429 | `too_many_requests` | Too many `/register` or `/login` attempts; see `Retry-After` |
 | 422 | `validation_failed` | Input rules failed; `details` lists messages per field |
 | 501 | `not_implemented` | A declared custom route that has no generated behaviour |
 | 500 | `internal_error` | Unexpected error (details are logged, not returned) |
@@ -154,7 +161,8 @@ children first, or change the generated service if you want different behaviour.
 `generator/utils/api_scenario.py`. It is an ordered list of steps: register, login, create,
 read, list, update, replace, nested listing, custom routes and deletes, plus the negative
 cases (401 without a token, 403 when a second user changes someone else's record, 404 for
-missing records, 409 for duplicates and protected deletes, 422 for invalid input).
+missing records, 409 for duplicates and protected deletes, 422 for invalid input, 429 once
+the login limit is exceeded).
 
 - `php tests/run.php`, `pytest` or `npm test` replays it in-process on SQLite.
 - `python3 scripts/e2e_runtime.py` replays it over HTTP against `docker compose` stacks for

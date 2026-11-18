@@ -43,14 +43,17 @@ class CoreGenerator:
             "identity_field": auth["identity_field"],
             "secret_field": auth["secret_field"],
             "token_ttl": auth["token_ttl_seconds"],
+            "attempts": auth["rate_limit"]["attempts"],
+            "window": auth["rate_limit"]["window_seconds"],
         }
         self.writer.render("core/Jwt.php", "auth/Jwt.php.tpl")
+        self.writer.render("core/RateLimiter.php", "auth/RateLimiter.php.tpl", values)
         self.writer.render("services/TokenService.php", "auth/TokenService.php.tpl", values)
         self.writer.render("services/PasswordHasher.php", "auth/PasswordHasher.php.tpl")
         self.writer.render("middleware/AuthMiddleware.php", "auth/AuthMiddleware.php.tpl", values)
         self.writer.render("controllers/AuthController.php", "auth/AuthController.php.tpl", values)
         return {
-            "core": ["core/Jwt.php", "services/TokenService.php", "services/PasswordHasher.php"],
+            "core": ["core/Jwt.php", "core/RateLimiter.php", "services/TokenService.php", "services/PasswordHasher.php"],
             "middleware": ["middleware/AuthMiddleware.php"],
             "controllers": ["controllers/AuthController.php"],
         }

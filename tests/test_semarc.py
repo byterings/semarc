@@ -327,11 +327,12 @@ ROUTE GET /users
             self.assertTrue((Path(php_context.output_dir) / "routes.php").exists())
             self.assertTrue((Path(fastapi_context.output_dir) / "main.py").exists())
 
-    def test_auth_constraint_warns_about_rate_limiting(self):
+    def test_auth_rate_limit_constraint_is_satisfied_by_generated_rate_limiting(self):
         context = self._compile_context(tempfile.mkdtemp(), target="fastapi", generate=False)
         warning_codes = [warning["code"] for warning in context.architecture_report["warnings"]]
 
-        self.assertIn("AUTH001", warning_codes)
+        self.assertNotIn("AUTH001", warning_codes)
+        self.assertEqual(context.ir["auth"]["rate_limit"], {"attempts": 10, "window_seconds": 60})
 
     def test_conflicting_auth_strategies_generate_diagnostic_error(self):
         source = """PROJECT AuthConflict

@@ -61,6 +61,8 @@ def env_values(ir: dict) -> dict[str, str]:
     if ir.get("auth"):
         values["JWT_SECRET"] = DEV_JWT_SECRET
         values["JWT_TTL"] = str(ir["auth"]["token_ttl_seconds"])
+        values["AUTH_RATE_LIMIT"] = str(ir["auth"]["rate_limit"]["attempts"])
+        values["AUTH_RATE_WINDOW"] = str(ir["auth"]["rate_limit"]["window_seconds"])
     return values
 
 

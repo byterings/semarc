@@ -12,7 +12,7 @@ Every target writes:
 | File | Purpose |
 | --- | --- |
 | `README.md` | quick start, Docker, tests, configuration, auth, API table, layout |
-| `.env.example` | `APP_NAME`, `APP_ENV`, `DB_CONNECTION`, `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`, `CORS_ORIGINS`, and with auth `JWT_SECRET`, `JWT_TTL` |
+| `.env.example` | `APP_NAME`, `APP_ENV`, `DB_CONNECTION`, `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`, `CORS_ORIGINS`, and with auth `JWT_SECRET`, `JWT_TTL`, `AUTH_RATE_LIMIT`, `AUTH_RATE_WINDOW` |
 | `Dockerfile` | production image; applies migrations on start |
 | `docker-compose.yml` | the app plus MySQL 8.4 or PostgreSQL 17 (with health checks), or a SQLite volume; host port overridable with `APP_PORT` |
 | `api_scenario.json` | behavioural test plan, replayed by the project's test runner |

@@ -7,6 +7,7 @@ declare(strict_types=1);
 
 putenv('DB_CONNECTION=sqlite');
 putenv('DB_DATABASE=:memory:');
+putenv('RATE_LIMIT_STORAGE=' . sys_get_temp_dir() . '/semarc-rate-limits-' . bin2hex(random_bytes(6)));
 if (getenv('JWT_SECRET') === false) {
     putenv('JWT_SECRET=semarc-test-secret-semarc-test-secret');
 }

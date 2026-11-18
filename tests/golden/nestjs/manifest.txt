@@ -14,6 +14,7 @@ src/common/api-exception.filter.ts
 src/common/current-user.decorator.ts
 src/common/id.pipe.ts
 src/common/password-hasher.ts
+src/common/rate-limit.guard.ts
 src/common/resource.repository.ts
 src/common/resource.service.ts
 src/common/validation.ts

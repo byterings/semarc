@@ -18,6 +18,7 @@ final class Request
         public readonly array $query = [],
         public readonly array $headers = [],
         private readonly string $body = '',
+        public readonly string $ip = '127.0.0.1',
     ) {
     }
 
@@ -40,6 +41,7 @@ final class Request
             $_GET,
             $headers,
             (string) file_get_contents('php://input'),
+            (string) ($_SERVER['REMOTE_ADDR'] ?? ''),
         );
     }
 

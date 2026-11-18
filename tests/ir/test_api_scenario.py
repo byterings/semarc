@@ -73,6 +73,13 @@ class ApiScenarioTests(unittest.TestCase):
         self.assertIn("create User", names)
         self.assertEqual(step(steps, "create User")["save"], {"user_record_id": "data.id"})
 
+    def test_login_rate_limit_is_exceeded_last(self):
+        self.assertEqual(self.steps[-1]["name"], "login is rate limited")
+        self.assertEqual(self.steps[-1]["expect"], 429)
+        self.assertEqual(self.steps[-2]["expect"], [401, 429])
+        logins = [item for item in self.steps if item["method"] == "POST" and item["path"] == "/login"]
+        self.assertEqual(len(logins), 11)
+
     def test_list_routes_check_filters_and_sorting(self):
         matching = step(self.steps, "filter Tag by label")
         self.assertEqual(matching["path"], "/tags?label=label+1")

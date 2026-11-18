@@ -43,6 +43,7 @@ class ApiScenarioBuilder:
         self._ownership_steps()
         self._custom_steps()
         self._delete_steps()
+        self._rate_limit_steps()
         return {"project": ir["project"], "steps": self.steps}
 
     def _experience_steps(self) -> None:
@@ -348,6 +349,30 @@ class ApiScenarioBuilder:
             if "read" in entry["routes"]:
                 self._call(entry["routes"]["read"], f"read deleted {label}", 404, path=self._path(entry["routes"]["read"], entry["var"]))
             self._call(delete, f"delete missing {label}", 404, path=self._path(delete, entry["var"]))
+
+    def _rate_limit_steps(self) -> None:
+        """Exceeds the login limit last: afterwards nobody from this client can log in."""
+        auth = self.ir.get("auth")
+        if not auth or not self.has_token:
+            return
+        login = next(item for item in self.steps if item["path"] == "/login" and item["expect"] == 200)
+        credentials = {**login["body"], auth["secret_field"]: login["body"][auth["secret_field"]] + "-wrong"}
+        used = sum(1 for item in self.steps if item["method"] == "POST" and item["path"] == "/login")
+        attempts = auth["rate_limit"]["attempts"]
+
+        # Whether a rejected (422) body counts as an attempt is framework specific,
+        # so the attempt at the limit may already be refused.
+        for index in range(used + 1, attempts):
+            self._step(f"login attempt {index} within the rate limit", "POST", "/login", 401, body=credentials)
+        self._step(f"login attempt {attempts} at the rate limit", "POST", "/login", [401, 429], body=credentials)
+        self._step(
+            "login is rate limited",
+            "POST",
+            "/login",
+            429,
+            body=credentials,
+            equals={"error.code": "too_many_requests"},
+        )
 
     def _body(self, model: dict, include_owner: bool) -> dict:
         variant = self._next_variant(model["name"])

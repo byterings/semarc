@@ -6,6 +6,7 @@ from generator.utils.inflector import pluralize, resource_path, snake_case
 
 PARAM_PATTERN = re.compile(r"^\{([a-z][a-z0-9_]*)\}$")
 TOKEN_TTL_SECONDS = 3600
+AUTH_RATE_LIMIT = {"attempts": 10, "window_seconds": 60}
 
 COLLECTION_OPERATIONS = {"GET": "list", "POST": "create"}
 ITEM_OPERATIONS = {"GET": "read", "PUT": "replace", "PATCH": "update", "DELETE": "delete"}
@@ -39,6 +40,7 @@ class ResourcePlanner:
             "identity_field": AUTH_IDENTITY_FIELD,
             "secret_field": AUTH_SECRET_FIELD,
             "token_ttl_seconds": TOKEN_TTL_SECONDS,
+            "rate_limit": dict(AUTH_RATE_LIMIT),
             "implicit_model": not declared,
         }
 

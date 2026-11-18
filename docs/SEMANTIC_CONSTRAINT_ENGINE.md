@@ -92,7 +92,8 @@ Supported diagnostic classes:
 
 Authentication rules:
 
-- `AUTH001`: warns when JWT authentication is used without rate limiting.
+- `AUTH001`: JWT authentication needs rate limiting. Since v0.14.0 every target generates it
+  for `/register` and `/login`, so the rule is satisfied and emits no warning.
 - `AUTH002`: errors when multiple authentication strategies are declared.
 
 Database rules:

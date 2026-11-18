@@ -222,7 +222,6 @@ Status: planned.
 - query filters and sorting on list routes
 - roles and permissions as stdlib modules
 - explicit many-to-many relations
-- rate limiting (resolves `AUTH001`)
 
 ## v0.16.0: Community Target Architecture
 

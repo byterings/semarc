@@ -19,12 +19,20 @@ HTTP_ERROR_CODES = {
 class ApiError(Exception):
     """An API error rendered as an `error` object with code, message and optional details."""
 
-    def __init__(self, status: int, code: str, message: str, details: dict[str, list[str]] | None = None) -> None:
+    def __init__(
+        self,
+        status: int,
+        code: str,
+        message: str,
+        details: dict[str, list[str]] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> None:
         super().__init__(message)
         self.status = status
         self.code = code
         self.message = message
         self.details = details or {}
+        self.headers = headers or {}
 
     @classmethod
     def unauthorized(cls, message: str = "Authentication required.") -> "ApiError":
@@ -51,17 +59,19 @@ class ApiError(Exception):
         return cls(501, "not_implemented", message)
 
 
-def error_response(status: int, code: str, message: str, details: dict | None = None) -> JSONResponse:
+def error_response(
+    status: int, code: str, message: str, details: dict | None = None, headers: dict[str, str] | None = None
+) -> JSONResponse:
     error = {"code": code, "message": message}
     if details:
         error["details"] = details
-    return JSONResponse({"error": error}, status_code=status)
+    return JSONResponse({"error": error}, status_code=status, headers=headers)
 
 
 def register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(ApiError)
     async def handle_api_error(_: Request, error: ApiError) -> JSONResponse:
-        return error_response(error.status, error.code, error.message, error.details)
+        return error_response(error.status, error.code, error.message, error.details, error.headers)
 
     @app.exception_handler(RequestValidationError)
     async def handle_validation_error(_: Request, error: RequestValidationError) -> JSONResponse:
