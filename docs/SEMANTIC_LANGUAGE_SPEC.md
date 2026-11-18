@@ -191,8 +191,8 @@ PROFILE ECOMMERCE
 USE payment.razorpay
 ```
 
-`PROFILE` composes profile metadata from `profiles/*.profile`, including inherited profiles
-and their modules. `USE` resolves stdlib modules from `stdlib/**/module.yaml`, including their
+`PROFILE` composes profile metadata from `semarc/profiles/*.profile`, including inherited profiles
+and their modules. `USE` resolves stdlib modules from `semarc/stdlib/**/module.yaml`, including their
 `depends`, `requires` and `conflicts` rules. Resolved profiles and modules appear in the
 architecture report and the generator manifest. Unknown `USE` names are kept as metadata.
 

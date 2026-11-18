@@ -1,10 +1,10 @@
 import tempfile
 import unittest
 
-from lexer.lexer import Lexer
-from parser.parser import Parser, ParserError
+from semarc.lexer.lexer import Lexer
+from semarc.parser.parser import Parser, ParserError
 from tests.support import compile_source
-from validator.validator import SemanticValidationError, SemanticValidator
+from semarc.validator.validator import SemanticValidationError, SemanticValidator
 
 
 BASE = """PROJECT Demo

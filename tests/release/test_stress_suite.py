@@ -3,8 +3,8 @@ import time
 import unittest
 from pathlib import Path
 
-from architecture.profiles import Profile, ProfileCompositionResolver, ProfileRegistry
-from architecture.stdlib import ModuleDefinition, ModuleDependencyResolver, ModuleRegistry
+from semarc.architecture.profiles import Profile, ProfileCompositionResolver, ProfileRegistry
+from semarc.architecture.stdlib import ModuleDefinition, ModuleDependencyResolver, ModuleRegistry
 from tests.support import compile_source
 
 

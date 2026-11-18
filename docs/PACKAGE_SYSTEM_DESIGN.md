@@ -6,7 +6,7 @@ The goal is to prevent keyword expansion in the core language. Features such as
 payments, reporting, notifications, search, storage, caching, and auditing
 should become packages instead of new top-level language constructs.
 
-Current status: package metadata (`stdlib/*/package.meta`) is loaded for reporting. Module
+Current status: package metadata (`semarc/stdlib/*/package.meta`) is loaded for reporting. Module
 behaviour lives in the stdlib module system (`module.yaml`, see `STDLIB_MODULE_SYSTEM.md`),
 which resolves dependencies and constraints. Neither changes generated code yet.
 
@@ -59,7 +59,7 @@ rules, constraints, target mappings, compatibility metadata, and tests.
 ## Foundation Objects
 
 ```text
-architecture/packages/
+semarc/architecture/packages/
 ├── package.py
 ├── registry.py
 └── loader.py
@@ -75,7 +75,7 @@ architecture/packages/
 
 `PackageRegistry` stores loaded packages by name.
 
-`PackageLoader` reads `stdlib/*/package.meta` files.
+`PackageLoader` reads `semarc/stdlib/*/package.meta` files.
 
 ## Loading Flow
 

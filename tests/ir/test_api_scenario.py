@@ -1,7 +1,7 @@
 import tempfile
 import unittest
 
-from generator.utils.api_scenario import ApiScenarioBuilder
+from semarc.generator.utils.api_scenario import ApiScenarioBuilder
 from tests.ir.test_resource_plan import BLOG
 from tests.support import compile_source
 

@@ -1,6 +1,6 @@
 # Relationship Engine
 
-The relationship engine (`architecture/relationship_engine.py`) turns semantic relations
+The relationship engine (`semarc/architecture/relationship_engine.py`) turns semantic relations
 into a relationship graph, foreign keys and migration metadata.
 
 ## Supported Relationships

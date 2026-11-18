@@ -134,7 +134,7 @@ Generated `output/architecture_report.json` includes resolved modules:
       "name": "auth.jwt",
       "version": "1.0",
       "description": "JWT authentication module",
-      "source_path": "stdlib/auth/jwt/module.yaml",
+      "source_path": "semarc/stdlib/auth/jwt/module.yaml",
       "dependencies": []
     }
   ],

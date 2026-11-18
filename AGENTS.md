@@ -125,32 +125,32 @@ API -> Business -> Persistence -> Entity
 
 Do not generate fake security implementations: no demo tokens, permissive guards or unsigned tokens. `AUTH JWT` generates real HS256 tokens and bcrypt password hashing in every target; keep it that way.
 
-Generators translate the IR only. Route operations, access policy, ownership, field rules and migration order are decided in `architecture/resource_planner.py` and the optimizer, never in a generator.
+Generators translate the IR only. Route operations, access policy, ownership, field rules and migration order are decided in `semarc/architecture/resource_planner.py` and the optimizer, never in a generator.
 
 All targets must expose the same behaviour (`docs/GENERATED_API.md`) and ship a runner for the generated `api_scenario.json`.
 
-SEMARC Core is the architecture engine. Target generators are runnable project builders. Future target work should focus on project templates and target packages, not lexer/parser/compiler expansion.
+SEMARC Core is the architecture engine. Target generators are runnable project builders. Future target work should focus on project templates and target packages, not lexer, parser or compiler expansion.
 
 Target generators live under:
 
-- `generator/php/`
-- `generator/fastapi/`
-- `generator/nestjs/`
-- `generator/targets/`
+- `semarc/generator/php/`
+- `semarc/generator/fastapi/`
+- `semarc/generator/nestjs/`
+- `semarc/generator/targets/`
 
 Templates live under:
 
-- `templates/php/`
-- `templates/fastapi/`
-- `templates/nestjs/`
+- `semarc/templates/php/`
+- `semarc/templates/fastapi/`
+- `semarc/templates/nestjs/`
 
 Project template foundations live under:
 
-- `generator/php/project_template/`
-- `generator/fastapi/project_template/`
-- `generator/nestjs/project_template/`
+- `semarc/generator/php/project_template/`
+- `semarc/generator/fastapi/project_template/`
+- `semarc/generator/nestjs/project_template/`
 
-Every generated target should expose `/`, `/health`, `/routes`, `/openapi.json` (the shared document from `generator/utils/openapi.py`) and `/docs`, and should use `generator/utils/inflector.py` for resource names. Shared target-neutral helpers live in `generator/utils/` (resource views, API scenario, project runtime files, template engine).
+Every generated target should expose `/`, `/health`, `/routes`, `/openapi.json` (the shared document from `semarc/generator/utils/openapi.py`) and `/docs`, and should use `semarc/generator/utils/inflector.py` for resource names. Shared target-neutral helpers live in `semarc/generator/utils/` (resource views, API scenario, project runtime files, template engine).
 
 Keep generated projects readable, runnable, and prototype-friendly.
 

@@ -33,8 +33,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from main import compile_semantic_file  # noqa: E402
-from validator.validator import SemanticValidationError  # noqa: E402
+from semarc.compiler.pipeline import compile_semantic_file  # noqa: E402
+from semarc.validator.validator import SemanticValidationError  # noqa: E402
 
 TARGETS = ["php", "fastapi", "nestjs"]
 DATABASES = {"sqlite": "SQLITE", "mysql": "MYSQL", "postgresql": "POSTGRESQL"}

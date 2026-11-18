@@ -1,7 +1,7 @@
 # Compiler Passes
 
 SEMARC uses explicit compiler passes. Each pass accepts `CompilerContext`
-(`compiler/context.py`), updates a focused part of the compiler state and leaves the rest
+(`semarc/compiler/context.py`), updates a focused part of the compiler state and leaves the rest
 alone. Passes are deterministic, ordered and free of target-specific side effects until
 generation.
 
@@ -37,7 +37,7 @@ not build AST or validate semantics.
 
 ## ParsingPass
 
-Builds the semantic AST through `ast/ast_builder.py`: models with field modifiers, routes
+Builds the semantic AST through `semarc/ast/ast_builder.py`: models with field modifiers, routes
 with optional access, validations with model scope and numeric parameters, relations,
 profiles and packages. Reserved commands (`SERVICE`, `CONFIG`) raise a parser error.
 
@@ -48,8 +48,8 @@ repository shapes, target leakage in IR, and generated component metadata.
 
 ## ProfilePass and StdlibPass
 
-Load `profiles/*.profile` and compose requested profiles with inheritance and cycle
-detection, then discover `stdlib/**/module.yaml` modules into the module registry.
+Load `semarc/profiles/*.profile` and compose requested profiles with inheritance and cycle
+detection, then discover `semarc/stdlib/**/module.yaml` modules into the module registry.
 
 ## ValidationPass
 
@@ -84,7 +84,7 @@ diagnostic **errors** block generation.
 Selects the target profile, runs `ResourcePlanner` and the architecture rule engine, and
 expands the plan.
 
-`ResourcePlanner` (`architecture/resource_planner.py`) decides the auth model and
+`ResourcePlanner` (`semarc/architecture/resource_planner.py`) decides the auth model and
 credentials, final model specs with merged validation rules, references and dependents,
 every route's operation, the default list routes, the auth routes and the access policy.
 The rule engine builds the dependency graph from the same plan.
@@ -97,7 +97,7 @@ dependency graph, relationship graph, module and profile metadata.
 
 ## OptimizationPass
 
-Delegates to `ArchitectureOptimizer` (`architecture/optimizer.py`): sorts models,
+Delegates to `ArchitectureOptimizer` (`semarc/architecture/optimizer.py`): sorts models,
 repositories and relationships, removes duplicate components, and orders migration tables
 topologically by foreign key with a sequence number.
 

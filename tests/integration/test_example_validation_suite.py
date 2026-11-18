@@ -3,27 +3,27 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from architecture.packages import PackageLoader
-from architecture.profiles import ProfileLoader
-from compiler.context import CompilerContext
-from compiler.contracts import ContractValidator
-from compiler.passes.architecture_analysis_pass import ArchitectureAnalysisPass
-from compiler.passes.constraint_pass import ConstraintPass
-from compiler.passes.contract_pass import ContractPass
-from compiler.passes.diagnostic_report_pass import DiagnosticReportPass
-from compiler.passes.expansion_pass import ExpansionPass
-from compiler.passes.generation_pass import GenerationPass
-from compiler.passes.ir_pass import IRPass
-from compiler.passes.lexing_pass import LexingPass
-from compiler.passes.module_constraint_pass import ModuleConstraintPass
-from compiler.passes.optimization_pass import OptimizationPass
-from compiler.passes.parsing_pass import ParsingPass
-from compiler.passes.profile_pass import ProfilePass
-from compiler.passes.relationship_pass import RelationshipPass
-from compiler.passes.stdlib_pass import StdlibPass
-from compiler.passes.validation_pass import ValidationPass
-from lexer.lexer import Lexer
-from parser.parser import Parser
+from semarc.architecture.packages import PackageLoader
+from semarc.architecture.profiles import ProfileLoader
+from semarc.compiler.context import CompilerContext
+from semarc.compiler.contracts import ContractValidator
+from semarc.compiler.passes.architecture_analysis_pass import ArchitectureAnalysisPass
+from semarc.compiler.passes.constraint_pass import ConstraintPass
+from semarc.compiler.passes.contract_pass import ContractPass
+from semarc.compiler.passes.diagnostic_report_pass import DiagnosticReportPass
+from semarc.compiler.passes.expansion_pass import ExpansionPass
+from semarc.compiler.passes.generation_pass import GenerationPass
+from semarc.compiler.passes.ir_pass import IRPass
+from semarc.compiler.passes.lexing_pass import LexingPass
+from semarc.compiler.passes.module_constraint_pass import ModuleConstraintPass
+from semarc.compiler.passes.optimization_pass import OptimizationPass
+from semarc.compiler.passes.parsing_pass import ParsingPass
+from semarc.compiler.passes.profile_pass import ProfilePass
+from semarc.compiler.passes.relationship_pass import RelationshipPass
+from semarc.compiler.passes.stdlib_pass import StdlibPass
+from semarc.compiler.passes.validation_pass import ValidationPass
+from semarc.lexer.lexer import Lexer
+from semarc.parser.parser import Parser
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -123,8 +123,8 @@ class ExampleProjectValidationSuite(unittest.TestCase):
                 self.assertTrue((Path(tmpdir) / "out" / "architecture_report.json").exists())
 
     def test_profile_and_package_loaders_support_v0_4_metadata(self):
-        profiles = ProfileLoader(ROOT / "profiles").load_all()
-        packages = PackageLoader(ROOT / "stdlib").load_all()
+        profiles = ProfileLoader(ROOT / "semarc" / "profiles").load_all()
+        packages = PackageLoader(ROOT / "semarc" / "stdlib").load_all()
 
         company_ecommerce = profiles.get("COMPANY_ECOMMERCE")
         razorpay = packages.get("payment.razorpay")
@@ -356,8 +356,8 @@ ROUTE POST /login
         self._write_gap_report()
 
     def _write_v0_4_report(self, rows: list[dict]) -> None:
-        profiles = ProfileLoader(ROOT / "profiles").load_all().all()
-        packages = PackageLoader(ROOT / "stdlib").load_all().all()
+        profiles = ProfileLoader(ROOT / "semarc" / "profiles").load_all().all()
+        packages = PackageLoader(ROOT / "semarc" / "stdlib").load_all().all()
         profile_tests = [path.name for path in PROFILE_TEST_EXAMPLES]
         passed = sum(1 for row in rows if row["compilation"] == "PASS")
         failed = len(rows) - passed
@@ -479,7 +479,7 @@ ROUTE POST /login
         files = {}
         for path in sorted(output_dir.rglob("*")):
             if path.is_file() and path.suffix in suffixes:
-                files[str(path.relative_to(output_dir))] = path.read_text(encoding="utf-8")
+                files[path.relative_to(output_dir).as_posix()] = path.read_text(encoding="utf-8")
         return files
 
 

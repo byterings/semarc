@@ -1,7 +1,7 @@
 import tempfile
 import unittest
 
-from compiler.contracts import ContractValidator
+from semarc.compiler.contracts import ContractValidator
 from tests.support import compile_source
 
 

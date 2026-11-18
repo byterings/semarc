@@ -2,8 +2,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from architecture.profiles import Profile, ProfileCompositionError, ProfileCompositionResolver, ProfileRegistry
-from architecture.stdlib import (
+from semarc.architecture.profiles import Profile, ProfileCompositionError, ProfileCompositionResolver, ProfileRegistry
+from semarc.architecture.stdlib import (
     ModuleConstraintError,
     ModuleConstraintValidator,
     ModuleDefinition,
@@ -11,10 +11,10 @@ from architecture.stdlib import (
     ModuleDependencyResolver,
     ModuleRegistry,
 )
-from lexer.lexer import Lexer
-from parser.parser import Parser
+from semarc.lexer.lexer import Lexer
+from semarc.parser.parser import Parser
 from tests.support import compile_source
-from validator.validator import SemanticValidationError
+from semarc.validator.validator import SemanticValidationError
 
 
 class RegressionTestCase(unittest.TestCase):

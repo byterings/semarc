@@ -85,8 +85,8 @@ Build: `npm run build && npm start`. Node.js 22+.
 | FastAPI | FastAPI 0.163, SQLAlchemy 2.1, Alembic 1.20, Pydantic 2.14, PyJWT 2.15, bcrypt 5, pytest 9 |
 | NestJS | NestJS 11.2, TypeORM 0.3.31, @nestjs/jwt 11, class-validator 0.14, TypeScript 5.9, Jest 30 |
 
-Versions are pinned exactly in `generator/fastapi/fastapi_generator.py` and
-`generator/nestjs/nestjs_generator.py` so that generated projects are reproducible.
+Versions are pinned exactly in `semarc/generator/fastapi/fastapi_generator.py` and
+`semarc/generator/nestjs/nestjs_generator.py` so that generated projects are reproducible.
 
 ## Boundary
 

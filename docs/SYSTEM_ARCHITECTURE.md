@@ -150,7 +150,7 @@ Purpose: decide what the generated API does.
 Input: AST, foreign keys from the relationship engine.
 
 Output: auth settings, final model specs (fields, rules, references, dependents) and one
-operation plus access policy per route (`architecture/resource_planner.py`).
+operation plus access policy per route (`semarc/architecture/resource_planner.py`).
 
 Boundary: decisions are target-neutral; generators only translate them.
 
@@ -197,16 +197,16 @@ Boundary: generators do not parse source and do not invent architecture rules.
 ## Component Interaction
 
 ```text
-compiler/context.py
+semarc/compiler/context.py
     stores source, tokens, AST, relationship plan, graph, IR, target profile
 
-compiler/passes/*
+semarc/compiler/passes/*
     mutate CompilerContext one stage at a time
 
-architecture/*
+semarc/architecture/*
     owns synthesis, relationship planning, dependency modeling, IR building
 
-generator/*
+semarc/generator/*
     owns target mapping and templates
 ```
 

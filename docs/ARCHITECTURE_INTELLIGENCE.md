@@ -463,7 +463,7 @@ Relevant components:
 
 1. Define the architecture smell or recommendation clearly.
 2. Decide whether the result should be a warning or a recommendation.
-3. Add an evaluator in `architecture/analysis/analyzer.py` or move rule logic into a dedicated rule module if the set grows.
+3. Add an evaluator in `semarc/architecture/analysis/analyzer.py` or move rule logic into a dedicated rule module if the set grows.
 4. Register the rule in the analyzer’s default rule list.
 5. Keep the rule deterministic and target-independent.
 6. Add unit tests for:

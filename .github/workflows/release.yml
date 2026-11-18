@@ -1,0 +1,55 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    name: Build and verify distributions
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Tag matches SEMARC_VERSION
+        run: |
+          version=$(python -c "from semarc.compiler.version import SEMARC_VERSION; print(SEMARC_VERSION)")
+          test "v$version" = "$GITHUB_REF_NAME" || { echo "Tag $GITHUB_REF_NAME does not match version $version"; exit 1; }
+      - name: Validate release
+        run: |
+          pip install openapi-spec-validator==0.9.0
+          python3 scripts/validate_release.py
+      - name: Build sdist and wheel
+        run: |
+          pip install build
+          python -m build --outdir dist .
+      - name: Smoke test the wheel
+        run: |
+          python -m venv /tmp/smoke && /tmp/smoke/bin/pip install dist/*.whl
+          cd "$RUNNER_TEMP" && /tmp/smoke/bin/semarc init demo && /tmp/smoke/bin/semarc build demo.sem --output demo
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-24.04
+    environment: pypi
+    permissions:
+      id-token: write
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Publish (trusted publishing)
+        uses: pypa/gh-action-pypi-publish@release/v1
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --notes "See CHANGELOG.md"

@@ -50,7 +50,7 @@ ROUTE GET /users/{id}/posts PROTECTED
 ```
 
 ```bash
-python3 main.py blog.sem --output blog-api
+semarc build blog.sem --output blog-api
 cd blog-api && docker compose up --build
 ```
 
@@ -107,22 +107,40 @@ With `AUTH JWT`, reads are public and writes need a token unless a route says `P
 Free-form natural language is not supported. The full grammar is in
 [docs/SEMANTIC_LANGUAGE_SPEC.md](docs/SEMANTIC_LANGUAGE_SPEC.md).
 
-## Command line
+## Install
 
-Install the `semarc` command from a checkout (editable install; SEMARC runs from the checkout):
+SEMARC needs Python 3.11 or newer. Generated projects need Docker, or the target's own
+toolchain (PHP 8.1+, Python 3.11+ or Node.js 22+).
 
 ```bash
-pip install -e .
-semarc build examples/blog_api.sem                       # writes ./output
-semarc build examples/blog_api.sem --target nestjs       # override TARGET
-semarc build examples/blog_api.sem --output ../my-api    # choose the directory
-semarc build examples/blog_api.sem --debug               # print tokens, AST, IR and passes
-semarc check examples/blog_api.sem                       # validate and show the planned API, no files
-semarc targets                                           # list targets
+pipx install semarc            # or: pip install semarc
+```
+
+From a source checkout: `pip install -e .`
+
+## Quick start
+
+```bash
+semarc init my-api --starter blog --target fastapi   # writes my-api.sem
+semarc check my-api.sem                              # validate and show the planned API
+semarc build my-api.sem --output my-api              # generate the project
+cd my-api && docker compose up --build               # http://localhost:8000/docs
+```
+
+Starters: `blank`, `blog`, `shop`. See [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md).
+
+## Command line
+
+```bash
+semarc init NAME [--starter blank|blog|shop] [--target T] [--database D]
+semarc build app.sem [--target php|fastapi|nestjs] [--output DIR] [--force] [--debug]
+semarc check app.sem [--target T]       # validate, print routes and diagnostics, write nothing
+semarc targets                          # list targets
 semarc version
 ```
 
-Without installing, `python3 main.py <file> [options]` is the same as `semarc build`.
+`python -m semarc` works the same way, and `python3 main.py app.sem` in a checkout equals
+`semarc build`.
 
 SEMARC only clears an output directory it generated earlier. Use `--force` to replace
 any other non-empty directory. Generation stops before writing files if validation or
@@ -143,9 +161,9 @@ Semantic Source
 
 Each stage lives in its own module: `lexer/`, `parser/`, `ast/`, `validator/`,
 `architecture/` (rules, relationships, resource planning, constraints, analysis,
-profiles, stdlib, optimizer, IR, contracts), `compiler/passes/` and `generator/`
+profiles, stdlib, optimizer, IR, contracts), `semarc/compiler/passes/` and `generator/`
 (`php/`, `fastapi/`, `nestjs/`, shared `utils/`, `targets/`). Templates live under
-`templates/<target>/`.
+`semarc/templates/<target>/`.
 
 ## Verification
 
@@ -165,6 +183,7 @@ After an intentional generator change, refresh the golden snapshots with
 
 ## Documentation
 
+- [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) install to running API in five minutes
 - [docs/SEMANTIC_LANGUAGE_SPEC.md](docs/SEMANTIC_LANGUAGE_SPEC.md) language reference
 - [docs/GENERATED_API.md](docs/GENERATED_API.md) behaviour of every generated API
 - [docs/ARCHITECTURE_IR_SPEC.md](docs/ARCHITECTURE_IR_SPEC.md) the language-neutral IR
@@ -176,3 +195,9 @@ After an intentional generator change, refresh the golden snapshots with
 
 Generated projects belong to you after generation; see
 [docs/SEMARC_OWNERSHIP_MODEL.md](docs/SEMARC_OWNERSHIP_MODEL.md).
+
+## License
+
+MIT. See [LICENSE](LICENSE). Contributions are welcome: see
+[docs/CONTRIBUTING.md](docs/CONTRIBUTING.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) and
+[SECURITY.md](SECURITY.md).

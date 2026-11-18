@@ -9,6 +9,18 @@ language; such changes are listed under **Changed**.
 
 ### Added
 - MIT license, security policy, code of conduct, issue and pull request templates.
+- Installable package: `pip install semarc` / `pipx install semarc`, `python -m semarc`.
+- `semarc init` with `blank`, `blog` and `shop` starters; `docs/GETTING_STARTED.md`.
+- Release workflow publishing to PyPI through trusted publishing; `docs/RELEASING.md`.
+- CI runs the compiler tests on Linux, macOS and Windows with Python 3.11 and 3.13 and
+  smoke-tests the installed wheel.
+- `scripts/project_tests.py` runs each generated project's own test suite in Docker.
+
+### Changed
+- All compiler code moved into the `semarc` package (`semarc.compiler`, `semarc.generator`,
+  ...). `python3 main.py` keeps working in a checkout.
+- Generated files always use LF line endings and recorded paths use forward slashes, so
+  output is identical on every operating system.
 
 ## [0.14.0] - 2026-11-18
 

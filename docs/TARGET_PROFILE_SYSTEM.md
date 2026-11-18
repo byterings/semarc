@@ -55,7 +55,7 @@ the list of available targets, both in source and on the command line.
 
 ## Strategy Engine
 
-`architecture/strategy_engine.py` selects the target profile. It records implementation
+`semarc/architecture/strategy_engine.py` selects the target profile. It records implementation
 strategy metadata; it does not generate code and never falls back to another target.
 
 ## Same IR, Different Output
@@ -74,7 +74,7 @@ To add a target:
 
 1. Add the profile to `StrategyEngine.TARGET_PROFILES` and the name to
    `SemanticValidator.SUPPORTED_TARGETS`.
-2. Add `generator/<target>/project_template/target.yaml` and the generator class.
+2. Add `semarc/generator/<target>/project_template/target.yaml` and the generator class.
 3. Register it in `TargetGeneratorFactory`.
-4. Map the IR without adding architecture rules; reuse `generator/utils/`.
+4. Map the IR without adding architecture rules; reuse `semarc/generator/utils/`.
 5. Ship a runner for `api_scenario.json` and pass `scripts/e2e_runtime.py`.
