@@ -42,8 +42,9 @@ model         := "MODEL" MODEL_NAME NEWLINE field*
 field         := INDENT FIELD_NAME TYPE modifier*
 modifier      := "UNIQUE" | "OPTIONAL"
 relation      := "RELATION" MODEL_NAME RELATION_TYPE MODEL_NAME
-route         := "ROUTE" HTTP_METHOD PATH access?
+route         := "ROUTE" HTTP_METHOD PATH access? role?
 access        := "PUBLIC" | "PROTECTED"
+role          := "ROLE" ROLE_NAME+          (requires USE auth.roles)
 validate      := "VALIDATE" (FIELD_NAME | MODEL_NAME "." FIELD_NAME) rule+
 rule          := "REQUIRED" | "EMAIL" | "MIN" INTEGER? | "MAX" INTEGER
 
@@ -51,6 +52,7 @@ TYPE          := "STRING" | "TEXT" | "INTEGER" | "FLOAT" | "BOOLEAN" | "DATE" | 
 RELATION_TYPE := "HAS_MANY" | "HAS_ONE" | "BELONGS_TO"
 HTTP_METHOD   := "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
 MODEL_NAME    := PascalCase identifier
+ROLE_NAME     := snake_case identifier
 FIELD_NAME    := snake_case identifier
 PATH          := "/" segment ("/" segment)*
 segment       := [A-Za-z0-9][A-Za-z0-9_-]* | "{" snake_case "}"
@@ -155,7 +157,9 @@ ROUTE DELETE /posts/{id} PUBLIC
 
 The route shape decides the operation (list, create, read, replace, update, delete, nested
 list); anything else becomes a custom route returning 501 until implemented. `/`,
-`/health`, `/routes`, `/openapi.json` and `/docs` are reserved. Path parameters are
+`/health`, `/routes`, `/openapi.json` and `/docs` are reserved. With `USE auth.roles`,
+`ROLE admin editor` restricts a route to users with one of those roles (`ROLE` implies
+`PROTECTED` and cannot be combined with `PUBLIC`). Path parameters are
 snake_case and unique within a
 path. `PROTECTED` requires `AUTH JWT`. `POST /register` and `GET /me` require `AUTH JWT`;
 with it they are added automatically. See [GENERATED_API.md](GENERATED_API.md) for the

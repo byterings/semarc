@@ -1,6 +1,13 @@
 from semarc.generator.php.base import PHP_HEADER, PhpFileWriter
 from semarc.generator.php.php_syntax import php_literal
-from semarc.generator.utils.resource_views import field_rules, output_fields, secret_fields, unique_columns
+from semarc.generator.utils.resource_views import (
+    field_defaults,
+    field_rules,
+    output_fields,
+    secret_fields,
+    unique_columns,
+    writable_fields,
+)
 
 
 CASTS = {
@@ -31,7 +38,7 @@ class ModelGenerator:
     def _model(self, model: dict) -> str:
         fields = {
             model_field["name"]: {key: value for key, value in field_rules(model_field).items() if key not in {"unique", "secret"}}
-            for model_field in model["fields"]
+            for model_field in writable_fields(model)
         }
         references = {
             reference["column"]: {
@@ -71,6 +78,9 @@ class ModelGenerator:
                 f"    public const UNIQUE = {php_literal(unique_columns(model))};",
                 "",
                 f"    public const HIDDEN = {php_literal(secret_fields(model))};",
+                "",
+                "    /** Values set on create when the request does not (or may not) provide them. */",
+                f"    public const DEFAULTS = {php_literal(field_defaults(model))};",
                 "",
                 "    /** Query parameters list routes accept as equality filters, with their types. */",
                 f"    public const FILTERS = {php_literal(model['query']['filters'])};",

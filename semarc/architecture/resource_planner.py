@@ -11,6 +11,10 @@ AUTH_RATE_LIMIT = {"attempts": 10, "window_seconds": 60}
 COLLECTION_OPERATIONS = {"GET": "list", "POST": "create"}
 ITEM_OPERATIONS = {"GET": "read", "PUT": "replace", "PATCH": "update", "DELETE": "delete"}
 OWNER_ONLY_KINDS = {"replace", "update", "delete"}
+ROLES_MODULE = "auth.roles"
+DEFAULT_ROLE = "user"
+ADMIN_ROLE = "admin"
+ROLE_ROUTE = ("PUT", "/users/{id}/role")
 
 
 class ResourcePlanner:
@@ -42,7 +46,14 @@ class ResourcePlanner:
             "token_ttl_seconds": TOKEN_TTL_SECONDS,
             "rate_limit": dict(AUTH_RATE_LIMIT),
             "implicit_model": not declared,
+            "features": {"roles": self._roles(architecture)},
         }
+
+    def _roles(self, architecture) -> dict | None:
+        if not any(package.name == ROLES_MODULE for package in architecture.packages):
+            return None
+        names = {DEFAULT_ROLE, ADMIN_ROLE} | {role for route in architecture.routes for role in route.roles}
+        return {"default": DEFAULT_ROLE, "admin": ADMIN_ROLE, "names": sorted(names)}
 
     def _model_specs(self, architecture, auth: dict | None, foreign_keys: list[dict]) -> list[dict]:
         declared = [
@@ -56,6 +67,8 @@ class ResourcePlanner:
                         "required": "OPTIONAL" not in model_field.modifiers,
                         "unique": "UNIQUE" in model_field.modifiers,
                         "secret": False,
+                        "writable": True,
+                        "default": None,
                     }
                     for model_field in model.fields
                 ],
@@ -101,8 +114,23 @@ class ResourcePlanner:
                         "required": True,
                         "unique": False,
                         "secret": False,
+                        "writable": True,
+                        "default": None,
                     }
                 )
+        roles = auth["features"]["roles"]
+        if roles:
+            spec["fields"].append(
+                {
+                    "name": "role",
+                    "type": "STRING",
+                    "required": True,
+                    "unique": False,
+                    "secret": False,
+                    "writable": False,
+                    "default": roles["default"],
+                }
+            )
         for spec_field in spec["fields"]:
             if spec_field["name"] == auth["identity_field"]:
                 spec_field["unique"] = True
@@ -152,7 +180,7 @@ class ResourcePlanner:
 
     def _routes(self, architecture, auth: dict | None, models: list[dict]) -> list[dict]:
         routes = [
-            self._route(route.method, route.path, route.access, "declared", auth, models)
+            self._route(route.method, route.path, route.access, "declared", auth, models, route.roles)
             for route in architecture.routes
         ]
         existing = {(route["method"], route["path"]) for route in routes}
@@ -166,15 +194,31 @@ class ResourcePlanner:
                 existing.add(("GET", path))
 
         if auth:
-            for method, path in AUTH_ROUTES:
+            for method, path in self._auth_routes(auth):
                 if (method, path) not in existing:
-                    routes.append(self._route(method, path, None, "auth", auth, models))
+                    roles = [auth["features"]["roles"]["admin"]] if (method, path) == ROLE_ROUTE else []
+                    routes.append(self._route(method, path, None, "auth", auth, models, roles))
                     existing.add((method, path))
         return routes
 
-    def _route(self, method: str, path: str, access: str | None, origin: str, auth: dict | None, models: list[dict]) -> dict:
+    def _auth_routes(self, auth: dict) -> dict:
+        routes = dict(AUTH_ROUTES)
+        if auth["features"]["roles"]:
+            routes[ROLE_ROUTE] = "set_role"
+        return routes
+
+    def _route(
+        self,
+        method: str,
+        path: str,
+        access: str | None,
+        origin: str,
+        auth: dict | None,
+        models: list[dict],
+        roles: list[str] | None = None,
+    ) -> dict:
         operation = self._operation(method, path, auth, models)
-        resolved_access = self._access(method, access, operation, auth)
+        resolved_access = "protected" if roles else self._access(method, access, operation, auth)
         if resolved_access == "protected" and operation["kind"] in OWNER_ONLY_KINDS and self._has_owner(operation, models):
             operation["owner_only"] = True
         return {
@@ -184,6 +228,7 @@ class ResourcePlanner:
             "parameters": self._parameters(path),
             "operation": operation,
             "access": resolved_access,
+            "roles": list(roles or []),
         }
 
     def _has_owner(self, operation: dict, models: list[dict]) -> bool:
@@ -191,8 +236,11 @@ class ResourcePlanner:
         return model is not None and any(reference["owner"] for reference in model["references"])
 
     def _operation(self, method: str, path: str, auth: dict | None, models: list[dict]) -> dict:
-        if auth and (method, path) in AUTH_ROUTES:
-            return {"kind": "auth_" + AUTH_ROUTES[(method, path)], "model": auth["model"]}
+        if auth and (method, path) in self._auth_routes(auth):
+            operation = {"kind": "auth_" + self._auth_routes(auth)[(method, path)], "model": auth["model"]}
+            if (method, path) == ROLE_ROUTE:
+                operation["parameter"] = "id"
+            return operation
 
         segments = [segment for segment in path.strip("/").split("/") if segment]
         if len(segments) == 1:

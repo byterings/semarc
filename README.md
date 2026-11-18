@@ -94,7 +94,7 @@ All targets share one API contract (see [docs/GENERATED_API.md](docs/GENERATED_A
 | `MODEL` | `MODEL Post` followed by indented `name TYPE [UNIQUE] [OPTIONAL]` fields |
 | `RELATION` | `RELATION User HAS_MANY Post` (`HAS_MANY`, `HAS_ONE`, `BELONGS_TO`) |
 | `VALIDATE` | `VALIDATE password REQUIRED MIN 8`, `VALIDATE Post.title MAX 120` |
-| `ROUTE` | `ROUTE GET /posts/{id}`, `ROUTE DELETE /posts/{id} PUBLIC` |
+| `ROUTE` | `ROUTE GET /posts/{id}`, `ROUTE DELETE /posts/{id} PUBLIC`, `ROUTE DELETE /posts/{id} ROLE admin` |
 | `PROFILE` | `PROFILE ECOMMERCE` |
 | `USE` | `USE payment.razorpay` |
 

@@ -153,7 +153,7 @@ def compose(project_dir: Path, name: str, port: int, *args: str, capture: bool =
     return subprocess.run(
         ["docker", "compose", "-p", name, *args],
         cwd=project_dir,
-        env={**_base_env(), "APP_PORT": str(port)},
+        env={**_base_env(), "APP_PORT": str(port), "BOOTSTRAP_ADMIN_EMAIL": "admin@example.com"},
         capture_output=capture,
         text=True,
         check=False,

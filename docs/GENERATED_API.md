@@ -89,6 +89,24 @@ declared, matching the behaviour of earlier SEMARC versions.
 | Other `GET` routes | public |
 | Other `POST`, `PUT`, `PATCH`, `DELETE` routes | protected |
 
+### Roles (`USE auth.roles`)
+
+```text
+USE auth.roles
+ROUTE POST /sections ROLE admin editor
+ROUTE DELETE /sections/{id} ROLE admin
+```
+
+- Every user has a `role` (returned by the API, never accepted from request bodies). New
+  users get `user`.
+- A route with `ROLE` requires a token whose user has one of the listed roles; others get
+  403 `forbidden`. `ROLE` implies `PROTECTED`.
+- The account that registers with the address in `BOOTSTRAP_ADMIN_EMAIL` becomes `admin`.
+  Set it once to create the first administrator, then clear it.
+- `PUT /users/{id}/role` with `{"role": "editor"}` changes a role (admins only). Valid
+  roles are `admin`, `user` and every role named in a `ROLE` clause.
+- Admins may update and delete records owned by other users.
+
 ### Ownership
 
 When a model references `User` (for example `RELATION User HAS_MANY Post`), the record has

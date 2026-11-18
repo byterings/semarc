@@ -6,3 +6,9 @@ export const CurrentUserId = createParamDecorator(
   (_data: unknown, context: ExecutionContext): number | undefined =>
     context.switchToHttp().getRequest<AuthenticatedRequest>().userId,
 );
+
+/** The authenticated user's role set by AuthGuard (undefined without USE auth.roles). */
+export const CurrentUserRole = createParamDecorator(
+  (_data: unknown, context: ExecutionContext): string | undefined =>
+    context.switchToHttp().getRequest<AuthenticatedRequest>().userRole,
+);

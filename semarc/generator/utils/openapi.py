@@ -10,6 +10,7 @@ from semarc.generator.utils.resource_views import (
     model_by_name,
     output_fields,
     owner_reference,
+    writable_fields,
 )
 
 OPENAPI_VERSION = "3.1.0"
@@ -108,6 +109,13 @@ class OpenApiBuilder:
                     },
                 ]
             }
+            roles = auth.get("features", {}).get("roles")
+            if roles:
+                schemas["RoleChange"] = {
+                    "type": "object",
+                    "required": ["role"],
+                    "properties": {"role": {"type": "string", "enum": roles["names"]}},
+                }
             schemas["Login"] = {
                 "type": "object",
                 "required": [auth["identity_field"], auth["secret_field"]],
@@ -133,7 +141,7 @@ class OpenApiBuilder:
     def _input_schema(self, model: dict, partial: bool) -> dict:
         properties = {}
         required = []
-        for model_field in model["fields"]:
+        for model_field in writable_fields(model):
             rules = field_rules(model_field)
             schema = dict(SCALARS[rules["type"]])
             if rules["type"] in {"STRING", "TEXT"}:
@@ -198,6 +206,8 @@ class OpenApiBuilder:
             del result["parameters"]
         if route["access"] == "protected":
             result["security"] = [{"bearerAuth": []}]
+        if route.get("roles"):
+            result["description"] = "Requires role: " + ", ".join(route["roles"]) + "."
 
         body = self._request_body(kind, model)
         if body:
@@ -212,6 +222,7 @@ class OpenApiBuilder:
             "update": f"{model}Update",
             "auth_register": f"{self.ir['auth']['model']}Create" if self.ir.get("auth") else None,
             "auth_login": "Login",
+            "auth_set_role": "RoleChange",
         }.get(kind)
         if schema is None:
             return None
@@ -230,6 +241,7 @@ class OpenApiBuilder:
             "auth_register": ("201", self._json("Registered", self._data({"$ref": "#/components/schemas/Registration"}))),
             "auth_login": ("200", self._json("Token issued", self._data({"$ref": "#/components/schemas/Token"}))),
             "auth_me": ("200", self._json("Current user", self._data(record))),
+            "auth_set_role": ("200", self._json("User with the new role", self._data(record))),
         }
         responses = {}
         if kind in success:
@@ -245,8 +257,10 @@ class OpenApiBuilder:
             errors.append("409")
         if route["access"] == "protected" or kind == "auth_login":
             errors.append("401")
-        if route["operation"].get("owner_only"):
+        if route["operation"].get("owner_only") or route.get("roles"):
             errors.append("403")
+        if kind == "auth_set_role":
+            errors += ["404", "422"]
         if kind in {"read", "replace", "update", "delete", "list_related"}:
             errors.append("404")
         if kind in {"list", "list_related"}:
@@ -340,6 +354,7 @@ SUMMARIES = {
     "auth_register": "Register and receive a token",
     "auth_login": "Exchange credentials for a token",
     "auth_me": "Current authenticated user",
+    "auth_set_role": "Change a user's role (admin)",
     "custom": "Declared route without generated behaviour",
 }
 

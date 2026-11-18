@@ -14,6 +14,9 @@ FIELD_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
 STATIC_SEGMENT_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 PARAM_SEGMENT_PATTERN = re.compile(r"^\{([a-z][a-z0-9_]*)\}$")
 IMPLICIT_FIELDS = {"id", "created_at", "updated_at"}
+ROLE_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
+ROLES_MODULE = "auth.roles"
+AUTH_JWT_MODULES = {ROLES_MODULE}
 RESERVED_ROUTES = {("GET", "/"), ("GET", "/health"), ("GET", "/routes"), ("GET", "/openapi.json"), ("GET", "/docs")}
 TEXT_TYPES = {"STRING", "TEXT"}
 NUMERIC_TYPES = {"INTEGER", "FLOAT"}
@@ -103,6 +106,8 @@ class SemanticValidator:
 
     def _validate_relations(self, architecture: ArchitectureNode, errors: list[str]) -> None:
         model_names = {model.name for model in architecture.models}
+        if architecture.auth is not None and architecture.auth.strategy == "JWT":
+            model_names.add(AUTH_MODEL)  # created by AUTH JWT when not declared
         seen = set()
         ownership_edges = {}
 
@@ -209,12 +214,28 @@ class SemanticValidator:
             if len(parameters) != len(set(parameters)):
                 errors.append(self._error(f"Duplicate route parameter in {route.path}", route))
 
+            if route.roles:
+                self._validate_route_roles(architecture, route, errors)
             if route.access == "PROTECTED" and architecture.auth is None:
                 errors.append(
                     self._error(f"Route {route.method} {route.path} is PROTECTED but no AUTH strategy is declared", route)
                 )
             if route.access == "PUBLIC" and (route.method, route.path) == ("GET", "/me"):
                 errors.append(self._error("Route GET /me always requires authentication", route))
+
+    def _validate_route_roles(self, architecture: ArchitectureNode, route, errors: list[str]) -> None:
+        if not self._uses(architecture, ROLES_MODULE):
+            errors.append(self._error(f"ROLE on {route.method} {route.path} requires USE {ROLES_MODULE}", route))
+        if route.access == "PUBLIC":
+            errors.append(self._error(f"Route {route.method} {route.path} cannot be PUBLIC and require a ROLE", route))
+        for role in route.roles:
+            if not ROLE_NAME_PATTERN.match(role):
+                errors.append(self._error(f"Role name must be snake_case: {role}", route))
+        if len(set(route.roles)) != len(route.roles):
+            errors.append(self._error(f"Duplicate role on {route.method} {route.path}", route))
+
+    def _uses(self, architecture: ArchitectureNode, module: str) -> bool:
+        return any(package.name == module for package in architecture.packages)
 
     def _validate_foreign_key_fields(self, architecture: ArchitectureNode, errors: list[str]) -> None:
         models = {model.name: model for model in architecture.models}
@@ -246,9 +267,16 @@ class SemanticValidator:
                     errors.append(
                         self._error(f"Route {route.method} {route.path} requires AUTH JWT", route)
                     )
+            for package in architecture.packages:
+                if package.name in AUTH_JWT_MODULES:
+                    errors.append(self._error(f"USE {package.name} requires AUTH JWT", package))
             return
 
         auth_model = next((model for model in architecture.models if model.name == AUTH_MODEL), None)
+        if auth_model is not None and self._uses(architecture, ROLES_MODULE):
+            for model_field in auth_model.fields:
+                if model_field.name == "role":
+                    errors.append(self._error(f"{AUTH_MODEL}.role is managed by USE {ROLES_MODULE} and must not be declared", model_field))
         if auth_model is None:
             return
 

@@ -135,7 +135,7 @@ class NestJSGenerator:
             self._write(f"{root}/dto/create-{base}.dto.ts", dto_code(model, reserved, partial=False), "nestjs create dto")
             self._write(f"{root}/dto/update-{base}.dto.ts", dto_code(model, reserved, partial=True), "nestjs update dto")
             self._write(f"{root}/{directory}.repository.ts", repository_code(model, reserved), "nestjs repository")
-            self._write(f"{root}/{directory}.service.ts", service_code(model, reserved), "nestjs service")
+            self._write(f"{root}/{directory}.service.ts", service_code(model, reserved, ir), "nestjs service")
             controller = controller_code(ir, model, reserved)
             if controller:
                 self._write(f"{root}/{directory}.controller.ts", controller, "nestjs controller")

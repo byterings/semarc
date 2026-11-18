@@ -63,6 +63,8 @@ def env_values(ir: dict) -> dict[str, str]:
         values["JWT_TTL"] = str(ir["auth"]["token_ttl_seconds"])
         values["AUTH_RATE_LIMIT"] = str(ir["auth"]["rate_limit"]["attempts"])
         values["AUTH_RATE_WINDOW"] = str(ir["auth"]["rate_limit"]["window_seconds"])
+        if ir["auth"].get("features", {}).get("roles"):
+            values["BOOTSTRAP_ADMIN_EMAIL"] = ""
     return values
 
 
@@ -74,6 +76,8 @@ def env_example(ir: dict) -> str:
     ]
     if ir.get("auth"):
         lines.append("# JWT_SECRET must be at least 32 characters; replace it before deploying.")
+        if ir["auth"].get("features", {}).get("roles"):
+            lines.append("# BOOTSTRAP_ADMIN_EMAIL: the account registering with this email becomes admin.")
     lines.extend(f"{key}={value}" for key, value in env_values(ir).items())
     return "\n".join(lines) + "\n"
 
@@ -132,6 +136,8 @@ def _app_service(ir: dict, port: int, engine: str, publish_port: bool) -> list[s
         ]
     if ir.get("auth"):
         lines.append(f"      JWT_SECRET: ${{JWT_SECRET:-{DEV_JWT_SECRET}}}")
+        if ir["auth"].get("features", {}).get("roles"):
+            lines.append("      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}")
     if engine == "SQLITE":
         lines += ["    volumes:", "      - app-storage:/app/storage"]
     else:
@@ -234,7 +240,7 @@ def readme(
         ]
     )
     lines.extend(
-        f"| {route['method']} | {route['path']} | {route['access']} | {_behaviour(route)} |"
+        f"| {route['method']} | {route['path']} | {_access_label(route)} | {_behaviour(route)} |"
         for route in ir["routes"]
     )
     lines.extend(
@@ -253,6 +259,12 @@ def readme(
     return "\n".join(lines)
 
 
+def _access_label(route: dict) -> str:
+    if route.get("roles"):
+        return "role: " + ", ".join(route["roles"])
+    return route["access"]
+
+
 def _behaviour(route: dict) -> str:
     operation = route["operation"]
     model = operation.get("model")
@@ -267,5 +279,6 @@ def _behaviour(route: dict) -> str:
         "auth_register": "Register and receive a token",
         "auth_login": "Exchange credentials for a token",
         "auth_me": "Current authenticated user",
+        "auth_set_role": "Change a user's role",
         "custom": "Declared, not generated (returns 501 until implemented)",
     }[operation["kind"]]

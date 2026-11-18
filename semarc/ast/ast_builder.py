@@ -49,11 +49,12 @@ class AstBuilder:
             location=self._location(token),
         )
 
-    def route(self, method: str, path: str, token, access: str | None = None) -> RouteNode:
+    def route(self, method: str, path: str, token, access: str | None = None, roles: list[str] | None = None) -> RouteNode:
         return RouteNode(
             method=method.upper(),
             path=path,
             access=access.upper() if access else None,
+            roles=list(roles or []),
             location=self._location(token),
         )
 

@@ -2,7 +2,7 @@
 from semarc.compiler.version import SEMARC_VERSION
 from semarc.generator.nestjs.typescript import Imports, file_base, folder, route_path, service_property, ts_string
 from semarc.generator.utils.inflector import pascal_case
-from semarc.generator.utils.resource_views import all_route_labels, model_by_name, routes_for_model
+from semarc.generator.utils.resource_views import all_route_labels, model_by_name, roles_feature, routes_for_model
 
 HTTP_DECORATORS = {"GET": "Get", "POST": "Post", "PUT": "Put", "PATCH": "Patch", "DELETE": "Delete"}
 MIGRATION_EPOCH = 1700000000000
@@ -42,6 +42,9 @@ def _controller_method(ir: dict, route: dict, name: str, service: str, imports: 
     if protected:
         decorators.append(f"  @{imports.use('@nestjs/common', 'UseGuards')}(AuthGuard)")
         imports.use("../../guards/auth.guard", "AuthGuard")
+    if route.get("roles"):
+        decorators.append(f"  @Roles({', '.join(ts_string(role) for role in route['roles'])})")
+        imports.use("../../guards/auth.guard", "Roles")
 
     parameters = []
     parameter = operation.get("parameter")
@@ -60,10 +63,16 @@ def _controller_method(ir: dict, route: dict, name: str, service: str, imports: 
         imports.use("../../common/resource.service", "pageParams")
         parameters.append(f"@{query}() query: Record<string, string>")
     owner = "undefined"
+    manage = ""
     if protected and kind in {"create", "replace", "update", "delete"}:
         imports.use("../../common/current-user.decorator", "CurrentUserId")
         parameters.append("@CurrentUserId() userId?: number")
         owner = "userId"
+        roles = roles_feature(ir)
+        if roles and operation.get("owner_only"):
+            imports.use("../../common/current-user.decorator", "CurrentUserRole")
+            parameters.append("@CurrentUserRole() role?: string")
+            manage = f", role === {ts_string(roles['admin'])}"
 
     if kind == "list_related":
         method = f"listBy{pascal_case(operation['parent_model'])}"
@@ -75,9 +84,9 @@ def _controller_method(ir: dict, route: dict, name: str, service: str, imports: 
         "list": f"    return this.{service}.list(...pageParams(query.limit, query.offset), query);",
         "read": f"    return {{ data: await this.{service}.get(id) }};",
         "create": f"    return {{ data: await this.{service}.create(dto, {owner}) }};",
-        "replace": f"    return {{ data: await this.{service}.update(id, dto, false, {owner}) }};",
-        "update": f"    return {{ data: await this.{service}.update(id, dto, true, {owner}) }};",
-        "delete": f"    await this.{service}.delete(id, {owner});",
+        "replace": f"    return {{ data: await this.{service}.update(id, dto, false, {owner}{manage}) }};",
+        "update": f"    return {{ data: await this.{service}.update(id, dto, true, {owner}{manage}) }};",
+        "delete": f"    await this.{service}.delete(id, {owner}{manage});",
         "list_related": (
             f"    return this.{service}.listForParent("
             f"{ts_string(model_by_name(ir, operation['parent_model'])['table']) if kind == 'list_related' else ''}, "
@@ -112,6 +121,9 @@ def custom_code(ir: dict, reserved: set[str]) -> tuple[str, str] | None:
         if route["access"] == "protected":
             decorators.append(f"  @{imports.use('@nestjs/common', 'UseGuards')}(AuthGuard)")
             imports.use("../../guards/auth.guard", "AuthGuard")
+        if route.get("roles"):
+            decorators.append(f"  @Roles({', '.join(ts_string(role) for role in route['roles'])})")
+            imports.use("../../guards/auth.guard", "Roles")
         segments = [pascal_case(segment.strip("{}").replace("-", "_")) for segment in route["path"].strip("/").split("/") if segment]
         method = _unique(route["method"].lower() + "".join(segments), used)
         message = (
@@ -155,6 +167,9 @@ def auth_code(ir: dict, reserved: set[str]) -> dict[str, str]:
     imports.use(f"../{model_folder}/dto/create-{model_file}.dto", f"Create{name}Dto")
     imports.use("./dto/login.dto", "LoginDto")
     imports.use("./token.service", "TokenService")
+    if auth["features"]["roles"]:
+        imports.use("../../config/settings", "settings")
+    role_lines = _role_route_lines(auth, name, imports)
     controller_source = "\n".join(
         imports.render()
         + [
@@ -172,7 +187,8 @@ def auth_code(ir: dict, reserved: set[str]) -> dict[str, str]:
             f"  @{http_code}(201)",
             f"  @{use_guards}(AuthRateLimitGuard)",
             f"  async register(@{body}() dto: Create{name}Dto) {{",
-            "    const user = await this.users.create(dto);",
+            "    let user = await this.users.create(dto);",
+            *_bootstrap_admin_lines(auth),
             "    const token = await this.tokens.issue(user.id as number);",
             "    return { data: { user, ...token } };",
             "  }",
@@ -193,6 +209,7 @@ def auth_code(ir: dict, reserved: set[str]) -> dict[str, str]:
             "  async me(@CurrentUserId() userId: number) {",
             "    return { data: await this.users.get(userId) };",
             "  }",
+            *role_lines,
             "}",
             "",
         ]
@@ -245,7 +262,58 @@ def auth_code(ir: dict, reserved: set[str]) -> dict[str, str]:
         "src/modules/auth/auth.controller.ts": controller_source,
         "src/modules/auth/auth.module.ts": module_source,
         "src/modules/auth/dto/login.dto.ts": dto_source,
+        **({"src/modules/auth/dto/role-change.dto.ts": role_change_dto(auth["features"]["roles"])} if auth["features"]["roles"] else {}),
     }
+
+
+def _bootstrap_admin_lines(auth: dict) -> list[str]:
+    roles = auth["features"]["roles"]
+    if not roles:
+        return []
+    identity = auth["identity_field"]
+    return [
+        f"    const bootstrap = settings.bootstrapAdminEmail.toLowerCase();",
+        f"    if (bootstrap && String(user.{identity}).toLowerCase() === bootstrap) {{",
+        f"      user = await this.users.setRole(user.id as number, {ts_string(roles['admin'])});",
+        "    }",
+    ]
+
+
+def _role_route_lines(auth: dict, name: str, imports: Imports) -> list[str]:
+    roles = auth["features"]["roles"]
+    if not roles:
+        return []
+    imports.use("@nestjs/common", "Put")
+    imports.use("@nestjs/common", "Param")
+    imports.use("../../common/id.pipe", "IdPipe")
+    imports.use("../../guards/auth.guard", "Roles")
+    imports.use("./dto/role-change.dto", "RoleChangeDto")
+    return [
+        "",
+        "  @Put('users/:id/role')",
+        "  @UseGuards(AuthGuard)",
+        f"  @Roles({ts_string(roles['admin'])})",
+        "  async setRole(@Param('id', IdPipe) id: number, @Body() dto: RoleChangeDto) {",
+        "    return { data: await this.users.setRole(id, dto.role) };",
+        "  }",
+    ]
+
+
+def role_change_dto(roles: dict) -> str:
+    choices = ", ".join(ts_string(role) for role in roles["names"])
+    return "\n".join(
+        [
+            "import { IsIn } from 'class-validator';",
+            "",
+            f"export const ROLES = [{choices}];",
+            "",
+            "export class RoleChangeDto {",
+            "  @IsIn(ROLES, { message: `role must be one of: ${ROLES.join(', ')}` })",
+            "  role!: string;",
+            "}",
+            "",
+        ]
+    )
 
 
 def app_module_code(ir: dict, modules: list[tuple[str, str]], reserved: set[str]) -> str:
@@ -541,6 +609,7 @@ def settings_code(ir: dict, settings: dict, port: int) -> str:
                 f"  jwtTtl: Number(env('JWT_TTL', '{ir['auth']['token_ttl_seconds']}')),",
                 f"  authRateLimit: Number(env('AUTH_RATE_LIMIT', '{ir['auth']['rate_limit']['attempts']}')),",
                 f"  authRateWindow: Number(env('AUTH_RATE_WINDOW', '{ir['auth']['rate_limit']['window_seconds']}')),",
+                "  bootstrapAdminEmail: env('BOOTSTRAP_ADMIN_EMAIL', ''),",
             ]
         )
     lines.extend(["};", ""])

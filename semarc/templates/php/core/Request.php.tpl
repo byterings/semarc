@@ -6,6 +6,8 @@ final class Request
 {
     public ?int $userId = null;
 
+    public ?string $userRole = null;
+
     private ?array $decoded = null;
 
     /**

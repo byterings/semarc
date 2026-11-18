@@ -82,7 +82,7 @@ class FastApiGenerator:
             self._render(
                 "middleware/auth.py",
                 "auth_dependency.py.tpl",
-                {"auth_model": auth["model"], "auth_module": module_name(auth["model"])},
+                {"auth_model": auth["model"], "auth_module": module_name(auth["model"]), "roles_code": _roles_code(auth)},
             )
 
     def _entities_and_routers(self, ir: dict) -> list[str]:
@@ -200,6 +200,7 @@ class FastApiGenerator:
                     f'        self.jwt_ttl = int(env("JWT_TTL", "{ir["auth"]["token_ttl_seconds"]}"))',
                     f'        self.auth_rate_limit = int(env("AUTH_RATE_LIMIT", "{ir["auth"]["rate_limit"]["attempts"]}"))',
                     f'        self.auth_rate_window = int(env("AUTH_RATE_WINDOW", "{ir["auth"]["rate_limit"]["window_seconds"]}"))',
+                    '        self.bootstrap_admin_email = env("BOOTSTRAP_ADMIN_EMAIL", "")',
                 ]
             )
         lines.extend(
@@ -244,3 +245,32 @@ class FastApiGenerator:
 
     def _record(self, path: Path, template: str) -> None:
         self.generated_components.append({"created": path.relative_to(self.output_dir).as_posix(), "template": template})
+
+
+def _roles_code(auth: dict) -> str:
+    roles = auth["features"]["roles"]
+    if not roles:
+        return ""
+    return "\n".join(
+        [
+            "",
+            "",
+            "def require_roles(*roles: str):",
+            '    """Dependency factory: the caller must have one of the given roles (403 otherwise)."""',
+            "",
+            "    def dependency(user_id: int = Depends(current_user_id), db: Session = Depends(get_db)) -> int:",
+            f"        user = db.get({auth['model']}, user_id)",
+            "        if user is None or user.role not in roles:",
+            '            raise ApiError.forbidden("This action requires the role: " + " or ".join(roles) + ".")',
+            "        return user_id",
+            "",
+            "    return dependency",
+            "",
+            "",
+            "def is_admin(user_id: int = Depends(current_user_id), db: Session = Depends(get_db)) -> bool:",
+            '    """Admins may change records owned by other users."""',
+            f"    user = db.get({auth['model']}, user_id)",
+            f"    return user is not None and user.role == {roles['admin']!r}",
+            "",
+        ]
+    )

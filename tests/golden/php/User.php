@@ -23,6 +23,9 @@ final class User
 
     public const HIDDEN = ['password'];
 
+    /** Values set on create when the request does not (or may not) provide them. */
+    public const DEFAULTS = [];
+
     /** Query parameters list routes accept as equality filters, with their types. */
     public const FILTERS = ['id' => 'INTEGER', 'email' => 'STRING', 'name' => 'STRING'];
 

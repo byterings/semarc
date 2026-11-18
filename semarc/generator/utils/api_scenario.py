@@ -25,6 +25,7 @@ from semarc.generator.utils.inflector import snake_case
 from semarc.generator.utils.resource_views import input_fields, models_in_migration_order, owner_reference, unique_columns
 
 MISSING_ID = 999999
+ADMIN_EMAIL = "admin@example.com"  # runners set BOOTSTRAP_ADMIN_EMAIL to this address
 CORS_ORIGIN = "https://app.example.com"
 
 
@@ -33,6 +34,8 @@ class ApiScenarioBuilder:
         self.ir = ir
         self.steps: list[dict] = []
         self.has_token = False
+        self.has_admin = False
+        self.role_checked: set[tuple[str, str]] = set()
         self.created: list[dict] = []
         self.variants: dict[str, int] = {}
 
@@ -125,6 +128,38 @@ class ApiScenarioBuilder:
         self._step("current user rejects invalid token", "GET", "/me", 401, token="invalid.token.value")
         self.has_token = True
         self.created.append({"model": user, "var": "user_id", "routes": {}, "parents": set()})
+        roles = auth.get("features", {}).get("roles")
+        if roles:
+            self._role_steps(user, auth, roles)
+
+    def _role_steps(self, user: dict, auth: dict, roles: dict) -> None:
+        identity = auth["identity_field"]
+        self._step("registered users get the default role", "GET", "/me", 200, auth=True, equals={"data.role": roles["default"]})
+        admin = {**self._body(user, include_owner=False), identity: ADMIN_EMAIL}
+        self._step(
+            "bootstrap admin registers",
+            "POST",
+            "/register",
+            201,
+            body=admin,
+            equals={"data.user.role": roles["admin"]},
+            save={"admin_token": "data.access_token", "admin_id": "data.user.id"},
+        )
+        self.has_admin = True
+        path = "/users/${user_id}/role"
+        self._step("changing a role requires admin", "PUT", path, 403, auth=True, body={"role": roles["admin"]})
+        self._step("role must be known", "PUT", path, 422, auth=True, auth_as="admin_token", body={"role": "not_a_role"})
+        self._step(
+            "admin changes a role",
+            "PUT",
+            path,
+            200,
+            auth=True,
+            auth_as="admin_token",
+            body={"role": roles["default"]},
+            equals={"data.role": roles["default"], "data.id": {"$ref": "user_id"}},
+        )
+        self._step("role change for a missing user", "PUT", f"/users/{MISSING_ID}/role", 404, auth=True, auth_as="admin_token", body={"role": roles["default"]})
 
     def _resource_steps(self, model: dict) -> None:
         routes = self._routes_by_kind(model["name"])
@@ -315,6 +350,16 @@ class ApiScenarioBuilder:
                     auth_as="other_token",
                     body=body,
                 )
+            if self.has_admin and "update" in entry["routes"] and entry["routes"]["update"]["operation"].get("owner_only"):
+                self._step(
+                    f"admin may update another user's {label}",
+                    "PATCH",
+                    self._path(entry["routes"]["update"], entry["var"]),
+                    200,
+                    auth=True,
+                    auth_as="admin_token",
+                    body={},
+                )
 
     def _custom_steps(self) -> None:
         for route in self.ir["routes"]:
@@ -481,6 +526,13 @@ class ApiScenarioBuilder:
         return next(model for model in self.ir["models"] if model["name"] == name)
 
     def _call(self, route: dict, name: str, expect: int, path: str, body=None, equals=None, absent=None, save=None) -> None:
+        auth_as = None
+        if route.get("roles") and self.has_admin:
+            key = (route["method"], route["path"])
+            if key not in self.role_checked:
+                self.role_checked.add(key)
+                self._step(f"{route['method']} {route['path']} requires role {', '.join(route['roles'])}", route["method"], path, 403, auth=True, body=body)
+            auth_as = "admin_token"
         self._step(
             name,
             route["method"],
@@ -491,6 +543,7 @@ class ApiScenarioBuilder:
             equals=equals,
             absent=absent,
             save=save,
+            auth_as=auth_as,
         )
 
     def _step(

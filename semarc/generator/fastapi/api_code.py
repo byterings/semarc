@@ -2,7 +2,7 @@
 from semarc.compiler.version import SEMARC_VERSION
 from semarc.generator.fastapi.entity_code import module_name
 from semarc.generator.utils.inflector import snake_case
-from semarc.generator.utils.resource_views import all_route_labels, model_by_name, routes_for_model
+from semarc.generator.utils.resource_views import all_route_labels, model_by_name, roles_feature, routes_for_model
 
 DECORATORS = {"GET": "get", "POST": "post", "PUT": "put", "PATCH": "patch", "DELETE": "delete"}
 
@@ -14,6 +14,7 @@ def model_router_code(ir: dict, model: dict) -> str | None:
 
     name = model["name"]
     module = module_name(name)
+    roles = roles_feature(ir)
     protected = any(route["access"] == "protected" for route in routes)
     parents = sorted({route["operation"]["parent_model"] for route in routes if route["operation"]["kind"] == "list_related"})
     kinds = {route["operation"]["kind"] for route in routes}
@@ -26,7 +27,14 @@ def model_router_code(ir: dict, model: dict) -> str | None:
     lines = [f"from fastapi import {', '.join(fastapi_names)}"]
     lines.extend(["from sqlalchemy.orm import Session", "", "from database import get_db"])
     if protected:
-        lines.append("from middleware.auth import current_user_id")
+        auth_names = []
+        if any(route["access"] == "protected" and not route.get("roles") for route in routes):
+            auth_names.append("current_user_id")
+        if any(route.get("roles") for route in routes):
+            auth_names.append("require_roles")
+        if roles and any(route["operation"].get("owner_only") for route in routes):
+            auth_names.append("is_admin")
+        lines.append(f"from middleware.auth import {', '.join(auth_names)}")
     lines.extend(f"from models.{module_name(parent)} import {parent}" for parent in parents)
     schemas = [f"{name}Read"]
     if kinds & {"create", "replace"}:
@@ -59,12 +67,12 @@ def model_router_code(ir: dict, model: dict) -> str | None:
     used_names: set[str] = set()
     for route in routes:
         lines.extend(["", ""])
-        lines.extend(_route_function(route, name, module, used_names))
+        lines.extend(_route_function(route, name, module, used_names, roles))
     lines.append("")
     return "\n".join(lines)
 
 
-def _route_function(route: dict, name: str, module: str, used_names: set[str]) -> list[str]:
+def _route_function(route: dict, name: str, module: str, used_names: set[str], roles: dict | None) -> list[str]:
     operation = route["operation"]
     kind = operation["kind"]
     collection = snake_case(route["path"].strip("/").split("/")[-1].replace("-", "_")) or module
@@ -87,9 +95,17 @@ def _route_function(route: dict, name: str, module: str, used_names: set[str]) -
     if kind in {"list", "list_related"}:
         arguments.extend(["http_request: Request", "limit: int = DEFAULT_LIMIT", "offset: int = 0"])
     owner = "None"
+    manage = ""
     if route["access"] == "protected":
-        arguments.append("current_user: int = Depends(current_user_id)")
+        if route.get("roles"):
+            allowed = ", ".join(repr(role) for role in route["roles"])
+            arguments.append(f"current_user: int = Depends(require_roles({allowed}))")
+        else:
+            arguments.append("current_user: int = Depends(current_user_id)")
         owner = "current_user"
+        if roles and operation.get("owner_only"):
+            arguments.append("manage_all: bool = Depends(is_admin)")
+            manage = ", manage_all=manage_all"
     arguments.append(f"service: {name}Service = Depends(get_service)")
 
     decorator_options = [f'"{route["path"]}"']
@@ -106,9 +122,9 @@ def _route_function(route: dict, name: str, module: str, used_names: set[str]) -
         "list": "    return service.list(limit, offset, http_request.query_params)",
         "read": f"    return {{\"data\": service.get({parameter})}}",
         "create": f"    return {{\"data\": service.create(payload, {owner})}}",
-        "replace": f"    return {{\"data\": service.update({parameter}, payload, partial=False, owner_id={owner})}}",
-        "update": f"    return {{\"data\": service.update({parameter}, payload, partial=True, owner_id={owner})}}",
-        "delete": f"    service.delete({parameter}, {owner})\n    return Response(status_code=204)",
+        "replace": f"    return {{\"data\": service.update({parameter}, payload, partial=False, owner_id={owner}{manage})}}",
+        "update": f"    return {{\"data\": service.update({parameter}, payload, partial=True, owner_id={owner}{manage})}}",
+        "delete": f"    service.delete({parameter}, {owner}{manage})\n    return Response(status_code=204)",
         "list_related": (
             f"    return service.list_for_parent({operation.get('parent_model')}, \"{operation.get('parent_model')}\", "
             f"\"{operation.get('foreign_key')}\", {parameter}, limit, offset, http_request.query_params)"
@@ -141,7 +157,12 @@ def custom_router_code(ir: dict) -> str | None:
         lines[0] = "from fastapi import APIRouter, Depends"
     lines.extend(["", "from core.errors import ApiError"])
     if protected:
-        lines.append("from middleware.auth import current_user_id")
+        auth_names = []
+        if any(route["access"] == "protected" and not route.get("roles") for route in routes):
+            auth_names.append("current_user_id")
+        if any(route.get("roles") for route in routes):
+            auth_names.append("require_roles")
+        lines.append(f"from middleware.auth import {', '.join(auth_names)}")
     lines.extend(["", 'router = APIRouter(tags=["Custom"])'])
 
     used_names: set[str] = set()
@@ -149,7 +170,10 @@ def custom_router_code(ir: dict) -> str | None:
         segments = [segment.strip("{}").replace("-", "_") for segment in route["path"].strip("/").split("/") if segment]
         function = _unique(f"{route['method'].lower()}_{'_'.join(segments) or 'root'}", used_names)
         arguments = [f"{parameter}: str" for parameter in route["parameters"]]
-        if route["access"] == "protected":
+        if route.get("roles"):
+            allowed = ", ".join(repr(role) for role in route["roles"])
+            arguments.append(f"current_user: int = Depends(require_roles({allowed}))")
+        elif route["access"] == "protected":
             arguments.append("current_user: int = Depends(current_user_id)")
         message = (
             f"{route['method']} {route['path']} is declared in the semantic source but has no generated behaviour. "
@@ -180,10 +204,12 @@ def auth_router_code(ir: dict) -> str:
             "from pydantic import BaseModel, Field",
             "from sqlalchemy.orm import Session",
             "",
+            *(["from typing import Literal", ""] if auth["features"]["roles"] else []),
             "from core.errors import ApiError",
             "from core.rate_limit import auth_rate_limit",
             "from database import get_db",
-            "from middleware.auth import current_user_id",
+            "from middleware.auth import current_user_id" + (", require_roles" if auth["features"]["roles"] else ""),
+            *(["from config.settings import settings"] if auth["features"]["roles"] else []),
             f"from repositories.{module}_repository import {name}Repository",
             "from schemas.base import DataResponse, InputSchema",
             f"from schemas.{module} import {name}Create, {name}Read",
@@ -217,6 +243,7 @@ def auth_router_code(ir: dict) -> str:
             ")",
             f"def register(payload: {name}Create, db: Session = Depends(get_db)) -> dict:",
             f"    user = {name}Service(db).create(payload)",
+            *_bootstrap_admin_lines(auth, name),
             '    result = {"user": user, **TokenService().issue(user["id"])}',
             '    return {"data": result}',
             "",
@@ -232,9 +259,50 @@ def auth_router_code(ir: dict) -> str:
             f'@router.get("/me", response_model=DataResponse[{name}Read])',
             "def me(user_id: int = Depends(current_user_id), db: Session = Depends(get_db)) -> dict:",
             f'    return {{"data": {name}Service(db).get(user_id)}}',
+            *_role_route_lines(auth, name),
             "",
         ]
     )
+
+
+def _bootstrap_admin_lines(auth: dict, name: str) -> list[str]:
+    roles = auth["features"]["roles"]
+    if not roles:
+        return []
+    identity = auth["identity_field"]
+    return [
+        f'    if settings.bootstrap_admin_email and user["{identity}"].lower() == settings.bootstrap_admin_email.lower():',
+        f"        record = {name}Repository(db).get(user[\"id\"])",
+        f"        {name}Repository(db).update(record, {{\"role\": {roles['admin']!r}}})",
+        f'        user = {name}Service(db).get(user["id"])',
+    ]
+
+
+def _role_route_lines(auth: dict, name: str) -> list[str]:
+    roles = auth["features"]["roles"]
+    if not roles:
+        return []
+    choices = ", ".join(repr(role) for role in roles["names"])
+    return [
+        "",
+        "",
+        "class RoleChange(InputSchema):",
+        f"    role: Literal[{choices}]",
+        "",
+        "",
+        f'@router.put("/users/{{id}}/role", response_model=DataResponse[{name}Read])',
+        "def set_role(",
+        "    id: int,",
+        "    payload: RoleChange,",
+        f"    admin_id: int = Depends(require_roles({roles['admin']!r})),",
+        "    db: Session = Depends(get_db),",
+        ") -> dict:",
+        f"    record = {name}Repository(db).get(id)",
+        "    if record is None:",
+        f'        raise ApiError.not_found(f"{name} {{id}} not found.")',
+        f'    {name}Repository(db).update(record, {{"role": payload.role}})',
+        f'    return {{"data": {name}Service(db).get(id)}}',
+    ]
 
 
 def main_code(ir: dict, routers: list[str]) -> str:

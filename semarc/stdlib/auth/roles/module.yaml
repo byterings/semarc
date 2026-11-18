@@ -1,0 +1,3 @@
+name: auth.roles
+version: 1.0
+description: Role based access control for AUTH JWT (ROUTE ... ROLE name)

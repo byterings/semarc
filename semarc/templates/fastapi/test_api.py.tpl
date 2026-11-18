@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 os.environ["DB_CONNECTION"] = "sqlite"
 os.environ["DB_DATABASE"] = str(Path(tempfile.mkdtemp()) / "test.sqlite")
 os.environ.setdefault("JWT_SECRET", "semarc-test-secret-semarc-test-secret")
+os.environ["BOOTSTRAP_ADMIN_EMAIL"] = "admin@example.com"
 
 from alembic import command  # noqa: E402
 from alembic.config import Config  # noqa: E402

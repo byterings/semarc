@@ -37,6 +37,7 @@ export abstract class ResourceService<T extends ObjectLiteral> {
   protected readonly dependents: Dependent[] = [];
   protected readonly unique: string[] = [];
   protected readonly dateTimes: string[] = [];
+  protected readonly defaults: Data = {};
   protected readonly filters: Record<string, string> = { id: 'INTEGER' };
   protected readonly sortFields: string[] = ['id'];
 
@@ -75,16 +76,18 @@ export abstract class ResourceService<T extends ObjectLiteral> {
   }
 
   async create(input: object, ownerId?: number): Promise<Data> {
-    const data = this.toStored(defined(input));
+    const data = { ...this.defaults, ...this.toStored(defined(input)) };
     this.applyOwner(data, ownerId, true, false);
     await this.checkReferences(data);
     await this.checkUnique(data);
     return this.serialize(await this.repository.create((await this.beforeWrite(data)) as Partial<T>));
   }
 
-  async update(id: number, input: object, partial: boolean, ownerId?: number): Promise<Data> {
+  async update(id: number, input: object, partial: boolean, ownerId?: number, manageAll = false): Promise<Data> {
     const record = await this.find(id);
-    this.checkOwner(record, ownerId);
+    if (!manageAll) {
+      this.checkOwner(record, ownerId);
+    }
     const data = this.toStored(defined(input));
     this.applyOwner(data, ownerId, !partial, true);
     if (Object.keys(data).length === 0) {
@@ -95,9 +98,11 @@ export abstract class ResourceService<T extends ObjectLiteral> {
     return this.serialize(await this.repository.update(record, (await this.beforeWrite(data)) as Partial<T>));
   }
 
-  async delete(id: number, ownerId?: number): Promise<void> {
+  async delete(id: number, ownerId?: number, manageAll = false): Promise<void> {
     const record = await this.find(id);
-    this.checkOwner(record, ownerId);
+    if (!manageAll) {
+      this.checkOwner(record, ownerId);
+    }
     for (const dependent of this.dependents) {
       if ((await this.repository.countIn(dependent.table, dependent.column, id)) > 0) {
         throw ApiError.conflict(`Cannot delete ${this.name} ${id} while ${dependent.model} records reference it.`);

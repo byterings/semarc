@@ -15,6 +15,9 @@ language; such changes are listed under **Changed**.
 - CI runs the compiler tests on Linux, macOS and Windows with Python 3.11 and 3.13 and
   smoke-tests the installed wheel.
 - `scripts/project_tests.py` runs each generated project's own test suite in Docker.
+- Roles: `USE auth.roles` and `ROUTE ... ROLE admin editor`, a managed `role` field,
+  `BOOTSTRAP_ADMIN_EMAIL`, `PUT /users/{id}/role`, and admin access to records owned by others.
+- `RELATION User ...` works when `User` is created by `AUTH JWT` rather than declared.
 
 ### Changed
 - All compiler code moved into the `semarc` package (`semarc.compiler`, `semarc.generator`,

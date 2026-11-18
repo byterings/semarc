@@ -143,6 +143,41 @@ class RouteSyntaxTests(unittest.TestCase):
             self.assertIn("reserved for a future SEMARC version", str(raised.exception))
 
 
+class RoleSyntaxTests(unittest.TestCase):
+    ROLES = BASE.replace("AUTH JWT\n", "AUTH JWT\n\nUSE auth.roles\n")
+
+    def test_role_routes_are_parsed(self):
+        ast = parse(self.ROLES + "ROUTE DELETE /posts/{id} ROLE admin editor\nROUTE POST /posts PROTECTED ROLE editor\n")
+        self.assertEqual([(route.access, route.roles) for route in ast.routes], [(None, ["admin", "editor"]), ("PROTECTED", ["editor"])])
+
+    def test_role_requires_a_name(self):
+        with self.assertRaises(ParserError):
+            parse(self.ROLES + "ROUTE DELETE /posts/{id} ROLE\n")
+
+    def test_role_requires_roles_module(self):
+        with self.assertRaises(SemanticValidationError) as raised:
+            validate(BASE + "ROUTE DELETE /posts/{id} ROLE admin\n")
+        self.assertIn("requires USE auth.roles", str(raised.exception))
+
+    def test_public_role_route_is_rejected(self):
+        with self.assertRaises(SemanticValidationError) as raised:
+            validate(self.ROLES + "ROUTE GET /posts PUBLIC ROLE admin\n")
+        self.assertIn("cannot be PUBLIC and require a ROLE", str(raised.exception))
+
+    def test_roles_module_requires_jwt(self):
+        with self.assertRaises(SemanticValidationError) as raised:
+            validate("PROJECT Demo\nUSE auth.roles\nMODEL Post\n    title STRING\n")
+        self.assertIn("USE auth.roles requires AUTH JWT", str(raised.exception))
+
+    def test_role_field_is_managed(self):
+        with self.assertRaises(SemanticValidationError) as raised:
+            validate(self.ROLES.replace("    name STRING\n", "    name STRING\n    role STRING\n", 1))
+        self.assertIn("User.role is managed by USE auth.roles", str(raised.exception))
+
+    def test_relation_to_auth_created_user(self):
+        validate("PROJECT Demo\nAUTH JWT\nMODEL Note\n    text TEXT\nRELATION User HAS_MANY Note\n")
+
+
 class ValidationRuleTests(unittest.TestCase):
     def test_min_and_max_take_numeric_parameters(self):
         ast = parse(BASE + "VALIDATE password REQUIRED MIN 8 MAX 64\n")

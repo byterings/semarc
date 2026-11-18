@@ -141,6 +141,7 @@ class ArchitectureIRBuilder:
                     "origin": route["origin"],
                     "access": route["access"],
                     "parameters": list(route["parameters"]),
+                    "roles": list(route.get("roles", [])),
                     "operation": dict(route["operation"]),
                     "handler": self._handler_for(route["operation"]),
                 }

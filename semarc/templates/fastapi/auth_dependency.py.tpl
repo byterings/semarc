@@ -21,3 +21,4 @@ def current_user_id(
     if db.get({{auth_model}}, user_id) is None:
         raise ApiError.unauthorized("Token user no longer exists.")
     return user_id
+{{roles_code}}

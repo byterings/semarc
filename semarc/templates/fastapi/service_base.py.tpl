@@ -41,6 +41,7 @@ class ResourceService(Generic[ModelT]):
     references: tuple[Reference, ...] = ()
     dependents: tuple[Dependent, ...] = ()
     unique: tuple[str, ...] = ()
+    defaults: dict[str, Any] = {}
     filters: dict[str, str] = {"id": "INTEGER"}
     sort_fields: tuple[str, ...] = ("id",)
 
@@ -84,14 +85,20 @@ class ResourceService(Generic[ModelT]):
 
     def create(self, payload: BaseModel, owner_id: int | None = None) -> dict:
         data = payload.model_dump()
+        for field, value in self.defaults.items():
+            if data.get(field) is None:
+                data[field] = value
         self._apply_owner(data, owner_id, require=True)
         self._check_references(data)
         self._check_unique(data, None)
         return self.serialize(self.repository.create(self.before_write(data)))
 
-    def update(self, record_id: int, payload: BaseModel, partial: bool, owner_id: int | None = None) -> dict:
+    def update(
+        self, record_id: int, payload: BaseModel, partial: bool, owner_id: int | None = None, manage_all: bool = False
+    ) -> dict:
         record = self.find(record_id)
-        self._check_owner(record, owner_id)
+        if not manage_all:
+            self._check_owner(record, owner_id)
         data = payload.model_dump(exclude_unset=partial)
         self._apply_owner(data, owner_id, require=not partial, keep_existing=True)
         if not data:
@@ -100,9 +107,10 @@ class ResourceService(Generic[ModelT]):
         self._check_unique(data, record_id)
         return self.serialize(self.repository.update(record, self.before_write(data)))
 
-    def delete(self, record_id: int, owner_id: int | None = None) -> None:
+    def delete(self, record_id: int, owner_id: int | None = None, manage_all: bool = False) -> None:
         record = self.find(record_id)
-        self._check_owner(record, owner_id)
+        if not manage_all:
+            self._check_owner(record, owner_id)
         for dependent in self.dependents:
             if self.repository.count_in(dependent.model, dependent.column, record_id) > 0:
                 raise ApiError.conflict(

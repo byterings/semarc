@@ -120,6 +120,7 @@ class RouteNode(AstNode):
     method: str
     path: str
     access: Optional[str] = None
+    roles: List[str] = field(default_factory=list)
     location: SourceLocation = field(default_factory=SourceLocation)
     metadata: Dict[str, Any] = field(default_factory=dict)
 

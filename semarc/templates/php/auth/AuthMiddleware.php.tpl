@@ -17,10 +17,12 @@ final class AuthMiddleware
     {
         $token = $request->bearerToken() ?? throw HttpException::unauthorized('Missing bearer token.');
         $userId = $this->tokens->userIdFrom($token);
-        if ($this->users->findById($userId) === null) {
+        $user = $this->users->findById($userId);
+        if ($user === null) {
             throw HttpException::unauthorized('Token user no longer exists.');
         }
 
         $request->userId = $userId;
+        $request->userRole = isset($user['role']) ? (string) $user['role'] : null;
     }
 }

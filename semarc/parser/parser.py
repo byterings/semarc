@@ -157,16 +157,23 @@ class Parser:
         return self.builder.field(tokens[0].value, tokens[1].value, tokens[0], modifiers)
 
     def _parse_route(self, tokens: List[Token]) -> RouteNode:
-        if len(tokens) not in {3, 4}:
-            raise ParserError(self._message(tokens[0], "ROUTE requires an HTTP method, a path, and an optional PUBLIC or PROTECTED"))
+        if len(tokens) < 3:
+            raise ParserError(self._message(tokens[0], "ROUTE requires an HTTP method and a path"))
         self._expect(tokens[1], "HTTP_METHOD", "ROUTE method must be an HTTP method")
         self._expect(tokens[2], "STRING", "ROUTE path must start with /")
+        rest = tokens[3:]
         access = None
-        if len(tokens) == 4:
-            if tokens[3].value not in ROUTE_ACCESS:
-                raise ParserError(self._message(tokens[3], "ROUTE access must be PUBLIC or PROTECTED"))
-            access = tokens[3].value
-        return self.builder.route(tokens[1].value, tokens[2].value, tokens[0], access)
+        if rest and rest[0].value in ROUTE_ACCESS:
+            access = rest[0].value
+            rest = rest[1:]
+        roles: list[str] = []
+        if rest:
+            if rest[0].value != "ROLE":
+                raise ParserError(self._message(rest[0], "ROUTE options are PUBLIC, PROTECTED and ROLE name [name ...]"))
+            if len(rest) == 1:
+                raise ParserError(self._message(rest[0], "ROLE requires at least one role name"))
+            roles = [token.value for token in rest[1:]]
+        return self.builder.route(tokens[1].value, tokens[2].value, tokens[0], access, roles)
 
     def _parse_relation(self, tokens: List[Token]) -> RelationNode:
         self._expect_length(tokens, 4, "RELATION requires source model, relation type, and target model")

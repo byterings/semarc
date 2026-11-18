@@ -1,6 +1,6 @@
 """Renders SQLAlchemy models, Pydantic schemas, repositories and services from IR."""
 from semarc.generator.utils.inflector import snake_case
-from semarc.generator.utils.resource_views import field_rules, owner_reference, secret_fields, unique_columns
+from semarc.generator.utils.resource_views import field_defaults, field_rules, owner_reference, secret_fields, unique_columns, writable_fields
 
 PYTHON_TYPES = {
     "STRING": "str",
@@ -58,6 +58,8 @@ def model_code(model: dict) -> str:
         options = [COLUMN_TYPES[model_field["type"]], f"nullable={not model_field['required']}"]
         if model_field["unique"]:
             options.append("unique=True")
+        if model_field.get("default") is not None:
+            options.append(f"default={model_field['default']!r}")
         lines.append(f"    {model_field['name']}: Mapped[{annotation}] = mapped_column({', '.join(options)})")
     for reference in model["references"]:
         options = ["Integer", f'ForeignKey("{reference["table"]}.id")', "nullable=False"]
@@ -75,7 +77,7 @@ def model_code(model: dict) -> str:
 
 def schema_code(model: dict) -> str:
     name = model["name"]
-    rules = {model_field["name"]: field_rules(model_field) for model_field in model["fields"]}
+    rules = {model_field["name"]: field_rules(model_field) for model_field in writable_fields(model)}
     not_empty = [field for field, rule in rules.items() if rule["not_empty"]]
     emails = [field for field, rule in rules.items() if rule["email"]]
     required = [field for field, rule in rules.items() if rule["required"]]
@@ -233,6 +235,9 @@ def service_code(model: dict, ir: dict) -> str:
     unique = unique_columns(model)
     if unique:
         lines.append(f"    unique = ({', '.join(repr(column) for column in unique)},)")
+    defaults = field_defaults(model)
+    if defaults:
+        lines.append(f"    defaults = {defaults!r}")
     lines.append(f"    filters = {model['query']['filters']!r}")
     lines.append(f"    sort_fields = ({', '.join(repr(field) for field in model['query']['sort'])},)")
 

@@ -43,8 +43,22 @@ def reference_rules(reference: dict) -> dict:
     }
 
 
+def writable_fields(model: dict) -> list[dict]:
+    """Fields clients may send; managed fields (such as role) are set by the API only."""
+    return [model_field for model_field in model["fields"] if model_field.get("writable", True)]
+
+
+def field_defaults(model: dict) -> dict:
+    return {model_field["name"]: model_field["default"] for model_field in model["fields"] if model_field.get("default") is not None}
+
+
+def roles_feature(ir: dict) -> dict | None:
+    auth = ir.get("auth") or {}
+    return auth.get("features", {}).get("roles")
+
+
 def input_fields(model: dict, include_owner: bool = True) -> dict[str, dict]:
-    fields = {model_field["name"]: field_rules(model_field) for model_field in model["fields"]}
+    fields = {model_field["name"]: field_rules(model_field) for model_field in writable_fields(model)}
     for reference in model["references"]:
         if reference["owner"] and not include_owner:
             continue

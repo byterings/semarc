@@ -1,6 +1,6 @@
 from semarc.generator.php.base import PHP_HEADER, PhpFileWriter
 from semarc.generator.utils.inflector import pascal_case
-from semarc.generator.utils.resource_views import operation_kinds, related_parents
+from semarc.generator.utils.resource_views import operation_kinds, related_parents, roles_feature
 
 ITEM_KINDS = {"read", "update", "replace", "delete"}
 
@@ -24,6 +24,8 @@ class ControllerGenerator:
 
     def _controller(self, ir: dict, model: dict, kinds: list[str]) -> str:
         name = model["name"]
+        roles = roles_feature(ir)
+        manage = f", $request->userRole === '{roles['admin']}'" if roles else ""
         methods = []
         if "list" in kinds:
             methods.append(self._method("list", "Request $request", "array", [
@@ -43,15 +45,15 @@ class ControllerGenerator:
             ]))
         if "replace" in kinds:
             methods.append(self._method("replace", "Request $request, string $id", "array", [
-                "return ['data' => $this->service->update(self::id($id), $request->json(), false, $request->userId)];",
+                f"return ['data' => $this->service->update(self::id($id), $request->json(), false, $request->userId{manage})];",
             ]))
         if "update" in kinds:
             methods.append(self._method("update", "Request $request, string $id", "array", [
-                "return ['data' => $this->service->update(self::id($id), $request->json(), true, $request->userId)];",
+                f"return ['data' => $this->service->update(self::id($id), $request->json(), true, $request->userId{manage})];",
             ]))
         if "delete" in kinds:
             methods.append(self._method("delete", "Request $request, string $id", "Response", [
-                "$this->service->delete(self::id($id), $request->userId);",
+                f"$this->service->delete(self::id($id), $request->userId{manage});",
                 "",
                 "return Response::noContent();",
             ]))

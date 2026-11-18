@@ -84,6 +84,7 @@ abstract class ResourceService
         if ($owner !== null) {
             $data[$owner] = $ownerId;
         }
+        $data += ($this->model)::DEFAULTS;
 
         $this->assertReferencesExist($data);
         $this->assertUnique($data, null);
@@ -95,9 +96,12 @@ abstract class ResourceService
      * @param array<string, mixed> $input
      * @return array<string, mixed>
      */
-    public function update(int $id, array $input, bool $partial, ?int $ownerId = null): array
+    public function update(int $id, array $input, bool $partial, ?int $ownerId = null, bool $manageAll = false): array
     {
-        $this->assertOwner($this->find($id), $ownerId);
+        $record = $this->find($id);
+        if (!$manageAll) {
+            $this->assertOwner($record, $ownerId);
+        }
         $owner = $this->ownerColumn($ownerId);
         $data = $this->validator->validate($input, ($this->model)::inputRules($owner), $partial);
         if ($data === []) {
@@ -110,9 +114,12 @@ abstract class ResourceService
         return ($this->model)::toArray($this->repository->update($id, $this->beforeWrite($data)));
     }
 
-    public function delete(int $id, ?int $ownerId = null): void
+    public function delete(int $id, ?int $ownerId = null, bool $manageAll = false): void
     {
-        $this->assertOwner($this->find($id), $ownerId);
+        $record = $this->find($id);
+        if (!$manageAll) {
+            $this->assertOwner($record, $ownerId);
+        }
         foreach (($this->model)::DEPENDENTS as $dependent) {
             if ($this->repository->countIn($dependent['table'], $dependent['column'], $id) > 0) {
                 throw HttpException::conflict(

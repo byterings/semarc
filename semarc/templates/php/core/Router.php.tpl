@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 final class Router
 {
-    /** @var list<array{method: string, path: string, pattern: string, handler: callable, protected: bool}> */
+    /** @var list<array{method: string, path: string, pattern: string, handler: callable, protected: bool, roles: list<string>}> */
     private array $routes = [];
 
     /** @var (callable(Request): void)|null */
@@ -15,14 +15,18 @@ final class Router
         $this->authenticator = $authenticator;
     }
 
-    public function add(string $method, string $path, callable $handler, bool $protected = false): void
+    /**
+     * @param list<string> $roles roles allowed to call a protected route (empty: any authenticated user)
+     */
+    public function add(string $method, string $path, callable $handler, bool $protected = false, array $roles = []): void
     {
         $this->routes[] = [
             'method' => $method,
             'path' => $path,
             'pattern' => $this->compile($path),
             'handler' => $handler,
-            'protected' => $protected,
+            'protected' => $protected || $roles !== [],
+            'roles' => $roles,
         ];
     }
 
@@ -61,6 +65,9 @@ final class Router
                         throw new RuntimeException('Protected route registered without an authenticator.');
                     }
                     ($this->authenticator)($request);
+                    if ($route['roles'] !== [] && !in_array($request->userRole, $route['roles'], true)) {
+                        throw HttpException::forbidden('This action requires the role: ' . implode(' or ', $route['roles']) . '.');
+                    }
                 }
 
                 $params = array_filter($matches, 'is_string', ARRAY_FILTER_USE_KEY);

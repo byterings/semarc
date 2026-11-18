@@ -62,8 +62,12 @@ class RoutesGenerator:
         operation = route["operation"]
         kind = operation["kind"]
         protected = ", true" if route["access"] == "protected" else ""
+        if route.get("roles"):
+            protected = f", true, {php_literal(route['roles'])}"
         prefix = f"$router->add('{route['method']}', '{route['path']}', "
 
+        if kind == "auth_set_role":
+            return f"{prefix}static fn (Request $request, array $params): array => (new RoleController())->update($request, $params['id']){protected});"
         if kind.startswith("auth_"):
             action = kind.removeprefix("auth_")
             return_type = "Response" if action == "register" else "array"

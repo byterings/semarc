@@ -1,6 +1,6 @@
 """Renders TypeORM entities, class-validator DTOs, repositories, services and modules."""
 from semarc.generator.nestjs.typescript import TS_TYPES, Imports, file_base, folder, ts_string
-from semarc.generator.utils.resource_views import field_rules, output_fields, owner_reference, secret_fields, unique_columns
+from semarc.generator.utils.resource_views import field_defaults, field_rules, output_fields, owner_reference, secret_fields, unique_columns, writable_fields
 
 DATE_PATTERN = r"/^\d{4}-\d{2}-\d{2}$/"
 DATETIME_PATTERN = r"/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?$/"
@@ -54,7 +54,7 @@ def dto_code(model: dict, reserved: set[str], partial: bool) -> str:
     lines = [f"export class {name} {{"]
     owner = owner_reference(model)
 
-    for model_field in model["fields"]:
+    for model_field in writable_fields(model):
         rules = field_rules(model_field)
         decorators = _presence(imports, name, model_field["name"], rules["required"], partial)
         decorators.extend(_type_decorators(imports, model_field["name"], rules))
@@ -142,7 +142,7 @@ def repository_code(model: dict, reserved: set[str]) -> str:
     )
 
 
-def service_code(model: dict, reserved: set[str]) -> str:
+def service_code(model: dict, reserved: set[str], ir: dict | None = None) -> str:
     name = model["name"]
     imports = Imports(reserved)
     injectable = imports.use("@nestjs/common", "Injectable")
@@ -176,6 +176,10 @@ def service_code(model: dict, reserved: set[str]) -> str:
     datetimes = [model_field["name"] for model_field in model["fields"] if model_field["type"] == "DATETIME"]
     if datetimes:
         lines.append(f"  protected readonly dateTimes = [{', '.join(ts_string(field) for field in datetimes)}];")
+    defaults = field_defaults(model)
+    if defaults:
+        entries = ", ".join(f"{name}: {ts_string(value) if isinstance(value, str) else str(value).lower()}" for name, value in defaults.items())
+        lines.append(f"  protected readonly defaults = {{ {entries} }};")
     filters = ", ".join(f"{name}: {ts_string(field_type)}" for name, field_type in model["query"]["filters"].items())
     lines.append(f"  protected readonly filters = {{ {filters} }};")
     lines.append(f"  protected readonly sortFields = [{', '.join(ts_string(field) for field in model['query']['sort'])}];")
@@ -206,6 +210,17 @@ def service_code(model: dict, reserved: set[str]) -> str:
         lines.extend(["    return data;", "  }"])
     else:
         lines.extend([f"  constructor(repository: {name}Repository) {{", "    super(repository);", "  }"])
+    auth = (ir or {}).get("auth") or {}
+    if auth.get("features", {}).get("roles") and auth.get("model") == name:
+        lines.extend(
+            [
+                "",
+                "  async setRole(id: number, role: string): Promise<Record<string, unknown>> {",
+                "    const record = await this.find(id);",
+                f"    return this.serialize(await this.repository.update(record, {{ role }} as Partial<{name}>));",
+                "  }",
+            ]
+        )
     lines.extend(["}", ""])
     return "\n".join(imports.render() + [""] + lines)
 
