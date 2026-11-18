@@ -79,12 +79,18 @@ declared, matching the behaviour of earlier SEMARC versions.
 - Tokens are HS256 JWTs signed with `JWT_SECRET` (at least 32 characters; the server refuses
   to sign with a shorter secret) and expire after `JWT_TTL` seconds (default 3600).
 - Send `Authorization: Bearer <token>`. Missing, malformed, expired or orphaned tokens get 401.
-- `POST /register` and `POST /login` are rate limited per client address: `AUTH_RATE_LIMIT`
-  attempts (default 10) per `AUTH_RATE_WINDOW` seconds (default 60). Further attempts get
-  429 `too_many_requests` with a `Retry-After` header. PHP keeps counters in
-  `storage/rate-limits/`; FastAPI and NestJS keep them in memory per process. Behind a
-  reverse proxy every client shares the proxy's address, so configure the proxy to forward
-  the client address or adjust the limiter.
+- `POST /register`, `POST /login` and the other credential endpoints are rate limited per
+  client address: `AUTH_RATE_LIMIT` attempts (default 10) per `AUTH_RATE_WINDOW` seconds
+  (default 60). Further attempts get 429 `too_many_requests` with a `Retry-After` header.
+- Counters are local by default: PHP keeps them in `storage/rate-limits/`, FastAPI and
+  NestJS in memory per process. With `USE cache.redis` they are kept in Redis
+  (`RATE_LIMIT_STORE=redis`, `REDIS_URL`, `redis://` or `rediss://`), so every process and
+  server shares them; the generated `docker-compose.yml` then runs Redis. If Redis cannot be
+  reached the limiter logs the error and counts locally instead of failing requests.
+- Behind a reverse proxy or load balancer set `TRUSTED_PROXIES` to its addresses or CIDR
+  ranges (comma separated). `X-Forwarded-For` is used only when the direct peer is trusted;
+  the client is then the rightmost forwarded address that is not a trusted proxy. Without
+  it, forwarded headers are ignored, so a client cannot dodge the limit by forging them.
 
 ### Cookie sessions (`AUTH SESSION`)
 

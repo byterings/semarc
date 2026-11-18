@@ -11,4 +11,4 @@ COPY . .
 RUN mkdir -p storage
 
 EXPOSE 8000
-CMD ["sh", "-c", "python migrate.py && uvicorn main:app --host 0.0.0.0 --port 8000"]
+CMD ["sh", "-c", "python migrate.py && uvicorn main:app --host 0.0.0.0 --port 8000 --no-proxy-headers"]

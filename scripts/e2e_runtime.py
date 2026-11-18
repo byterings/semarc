@@ -283,6 +283,10 @@ def run_case(source_path: Path, target: str, database: str, keep: bool, verbose:
             mock = start_oauth_mock(name)
         wait_for_health(base_url, timeout=240)
         steps = ScenarioClient(base_url, f"http://127.0.0.1:{mail_port}").run(scenario, verbose=verbose)
+        if "\n  redis:\n" in (output_dir / "docker-compose.yml").read_text(encoding="utf-8"):
+            keys = compose(output_dir, name, port, "exec", "-T", "redis", "redis-cli", "--scan", "--pattern", "semarc:rate-limit:*", capture=True)
+            if not keys.stdout.strip():
+                raise ScenarioFailure("rate limit counters are not stored in Redis")
         return True, f"{label}: {steps} scenario steps passed"
     except (ScenarioFailure, TimeoutError) as error:
         logs = compose(output_dir, name, port, "logs", "--tail", "60", capture=True)

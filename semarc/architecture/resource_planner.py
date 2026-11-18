@@ -36,6 +36,7 @@ ROLES_MODULE = "auth.roles"
 DEFAULT_ROLE = "user"
 ADMIN_ROLE = "admin"
 ROLE_ROUTE = ("PUT", "/users/{id}/role")
+REDIS_MODULE = "cache.redis"
 
 
 class ResourcePlanner:
@@ -131,7 +132,7 @@ class ResourcePlanner:
             "identity_field": AUTH_IDENTITY_FIELD,
             "secret_field": AUTH_SECRET_FIELD,
             "token_ttl_seconds": TOKEN_TTL_SECONDS,
-            "rate_limit": dict(AUTH_RATE_LIMIT),
+            "rate_limit": {**AUTH_RATE_LIMIT, "store": "redis" if self._uses(architecture, REDIS_MODULE) else "local"},
             "implicit_model": not declared,
             "features": {
                 "roles": self._roles(architecture),

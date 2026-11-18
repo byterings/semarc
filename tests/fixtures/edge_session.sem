@@ -7,6 +7,7 @@ AUTH SESSION
 USE auth.roles
 USE auth.email_verification
 USE auth.oauth.github
+USE cache.redis
 
 MODEL User
     name STRING

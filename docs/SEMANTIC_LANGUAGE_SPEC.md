@@ -204,7 +204,8 @@ and their modules. `USE` resolves stdlib modules from `semarc/stdlib/**/module.y
 `depends`, `requires` and `conflicts` rules. Resolved profiles and modules appear in the
 architecture report and the generator manifest. Unknown `USE` names are kept as metadata.
 
-Modules that change the generated API (all require `AUTH JWT` or `AUTH SESSION`):
+Modules that change the generated API (the `auth.*` modules require `AUTH JWT` or `AUTH SESSION`;
+`cache.redis` has an effect only with them):
 
 | Module | Effect |
 | --- | --- |
@@ -212,6 +213,7 @@ Modules that change the generated API (all require `AUTH JWT` or `AUTH SESSION`)
 | `auth.password_reset` | `POST /password/forgot`, `POST /password/reset`, email sending |
 | `auth.email_verification` | `email_verified_at` field, verification email on registration, `POST /email/verify`, `POST /email/resend` |
 | `auth.oauth.google`, `auth.oauth.github` | sign-in with the provider: `GET /oauth/<provider>`, `POST /oauth/<provider>/callback` |
+| `cache.redis` | rate limit counters in Redis, shared by every process; Redis in `docker-compose.yml` |
 
 See [GENERATED_API.md](GENERATED_API.md) for their behaviour.
 

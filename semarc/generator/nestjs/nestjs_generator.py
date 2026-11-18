@@ -23,7 +23,7 @@ from semarc.generator.utils.api_scenario import ApiScenarioBuilder
 from semarc.generator.utils.openapi import OpenApiBuilder, swagger_html
 from semarc.generator.utils.inflector import kebab_case
 from semarc.generator.utils.project_runtime import database_settings, docker_compose, env_example, readme
-from semarc.generator.utils.resource_views import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, mail_enabled
+from semarc.generator.utils.resource_views import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, mail_enabled, redis_enabled
 from semarc.generator.utils.template_engine import TemplateEngine
 
 PORT = 3000
@@ -43,6 +43,7 @@ DEPENDENCIES = {
 }
 AUTH_DEPENDENCIES = {"@nestjs/jwt": "11.0.2", "bcryptjs": "3.0.3"}
 MAIL_DEPENDENCIES = {"nodemailer": "10.2.1"}
+REDIS_DEPENDENCIES = {"ioredis": "5.4.2"}
 MAIL_DEV_DEPENDENCIES = {"@types/nodemailer": "8.0.2"}
 DEV_DEPENDENCIES = {
     "@nestjs/cli": "11.0.24",
@@ -195,7 +196,12 @@ class NestJSGenerator:
         self._write("src/database/data-source.ts", data_source_code(ir), "typeorm data source")
 
     def _project(self, ir: dict) -> None:
-        dependencies = {**DEPENDENCIES, **(AUTH_DEPENDENCIES if ir.get("auth") else {}), **(MAIL_DEPENDENCIES if mail_enabled(ir) else {})}
+        dependencies = {
+            **DEPENDENCIES,
+            **(AUTH_DEPENDENCIES if ir.get("auth") else {}),
+            **(MAIL_DEPENDENCIES if mail_enabled(ir) else {}),
+            **(REDIS_DEPENDENCIES if redis_enabled(ir) else {}),
+        }
         dev_dependencies = {**DEV_DEPENDENCIES, **(MAIL_DEV_DEPENDENCIES if mail_enabled(ir) else {})}
         package = {
             "name": kebab_case(ir["project"]),

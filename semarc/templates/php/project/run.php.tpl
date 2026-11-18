@@ -9,6 +9,7 @@ putenv('DB_CONNECTION=sqlite');
 putenv('DB_DATABASE=:memory:');
 putenv('BOOTSTRAP_ADMIN_EMAIL=admin@example.com');
 putenv('MAIL_DRIVER=memory');
+putenv('RATE_LIMIT_STORE=local');
 putenv('RATE_LIMIT_STORAGE=' . sys_get_temp_dir() . '/semarc-rate-limits-' . bin2hex(random_bytes(6)));
 if (getenv('JWT_SECRET') === false) {
     putenv('JWT_SECRET=semarc-test-secret-semarc-test-secret');

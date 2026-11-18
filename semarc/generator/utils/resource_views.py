@@ -61,6 +61,11 @@ def mail_enabled(ir: dict) -> bool:
     return bool(auth_feature(ir, "password_reset") or auth_feature(ir, "email_verification"))
 
 
+def redis_enabled(ir: dict) -> bool:
+    """USE cache.redis keeps rate limit counters in Redis, shared by every app process."""
+    return ((ir.get("auth") or {}).get("rate_limit") or {}).get("store") == "redis"
+
+
 def oauth_providers(ir: dict) -> list[dict]:
     return (auth_feature(ir, "oauth") or {}).get("providers", [])
 

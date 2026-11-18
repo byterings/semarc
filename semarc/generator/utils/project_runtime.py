@@ -6,9 +6,10 @@ PostgreSQL and SQLite without regenerating it.
 """
 from semarc.compiler.version import SEMARC_VERSION
 from semarc.generator.utils.inflector import snake_case
-from semarc.generator.utils.resource_views import database_engine, mail_enabled, oauth_env_names, oauth_providers
+from semarc.generator.utils.resource_views import database_engine, mail_enabled, oauth_env_names, oauth_providers, redis_enabled
 
 MAILPIT_IMAGE = "axllent/mailpit:v1.32.0"
+REDIS_IMAGE = "redis:7.4.2-alpine"
 
 DEV_JWT_SECRET = "change-me-to-a-long-random-secret-value"
 
@@ -71,6 +72,10 @@ def env_values(ir: dict) -> dict[str, str]:
             values["JWT_REFRESH_TTL"] = str(ir["auth"]["features"]["refresh_tokens"]["ttl_seconds"])
         values["AUTH_RATE_LIMIT"] = str(ir["auth"]["rate_limit"]["attempts"])
         values["AUTH_RATE_WINDOW"] = str(ir["auth"]["rate_limit"]["window_seconds"])
+        values["TRUSTED_PROXIES"] = ""
+        if redis_enabled(ir):
+            values["RATE_LIMIT_STORE"] = "redis"
+            values["REDIS_URL"] = "redis://127.0.0.1:6379/0"
         if ir["auth"].get("features", {}).get("roles"):
             values["BOOTSTRAP_ADMIN_EMAIL"] = ""
     if mail_enabled(ir):
@@ -105,6 +110,10 @@ def env_example(ir: dict) -> str:
             lines.append("# JWT_SECRET also signs OAuth state. SESSION_SECURE_COOKIE: true or false (default: true when APP_ENV=production).")
         if ir["auth"].get("features", {}).get("roles"):
             lines.append("# BOOTSTRAP_ADMIN_EMAIL: the account registering with this email becomes admin.")
+    if ir.get("auth"):
+        lines.append("# TRUSTED_PROXIES: comma separated proxy addresses or CIDR ranges whose X-Forwarded-For is believed.")
+    if redis_enabled(ir):
+        lines.append("# RATE_LIMIT_STORE: redis (shared by every process) or local. REDIS_URL: redis:// or rediss:// URL.")
     if mail_enabled(ir):
         lines.append("# MAIL_DRIVER: smtp, log (write emails to the log) or memory (tests). MAIL_ENCRYPTION: none, tls or ssl.")
     if oauth_providers(ir):
@@ -133,6 +142,17 @@ def docker_compose(ir: dict, port: int, web_server: dict | None = None) -> str:
             f"      - ./{web_server['config']}:{web_server['mount']}:ro",
             "    depends_on:",
             "      - app",
+        ]
+    if redis_enabled(ir):
+        lines += [
+            "",
+            "  redis:",
+            f"    image: {REDIS_IMAGE}",
+            "    healthcheck:",
+            '      test: ["CMD", "redis-cli", "ping"]',
+            "      interval: 5s",
+            "      timeout: 5s",
+            "      retries: 30",
         ]
     if mail_enabled(ir):
         lines += [
@@ -177,6 +197,9 @@ def _app_service(ir: dict, port: int, engine: str, publish_port: bool) -> list[s
         lines.append(f"      JWT_SECRET: ${{JWT_SECRET:-{DEV_JWT_SECRET}}}")
         if ir["auth"].get("features", {}).get("roles"):
             lines.append("      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}")
+        lines.append("      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}")
+    if redis_enabled(ir):
+        lines += ["      RATE_LIMIT_STORE: redis", "      REDIS_URL: redis://redis:6379/0"]
     if mail_enabled(ir):
         lines += [
             f"      APP_URL: ${{APP_URL:-http://localhost:{port}}}",
@@ -190,8 +213,11 @@ def _app_service(ir: dict, port: int, engine: str, publish_port: bool) -> list[s
         lines += [f"      {name}: ${{{name}:-}}" for name in oauth_env_names(provider).values()]
     if engine == "SQLITE":
         lines += ["    volumes:", "      - app-storage:/app/storage"]
-    else:
-        lines += ["    depends_on:", "      db:", "        condition: service_healthy"]
+    dependencies = ([] if engine == "SQLITE" else ["db"]) + (["redis"] if redis_enabled(ir) else [])
+    if dependencies:
+        lines.append("    depends_on:")
+        for dependency in dependencies:
+            lines += [f"      {dependency}:", "        condition: service_healthy"]
     return lines
 
 

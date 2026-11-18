@@ -684,6 +684,14 @@ class ApiScenarioBuilder:
             body=credentials,
             equals={"error.code": "too_many_requests"},
         )
+        self._step(
+            "a forged X-Forwarded-For does not bypass the limit",
+            "POST",
+            "/login",
+            429,
+            body=credentials,
+            headers={"X-Forwarded-For": "203.0.113.7"},
+        )
 
     def _body(self, model: dict, include_owner: bool) -> dict:
         variant = self._next_variant(model["name"])

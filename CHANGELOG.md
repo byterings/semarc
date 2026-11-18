@@ -31,6 +31,9 @@ language; such changes are listed under **Changed**.
   state, server-side code exchange, accounts linked by verified email in `oauth_accounts`.
 - `AUTH SESSION`: server-side sessions in an HttpOnly cookie with a CSRF header, the same
   routes and modules as `AUTH JWT`, and credentialed CORS for listed origins.
+- `TRUSTED_PROXIES`: the rate limiter uses `X-Forwarded-For` only from trusted proxies.
+- `USE cache.redis` keeps rate limit counters in Redis (with a local fallback) and adds
+  Redis to `docker-compose.yml`.
 - `api_scenario.json` `env` settings and `external` steps; `scripts/oauth_mock.py` provides a
   deterministic OAuth provider for `scripts/e2e_runtime.py`.
 

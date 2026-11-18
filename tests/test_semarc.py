@@ -332,7 +332,7 @@ ROUTE GET /users
         warning_codes = [warning["code"] for warning in context.architecture_report["warnings"]]
 
         self.assertNotIn("AUTH001", warning_codes)
-        self.assertEqual(context.ir["auth"]["rate_limit"], {"attempts": 10, "window_seconds": 60})
+        self.assertEqual(context.ir["auth"]["rate_limit"], {"attempts": 10, "window_seconds": 60, "store": "local"})
 
     def test_conflicting_auth_strategies_generate_diagnostic_error(self):
         source = """PROJECT AuthConflict

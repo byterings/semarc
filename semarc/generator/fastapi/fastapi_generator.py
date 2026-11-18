@@ -8,7 +8,7 @@ from semarc.generator.project_files import ProjectFileWriter
 from semarc.generator.utils.api_scenario import ApiScenarioBuilder
 from semarc.generator.utils.openapi import OpenApiBuilder
 from semarc.generator.utils.project_runtime import database_settings, docker_compose, env_example, readme
-from semarc.generator.utils.resource_views import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, model_by_name
+from semarc.generator.utils.resource_views import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, model_by_name, redis_enabled
 from semarc.generator.utils.template_engine import TemplateEngine
 
 PORT = 8000
@@ -26,6 +26,7 @@ REQUIREMENTS = [
     "httpx2==2.16.2",
 ]
 AUTH_REQUIREMENTS = ["pyjwt==2.15.1", "bcrypt==5.0.0"]
+REDIS_REQUIREMENTS = ["redis==5.2.1"]
 PACKAGES = {
     "config": "Application settings.",
     "core": "Shared application infrastructure.",
@@ -153,7 +154,7 @@ class FastApiGenerator:
         self._render("migrate.py", "migrate.py.tpl")
 
     def _project(self, ir: dict) -> None:
-        requirements = REQUIREMENTS + (AUTH_REQUIREMENTS if ir.get("auth") else [])
+        requirements = REQUIREMENTS + (AUTH_REQUIREMENTS if ir.get("auth") else []) + (REDIS_REQUIREMENTS if redis_enabled(ir) else [])
         self._write("requirements.txt", "\n".join(sorted(requirements, key=str.lower)) + "\n", "requirements")
         self._write("pytest.ini", "[pytest]\npythonpath = .\ntestpaths = tests\n", "pytest config")
         self._render("tests/test_api.py", "test_api.py.tpl")

@@ -10,6 +10,8 @@ CORE_FILES = [
     "Request",
     "Response",
     "Cookies",
+    "TrustedProxies",
+    "RedisClient",
     "Cors",
     "Router",
     "Cast",

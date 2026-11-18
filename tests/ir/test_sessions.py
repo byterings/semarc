@@ -4,7 +4,7 @@ from pathlib import Path
 
 from semarc.generator.utils.api_scenario import ApiScenarioBuilder
 from semarc.generator.utils.openapi import OpenApiBuilder
-from semarc.generator.utils.project_runtime import env_values
+from semarc.generator.utils.project_runtime import docker_compose, env_values
 from tests.support import ROOT, compile_file
 
 
@@ -40,6 +40,15 @@ class SessionPlanTests(unittest.TestCase):
         env = env_values(self.ir)
         self.assertEqual(env["SESSION_TTL"], "1209600")
         self.assertNotIn("JWT_REFRESH_TTL", env)
+
+    def test_redis_rate_limit_store(self):
+        self.assertEqual(self.ir["auth"]["rate_limit"]["store"], "redis")
+        env = env_values(self.ir)
+        self.assertEqual((env["RATE_LIMIT_STORE"], env["REDIS_URL"]), ("redis", "redis://127.0.0.1:6379/0"))
+        compose = docker_compose(self.ir, 8000)
+        self.assertIn("image: redis:7.4.2-alpine", compose)
+        self.assertIn("      redis:\n        condition: service_healthy", compose)
+        self.assertIn("TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}", compose)
 
     def test_openapi(self):
         document = OpenApiBuilder().build(self.ir)

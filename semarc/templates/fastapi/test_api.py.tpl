@@ -14,6 +14,7 @@ os.environ["DB_DATABASE"] = str(Path(tempfile.mkdtemp()) / "test.sqlite")
 os.environ.setdefault("JWT_SECRET", "semarc-test-secret-semarc-test-secret")
 os.environ["BOOTSTRAP_ADMIN_EMAIL"] = "admin@example.com"
 os.environ["MAIL_DRIVER"] = "memory"
+os.environ["RATE_LIMIT_STORE"] = "local"
 SCENARIO = json.loads((ROOT / "tests" / "api_scenario.json").read_text(encoding="utf-8"))
 os.environ.update(SCENARIO.get("env", {}))
 
