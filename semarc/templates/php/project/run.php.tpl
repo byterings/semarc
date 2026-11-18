@@ -8,6 +8,7 @@ declare(strict_types=1);
 putenv('DB_CONNECTION=sqlite');
 putenv('DB_DATABASE=:memory:');
 putenv('BOOTSTRAP_ADMIN_EMAIL=admin@example.com');
+putenv('MAIL_DRIVER=memory');
 putenv('RATE_LIMIT_STORAGE=' . sys_get_temp_dir() . '/semarc-rate-limits-' . bin2hex(random_bytes(6)));
 if (getenv('JWT_SECRET') === false) {
     putenv('JWT_SECRET=semarc-test-secret-semarc-test-secret');
@@ -46,6 +47,24 @@ $resolve = static function (mixed $value, array $vars) use (&$resolve): mixed {
 $vars = [];
 $passed = 0;
 foreach ($scenario['steps'] as $step) {
+    if (isset($step['mail'])) {
+        $mail = $step['mail'];
+        $found = null;
+        foreach (array_reverse(class_exists('Mailer') ? Mailer::$outbox : []) as $message) {
+            if ($message['to'] === $mail['to'] && $message['subject'] === $mail['subject']) {
+                $found = $message;
+                break;
+            }
+        }
+        if ($found === null || preg_match('/' . $mail['pattern'] . '/', $found['body'], $matches) !== 1) {
+            fwrite(STDERR, "FAIL {$step['name']}: no email \"{$mail['subject']}\" to {$mail['to']} matching {$mail['pattern']}" . PHP_EOL);
+            exit(1);
+        }
+        $vars[$mail['save']] = $matches[1];
+        echo "PASS {$step['name']}" . PHP_EOL;
+        $passed++;
+        continue;
+    }
     $path = preg_replace_callback('/\$\{(\w+)\}/', static fn (array $m): string => (string) ($vars[$m[1]] ?? ''), $step['path']);
     $headers = ['content-type' => 'application/json'];
     foreach ($step['headers'] ?? [] as $name => $value) {

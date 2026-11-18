@@ -78,6 +78,9 @@ class FastApiGenerator:
             self._write("middleware/__init__.py", '"""Request authentication dependencies."""\n', "python package")
             self._render("services/token_service.py", "token_service.py.tpl")
             self._render("core/rate_limit.py", "rate_limit.py.tpl")
+            if auth["features"]["password_reset"] or auth["features"]["email_verification"]:
+                self._render("core/mailer.py", "mailer.py.tpl")
+                self._write("core/one_time_tokens.py", _one_time_tokens_code(ir), "fastapi one-time tokens")
             self._render(
                 "core/refresh_tokens.py",
                 "refresh_tokens.py.tpl",
@@ -207,6 +210,14 @@ class FastApiGenerator:
                     f'        self.auth_rate_window = int(env("AUTH_RATE_WINDOW", "{ir["auth"]["rate_limit"]["window_seconds"]}"))',
                     '        self.bootstrap_admin_email = env("BOOTSTRAP_ADMIN_EMAIL", "")',
                     f'        self.jwt_refresh_ttl = int(env("JWT_REFRESH_TTL", "{ir["auth"]["features"]["refresh_tokens"]["ttl_seconds"]}"))',
+                    '        self.app_url = env("APP_URL", "")',
+                    '        self.mail_driver = env("MAIL_DRIVER", "log")',
+                    '        self.mail_host = env("MAIL_HOST", "127.0.0.1")',
+                    '        self.mail_port = int(env("MAIL_PORT", "1025"))',
+                    '        self.mail_username = env("MAIL_USERNAME", "")',
+                    '        self.mail_password = env("MAIL_PASSWORD", "")',
+                    '        self.mail_encryption = env("MAIL_ENCRYPTION", "none")',
+                    '        self.mail_from = env("MAIL_FROM", "no-reply@localhost")',
                 ]
             )
         lines.extend(
@@ -280,3 +291,69 @@ def _roles_code(auth: dict) -> str:
             "",
         ]
     )
+
+
+def _one_time_tokens_code(ir: dict) -> str:
+    """ORM models for the token tables plus a store that issues and consumes tokens."""
+    auth = ir["auth"]
+    users = model_by_name(ir, auth["model"])["table"]
+    classes = {"password_reset": "PasswordReset", "email_verification": "EmailVerification"}
+    lines = [
+        '"""Single-use, expiring tokens; only a SHA-256 hash of each token is stored."""',
+        "import hashlib",
+        "import secrets",
+        "from datetime import datetime, timedelta",
+        "",
+        "from sqlalchemy import DateTime, ForeignKey, Integer, String, select, update",
+        "from sqlalchemy.orm import Mapped, Session, mapped_column",
+        "",
+        "from database import Base, utc_now",
+    ]
+    for feature, class_name in classes.items():
+        if not auth["features"][feature]:
+            continue
+        lines += [
+            "",
+            "",
+            f"class {class_name}(Base):",
+            f'    __tablename__ = "{auth["features"][feature]["table"]}"',
+            "",
+            "    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)",
+            "    token_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)",
+            "    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)",
+            "    used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)",
+            f'    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("{users}.id", ondelete="CASCADE"), nullable=False, index=True)',
+            "    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now)",
+            "    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now, onupdate=utc_now)",
+        ]
+    lines += [
+        "",
+        "",
+        "def _hash(token: str) -> str:",
+        "    return hashlib.sha256(token.encode()).hexdigest()",
+        "",
+        "",
+        "class OneTimeTokens:",
+        "    def __init__(self, session: Session, model: type[Base]) -> None:",
+        "        self.session = session",
+        "        self.model = model",
+        "",
+        "    def issue(self, user_id: int, ttl_seconds: int) -> str:",
+        "        token = secrets.token_hex(32)",
+        "        self.session.add(self.model(user_id=user_id, token_hash=_hash(token), expires_at=utc_now() + timedelta(seconds=ttl_seconds)))",
+        "        self.session.commit()",
+        "        return token",
+        "",
+        "    def consume(self, token: str) -> int | None:",
+        '        """Marks a valid token as used and returns its user id, or None when invalid, used or expired."""',
+        "        record = self.session.scalars(select(self.model).filter_by(token_hash=_hash(token))).first()",
+        "        if record is None or record.used_at is not None or record.expires_at <= utc_now():",
+        "            return None",
+        "        result = self.session.execute(",
+        "            update(self.model).where(self.model.id == record.id, self.model.used_at.is_(None)).values(used_at=utc_now())",
+        "        )",
+        "        self.session.commit()",
+        "        return record.user_id if result.rowcount == 1 else None",
+        "",
+    ]
+    return "\n".join(lines)

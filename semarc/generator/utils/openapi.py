@@ -105,6 +105,17 @@ class OpenApiBuilder:
                 "required": ["refresh_token"],
                 "properties": {"refresh_token": {"type": "string", "minLength": 1}},
             }
+            schemas["EmailRequest"] = {
+                "type": "object",
+                "required": [auth["identity_field"]],
+                "properties": {auth["identity_field"]: {"type": "string", "format": "email"}},
+            }
+            schemas["PasswordReset"] = {
+                "type": "object",
+                "required": ["token", auth["secret_field"]],
+                "properties": {"token": {"type": "string"}, auth["secret_field"]: {"type": "string", "format": "password"}},
+            }
+            schemas["TokenRequest"] = {"type": "object", "required": ["token"], "properties": {"token": {"type": "string"}}}
             schemas["PasswordChange"] = {
                 "type": "object",
                 "required": ["current_password", "new_password"],
@@ -241,6 +252,9 @@ class OpenApiBuilder:
             "auth_refresh": "RefreshRequest",
             "auth_logout": "RefreshRequest",
             "auth_change_password": "PasswordChange",
+            "auth_forgot_password": "EmailRequest",
+            "auth_reset_password": "PasswordReset",
+            "auth_verify_email": "TokenRequest",
         }.get(kind)
         if schema is None:
             return None
@@ -263,6 +277,10 @@ class OpenApiBuilder:
             "auth_refresh": ("200", self._json("New tokens", self._data({"$ref": "#/components/schemas/Token"}))),
             "auth_logout": ("204", {"description": "Refresh token revoked"}),
             "auth_change_password": ("204", {"description": "Password changed; refresh tokens revoked"}),
+            "auth_forgot_password": ("202", {"description": "If the account exists, a reset email was sent"}),
+            "auth_reset_password": ("204", {"description": "Password reset; refresh tokens revoked"}),
+            "auth_verify_email": ("200", self._json("Verified user", self._data(record))),
+            "auth_resend_verification": ("202", {"description": "Verification email sent if the address is not verified"}),
         }
         responses = {}
         if kind in success:
@@ -270,7 +288,10 @@ class OpenApiBuilder:
             responses[status] = response
 
         errors = []
-        if kind in {"create", "replace", "update", "auth_register", "auth_login", "auth_refresh", "auth_logout", "auth_change_password"}:
+        if kind in {
+            "create", "replace", "update", "auth_register", "auth_login", "auth_refresh", "auth_logout",
+            "auth_change_password", "auth_forgot_password", "auth_reset_password", "auth_verify_email",
+        }:
             errors += ["400", "422"]
         if kind in {"create", "replace", "update", "auth_register"} and self._has_unique(model):
             errors.append("409")
@@ -286,7 +307,7 @@ class OpenApiBuilder:
             errors.append("404")
         if kind in {"list", "list_related"}:
             errors.append("422")
-        if kind in {"auth_register", "auth_login", "auth_refresh"}:
+        if kind in {"auth_register", "auth_login", "auth_refresh", "auth_forgot_password"}:
             errors.append("429")
         if kind == "custom":
             errors.append("501")
@@ -379,6 +400,10 @@ SUMMARIES = {
     "auth_refresh": "Exchange a refresh token for new tokens",
     "auth_logout": "Revoke a refresh token",
     "auth_change_password": "Change the current user's password",
+    "auth_forgot_password": "Email a password reset token",
+    "auth_reset_password": "Set a new password with a reset token",
+    "auth_verify_email": "Confirm an email address",
+    "auth_resend_verification": "Send a new verification email",
     "custom": "Declared route without generated behaviour",
 }
 

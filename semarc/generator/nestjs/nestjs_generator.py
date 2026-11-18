@@ -2,6 +2,8 @@ import json
 from pathlib import Path
 
 from semarc.generator.nestjs.api_code import (
+    TOKEN_ENTITIES,
+    token_entity_code,
     app_controller_code,
     app_module_code,
     auth_code,
@@ -19,7 +21,7 @@ from semarc.generator.utils.api_scenario import ApiScenarioBuilder
 from semarc.generator.utils.openapi import OpenApiBuilder, swagger_html
 from semarc.generator.utils.inflector import kebab_case
 from semarc.generator.utils.project_runtime import database_settings, docker_compose, env_example, readme
-from semarc.generator.utils.resource_views import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
+from semarc.generator.utils.resource_views import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, mail_enabled
 from semarc.generator.utils.template_engine import TemplateEngine
 
 PORT = 3000
@@ -38,6 +40,8 @@ DEPENDENCIES = {
     "typeorm": "0.3.31",
 }
 AUTH_DEPENDENCIES = {"@nestjs/jwt": "11.0.2", "bcryptjs": "3.0.3"}
+MAIL_DEPENDENCIES = {"nodemailer": "10.2.1"}
+MAIL_DEV_DEPENDENCIES = {"@types/nodemailer": "8.0.2"}
 DEV_DEPENDENCIES = {
     "@nestjs/cli": "11.0.24",
     "@nestjs/testing": "11.2.10",
@@ -112,6 +116,16 @@ class NestJSGenerator:
             self._render("src/modules/auth/token.service.ts", "token.service.ts.tpl")
             self._render("src/modules/auth/refresh-token.entity.ts", "refresh-token.entity.ts.tpl", {"table": auth["features"]["refresh_tokens"]["table"]})
             self._render("src/modules/auth/refresh-token.store.ts", "refresh-token.store.ts.tpl")
+            if mail_enabled(ir):
+                self._render("src/common/mailer.ts", "mailer.ts.tpl")
+                self._render("src/modules/auth/one-time-tokens.ts", "one-time-tokens.ts.tpl")
+                for feature, class_name in TOKEN_ENTITIES.items():
+                    if auth["features"][feature]:
+                        self._write(
+                            f"src/modules/auth/{kebab_case(class_name)}.entity.ts",
+                            token_entity_code(class_name, auth["features"][feature]["table"]),
+                            "nestjs token entity",
+                        )
             self._render(
                 "src/guards/auth.guard.ts",
                 "auth.guard.ts.tpl",
@@ -152,7 +166,8 @@ class NestJSGenerator:
         self._write("src/database/data-source.ts", data_source_code(ir), "typeorm data source")
 
     def _project(self, ir: dict) -> None:
-        dependencies = {**DEPENDENCIES, **(AUTH_DEPENDENCIES if ir.get("auth") else {})}
+        dependencies = {**DEPENDENCIES, **(AUTH_DEPENDENCIES if ir.get("auth") else {}), **(MAIL_DEPENDENCIES if mail_enabled(ir) else {})}
+        dev_dependencies = {**DEV_DEPENDENCIES, **(MAIL_DEV_DEPENDENCIES if mail_enabled(ir) else {})}
         package = {
             "name": kebab_case(ir["project"]),
             "version": "0.1.0",
@@ -165,7 +180,7 @@ class NestJSGenerator:
                 "migration:run": "typeorm-ts-node-commonjs migration:run -d src/database/data-source.ts",
             },
             "dependencies": dict(sorted(dependencies.items())),
-            "devDependencies": dict(sorted(DEV_DEPENDENCIES.items())),
+            "devDependencies": dict(sorted(dev_dependencies.items())),
             "jest": {
                 "moduleFileExtensions": ["js", "json", "ts"],
                 "rootDir": ".",

@@ -5,6 +5,8 @@ from semarc.architecture.rules.auth_rules import (
     AUTH_MODEL,
     AUTH_ROUTES,
     AUTH_SECRET_FIELD,
+    EMAIL_VERIFICATION_ROUTES,
+    PASSWORD_RESET_ROUTES,
     REFRESH_TOKEN_TABLE,
     REFRESH_TOKEN_TTL_SECONDS,
 )
@@ -47,7 +49,12 @@ class ResourcePlanner:
         if not auth:
             return []
         users = self._table_name(auth["model"])
-        return [
+        tables = [
+            self._token_table(auth["features"][feature]["table"], users)
+            for feature in ["password_reset", "email_verification"]
+            if auth["features"][feature]
+        ]
+        return tables + [
             {
                 "model": None,
                 "table": auth["features"]["refresh_tokens"]["table"],
@@ -85,7 +92,41 @@ class ResourcePlanner:
             "features": {
                 "roles": self._roles(architecture),
                 "refresh_tokens": {"table": REFRESH_TOKEN_TABLE, "ttl_seconds": REFRESH_TOKEN_TTL_SECONDS},
+                "password_reset": (
+                    {"table": "password_resets", "ttl_seconds": 3600} if self._uses(architecture, "auth.password_reset") else None
+                ),
+                "email_verification": (
+                    {"table": "email_verifications", "ttl_seconds": 86400, "field": "email_verified_at"}
+                    if self._uses(architecture, "auth.email_verification")
+                    else None
+                ),
             },
+        }
+
+    def _uses(self, architecture, module: str) -> bool:
+        return any(package.name == module for package in architecture.packages)
+
+    def _token_table(self, table: str, users: str) -> dict:
+        """Single-use, expiring tokens stored as hashes (password reset, email verification)."""
+        return {
+            "model": None,
+            "table": table,
+            "internal": True,
+            "fields": [
+                {"name": "token_hash", "type": "STRING", "required": True, "unique": True},
+                {"name": "expires_at", "type": "DATETIME", "required": True, "unique": False},
+                {"name": "used_at", "type": "DATETIME", "required": False, "unique": False},
+            ],
+            "foreign_keys": [
+                {
+                    "table": table,
+                    "column": "user_id",
+                    "references_table": users,
+                    "references_column": "id",
+                    "unique": False,
+                    "on_delete": "CASCADE",
+                }
+            ],
         }
 
     def _roles(self, architecture) -> dict | None:
@@ -157,6 +198,19 @@ class ResourcePlanner:
                         "default": None,
                     }
                 )
+        verification = auth["features"]["email_verification"]
+        if verification:
+            spec["fields"].append(
+                {
+                    "name": verification["field"],
+                    "type": "DATETIME",
+                    "required": False,
+                    "unique": False,
+                    "secret": False,
+                    "writable": False,
+                    "default": None,
+                }
+            )
         roles = auth["features"]["roles"]
         if roles:
             spec["fields"].append(
@@ -244,6 +298,10 @@ class ResourcePlanner:
         routes = dict(AUTH_ROUTES)
         if auth["features"]["roles"]:
             routes[ROLE_ROUTE] = "set_role"
+        if auth["features"]["password_reset"]:
+            routes.update(PASSWORD_RESET_ROUTES)
+        if auth["features"]["email_verification"]:
+            routes.update(EMAIL_VERIFICATION_ROUTES)
         return routes
 
     def _route(
@@ -319,9 +377,17 @@ class ResourcePlanner:
     def _access(self, method: str, declared: str | None, operation: dict, auth: dict | None) -> str:
         if auth is None:
             return "public"
-        if operation["kind"] in {"auth_register", "auth_login", "auth_refresh", "auth_logout"}:
+        if operation["kind"] in {
+            "auth_register",
+            "auth_login",
+            "auth_refresh",
+            "auth_logout",
+            "auth_forgot_password",
+            "auth_reset_password",
+            "auth_verify_email",
+        }:
             return "public"
-        if operation["kind"] in {"auth_me", "auth_change_password"}:
+        if operation["kind"] in {"auth_me", "auth_change_password", "auth_resend_verification"}:
             return "protected"
         if declared:
             return declared.lower()

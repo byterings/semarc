@@ -212,6 +212,7 @@ def auth_router_code(ir: dict) -> str:
             "from core.errors import ApiError",
             "from core.rate_limit import auth_rate_limit",
             "from core.refresh_tokens import RefreshTokenStore",
+            *_mail_imports(auth),
             "from database import get_db",
             "from middleware.auth import current_user_id" + (", require_roles" if auth["features"]["roles"] else ""),
             *(["from config.settings import settings"] if auth["features"]["roles"] else []),
@@ -265,6 +266,7 @@ def auth_router_code(ir: dict) -> str:
             f"def register(payload: {name}Create, db: Session = Depends(get_db)) -> dict:",
             f"    user = {name}Service(db).create(payload)",
             *_bootstrap_admin_lines(auth, name),
+            *(["    send_verification(db, user)"] if auth["features"]["email_verification"] else []),
             '    result = {"user": user, **issue_session(db, user["id"])}',
             '    return {"data": result}',
             "",
@@ -300,6 +302,7 @@ def auth_router_code(ir: dict) -> str:
             f'    repository.update(record, {{"{secret}": PasswordHasher().hash(payload.new_password)}})',
             "    RefreshTokenStore(db).revoke_all(user_id)",
             "    return Response(status_code=204)",
+            *_mail_route_lines(auth, name, new_password),
             "",
             "",
             f'@router.get("/me", response_model=DataResponse[{name}Read])',
@@ -309,6 +312,102 @@ def auth_router_code(ir: dict) -> str:
             "",
         ]
     )
+
+
+def _mail_imports(auth: dict) -> list[str]:
+    features = auth["features"]
+    if not (features["password_reset"] or features["email_verification"]):
+        return []
+    models = [cls for feature, cls in [("password_reset", "PasswordReset"), ("email_verification", "EmailVerification")] if features[feature]]
+    lines = ["from core.mailer import mail_body, send_mail", f"from core.one_time_tokens import {', '.join(models)}, OneTimeTokens"]
+    if features["email_verification"]:
+        lines.append("from database import utc_now")
+    return lines
+
+
+def _mail_route_lines(auth: dict, name: str, new_password: list[str]) -> list[str]:
+    identity, secret = auth["identity_field"], auth["secret_field"]
+    lines: list[str] = []
+    reset = auth["features"]["password_reset"]
+    if reset:
+        lines += [
+            "",
+            "",
+            "class ForgotPassword(InputSchema):",
+            f"    {identity}: str = Field(min_length=1)",
+            "",
+            "",
+            "class ResetPassword(InputSchema):",
+            "    token: str = Field(min_length=1)",
+            f"    {secret}: str = Field({', '.join(new_password)})",
+            "",
+            "",
+            '@router.post("/password/forgot", status_code=202, dependencies=[Depends(auth_rate_limit)])',
+            "def forgot_password(payload: ForgotPassword, db: Session = Depends(get_db)) -> dict:",
+            f'    record = {name}Repository(db).find_by("{identity}", payload.{identity})',
+            "    if record is not None:",
+            f"        token = OneTimeTokens(db, PasswordReset).issue(record.id, {reset['ttl_seconds']})",
+            "        body = mail_body(",
+            '            "Use this token to reset your password.",',
+            "            token,",
+            '            "reset-password",',
+            f'            "The token expires in {reset["ttl_seconds"] // 60} minutes. If you did not ask for a reset, ignore this email.",',
+            "        )",
+            f'        send_mail(payload.{identity}, "Reset your password", body)',
+            '    message = "If the account exists, a reset email has been sent."',
+            '    return {"data": dict(message=message)}',
+            "",
+            "",
+            '@router.post("/password/reset", status_code=204)',
+            "def reset_password(payload: ResetPassword, db: Session = Depends(get_db)) -> Response:",
+            "    user_id = OneTimeTokens(db, PasswordReset).consume(payload.token)",
+            "    if user_id is None:",
+            '        raise ApiError.validation({"token": ["token is invalid or expired"]})',
+            f"    repository = {name}Repository(db)",
+            f'    repository.update(repository.get(user_id), {{"{secret}": PasswordHasher().hash(payload.{secret})}})',
+            "    RefreshTokenStore(db).revoke_all(user_id)",
+            "    return Response(status_code=204)",
+        ]
+    verification = auth["features"]["email_verification"]
+    if verification:
+        field = verification["field"]
+        lines += [
+            "",
+            "",
+            "class VerifyEmail(InputSchema):",
+            "    token: str = Field(min_length=1)",
+            "",
+            "",
+            "def send_verification(db: Session, user: dict) -> None:",
+            f"    token = OneTimeTokens(db, EmailVerification).issue(user[\"id\"], {verification['ttl_seconds']})",
+            "    body = mail_body(",
+            '        "Use this token to confirm your email address.",',
+            "        token,",
+            '        "verify-email",',
+            f'        "The token expires in {verification["ttl_seconds"] // 3600} hours.",',
+            "    )",
+            f'    send_mail(user["{identity}"], "Verify your email address", body)',
+            "",
+            "",
+            f'@router.post("/email/verify", response_model=DataResponse[{name}Read])',
+            "def verify_email(payload: VerifyEmail, db: Session = Depends(get_db)) -> dict:",
+            "    user_id = OneTimeTokens(db, EmailVerification).consume(payload.token)",
+            "    if user_id is None:",
+            '        raise ApiError.validation({"token": ["token is invalid or expired"]})',
+            f"    repository = {name}Repository(db)",
+            f'    repository.update(repository.get(user_id), {{"{field}": utc_now()}})',
+            f'    return {{"data": {name}Service(db).get(user_id)}}',
+            "",
+            "",
+            '@router.post("/email/resend", status_code=202)',
+            "def resend_verification(user_id: int = Depends(current_user_id), db: Session = Depends(get_db)) -> dict:",
+            f"    user = {name}Service(db).get(user_id)",
+            f'    if user["{field}"] is None:',
+            "        send_verification(db, user)",
+            '    message = "A verification email is sent when the address is not verified yet."',
+            '    return {"data": dict(message=message)}',
+        ]
+    return lines
 
 
 def _bootstrap_admin_lines(auth: dict, name: str) -> list[str]:

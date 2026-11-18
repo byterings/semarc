@@ -21,6 +21,12 @@ language; such changes are listed under **Changed**.
 - Refresh tokens (rotating, hashed, `JWT_REFRESH_TTL`), `POST /token/refresh`, `POST /logout`
   and `POST /me/password` for every `AUTH JWT` project.
 - Migrations support `ON DELETE CASCADE` for infrastructure tables.
+- Password reset (`USE auth.password_reset`: `POST /password/forgot`, `POST /password/reset`) and
+  email verification (`USE auth.email_verification`: `email_verified_at`, `POST /email/verify`,
+  `POST /email/resend`) with single-use hashed tokens.
+- Plain-text email in every target (`MAIL_DRIVER` smtp/log/memory, `MAIL_*` settings, `APP_URL`
+  links) and a Mailpit inbox in the generated `docker-compose.yml`.
+- `api_scenario.json` mail steps, replayed by every runner (Mailpit in `scripts/e2e_runtime.py`).
 
 ### Changed
 - All compiler code moved into the `semarc` package (`semarc.compiler`, `semarc.generator`,

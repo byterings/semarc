@@ -9,6 +9,14 @@ AUTH_ROUTES = {
     ("POST", "/logout"): "logout",
     ("POST", "/me/password"): "change_password",
 }
+PASSWORD_RESET_ROUTES = {
+    ("POST", "/password/forgot"): "forgot_password",
+    ("POST", "/password/reset"): "reset_password",
+}
+EMAIL_VERIFICATION_ROUTES = {
+    ("POST", "/email/verify"): "verify_email",
+    ("POST", "/email/resend"): "resend_verification",
+}
 REFRESH_TOKEN_TABLE = "refresh_tokens"
 REFRESH_TOKEN_TTL_SECONDS = 14 * 24 * 3600
 

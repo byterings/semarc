@@ -48,12 +48,18 @@ class ScenarioFailure(AssertionError):
 class ScenarioClient:
     """Replays an api_scenario.json document against a live base URL."""
 
-    def __init__(self, base_url: str) -> None:
+    def __init__(self, base_url: str, mail_url: str | None = None) -> None:
         self.base_url = base_url.rstrip("/")
+        self.mail_url = mail_url
 
     def run(self, scenario: dict, verbose: bool = False) -> int:
         variables: dict = {}
         for step in scenario["steps"]:
+            if "mail" in step:
+                variables[step["mail"]["save"]] = self._read_mail(step)
+                if verbose:
+                    print(f"    PASS {step['name']}")
+                continue
             path = re.sub(r"\$\{(\w+)\}", lambda match: str(variables.get(match.group(1), "")), step["path"])
             headers = {"Accept": "application/json", **step.get("headers", {})}
             if step.get("auth"):
@@ -104,6 +110,24 @@ class ScenarioClient:
             payload = json.loads(raw)
         return status, payload, raw, response_headers
 
+    def _read_mail(self, step: dict) -> str:
+        """Reads the newest matching email from Mailpit's API."""
+        mail = step["mail"]
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            with urllib.request.urlopen(f"{self.mail_url}/api/v1/messages?limit=100", timeout=10) as response:
+                messages = json.loads(response.read().decode())["messages"]
+            for message in messages:
+                recipients = [item["Address"] for item in message.get("To", [])]
+                if mail["to"] in recipients and message["Subject"] == mail["subject"]:
+                    with urllib.request.urlopen(f"{self.mail_url}/api/v1/message/{message['ID']}", timeout=10) as response:
+                        body = json.loads(response.read().decode())["Text"]
+                    match = re.search(mail["pattern"], body)
+                    if match:
+                        return match.group(1)
+            time.sleep(0.5)
+        raise ScenarioFailure(f"{step['name']}: no email {mail['subject']!r} to {mail['to']} in Mailpit")
+
     def _resolve(self, value, variables: dict):
         if isinstance(value, dict):
             if set(value) == {"$ref"}:
@@ -149,11 +173,16 @@ def with_database(source: str, engine: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-def compose(project_dir: Path, name: str, port: int, *args: str, capture: bool = False) -> subprocess.CompletedProcess:
+def compose(project_dir: Path, name: str, port: int, *args: str, capture: bool = False, mail_port: int = 0) -> subprocess.CompletedProcess:
     return subprocess.run(
         ["docker", "compose", "-p", name, *args],
         cwd=project_dir,
-        env={**_base_env(), "APP_PORT": str(port), "BOOTSTRAP_ADMIN_EMAIL": "admin@example.com"},
+        env={
+            **_base_env(),
+            "APP_PORT": str(port),
+            "MAIL_UI_PORT": str(mail_port or free_port()),
+            "BOOTSTRAP_ADMIN_EMAIL": "admin@example.com",
+        },
         capture_output=capture,
         text=True,
         check=False,
@@ -186,12 +215,13 @@ def run_case(source_path: Path, target: str, database: str, keep: bool, verbose:
     name = re.sub(r"[^a-z0-9]", "", f"semarce2e{source_path.stem}{target}{database}".lower())
     base_url = f"http://127.0.0.1:{port}"
     print(f"[{label}] building and starting on port {port}")
-    started = compose(output_dir, name, port, "up", "--build", "-d", "--wait-timeout", "300", capture=True)
+    mail_port = free_port()
+    started = compose(output_dir, name, port, "up", "--build", "-d", "--wait-timeout", "300", capture=True, mail_port=mail_port)
     try:
         if started.returncode != 0:
             return False, f"{label}: docker compose up failed\n{started.stdout[-2000:]}\n{started.stderr[-2000:]}"
         wait_for_health(base_url, timeout=240)
-        steps = ScenarioClient(base_url).run(scenario, verbose=verbose)
+        steps = ScenarioClient(base_url, f"http://127.0.0.1:{mail_port}").run(scenario, verbose=verbose)
         return True, f"{label}: {steps} scenario steps passed"
     except (ScenarioFailure, TimeoutError) as error:
         logs = compose(output_dir, name, port, "logs", "--tail", "60", capture=True)

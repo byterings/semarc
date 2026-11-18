@@ -13,6 +13,7 @@ os.environ["DB_CONNECTION"] = "sqlite"
 os.environ["DB_DATABASE"] = str(Path(tempfile.mkdtemp()) / "test.sqlite")
 os.environ.setdefault("JWT_SECRET", "semarc-test-secret-semarc-test-secret")
 os.environ["BOOTSTRAP_ADMIN_EMAIL"] = "admin@example.com"
+os.environ["MAIL_DRIVER"] = "memory"
 
 from alembic import command  # noqa: E402
 from alembic.config import Config  # noqa: E402
@@ -41,6 +42,18 @@ def resolve(value, variables: dict):
     return value
 
 
+def read_mail(step: dict) -> str:
+    from core.mailer import outbox
+
+    mail = step["mail"]
+    for message in reversed(outbox):
+        if message["to"] == mail["to"] and message["subject"] == mail["subject"]:
+            match = re.search(mail["pattern"], message["body"])
+            if match:
+                return match.group(1)
+    raise AssertionError(f"{step['name']}: no email {mail['subject']!r} to {mail['to']} matching {mail['pattern']}")
+
+
 def test_api_scenario() -> None:
     command.upgrade(Config(str(ROOT / "alembic.ini")), "head")
     scenario = json.loads((ROOT / "tests" / "api_scenario.json").read_text(encoding="utf-8"))
@@ -48,6 +61,9 @@ def test_api_scenario() -> None:
     variables: dict = {}
 
     for step in scenario["steps"]:
+        if "mail" in step:
+            variables[step["mail"]["save"]] = read_mail(step)
+            continue
         path = re.sub(r"\$\{(\w+)\}", lambda match: str(variables.get(match.group(1), "")), step["path"])
         headers = dict(step.get("headers", {}))
         if step.get("auth"):

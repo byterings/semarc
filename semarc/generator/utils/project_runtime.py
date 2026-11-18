@@ -6,7 +6,9 @@ PostgreSQL and SQLite without regenerating it.
 """
 from semarc.compiler.version import SEMARC_VERSION
 from semarc.generator.utils.inflector import snake_case
-from semarc.generator.utils.resource_views import database_engine
+from semarc.generator.utils.resource_views import database_engine, mail_enabled
+
+MAILPIT_IMAGE = "axllent/mailpit:v1.32.0"
 
 DEV_JWT_SECRET = "change-me-to-a-long-random-secret-value"
 
@@ -66,6 +68,19 @@ def env_values(ir: dict) -> dict[str, str]:
         values["AUTH_RATE_WINDOW"] = str(ir["auth"]["rate_limit"]["window_seconds"])
         if ir["auth"].get("features", {}).get("roles"):
             values["BOOTSTRAP_ADMIN_EMAIL"] = ""
+    if mail_enabled(ir):
+        values.update(
+            {
+                "APP_URL": "http://localhost:8000",
+                "MAIL_DRIVER": "log",
+                "MAIL_HOST": "127.0.0.1",
+                "MAIL_PORT": "1025",
+                "MAIL_USERNAME": "",
+                "MAIL_PASSWORD": "",
+                "MAIL_ENCRYPTION": "none",
+                "MAIL_FROM": f"no-reply@{snake_case(ir['project']).replace('_', '-')}.local",
+            }
+        )
     return values
 
 
@@ -79,6 +94,8 @@ def env_example(ir: dict) -> str:
         lines.append("# JWT_SECRET must be at least 32 characters; replace it before deploying.")
         if ir["auth"].get("features", {}).get("roles"):
             lines.append("# BOOTSTRAP_ADMIN_EMAIL: the account registering with this email becomes admin.")
+    if mail_enabled(ir):
+        lines.append("# MAIL_DRIVER: smtp, log (write emails to the log) or memory (tests). MAIL_ENCRYPTION: none, tls or ssl.")
     lines.extend(f"{key}={value}" for key, value in env_values(ir).items())
     return "\n".join(lines) + "\n"
 
@@ -103,6 +120,14 @@ def docker_compose(ir: dict, port: int, web_server: dict | None = None) -> str:
             f"      - ./{web_server['config']}:{web_server['mount']}:ro",
             "    depends_on:",
             "      - app",
+        ]
+    if mail_enabled(ir):
+        lines += [
+            "",
+            "  mailpit:",
+            f"    image: {MAILPIT_IMAGE}",
+            "    ports:",
+            '      - "${MAIL_UI_PORT:-8025}:8025"',
         ]
     if engine == "SQLITE":
         lines += ["", "volumes:", "  app-storage:", ""]
@@ -139,6 +164,15 @@ def _app_service(ir: dict, port: int, engine: str, publish_port: bool) -> list[s
         lines.append(f"      JWT_SECRET: ${{JWT_SECRET:-{DEV_JWT_SECRET}}}")
         if ir["auth"].get("features", {}).get("roles"):
             lines.append("      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}")
+    if mail_enabled(ir):
+        lines += [
+            f"      APP_URL: ${{APP_URL:-http://localhost:{port}}}",
+            "      MAIL_DRIVER: smtp",
+            "      MAIL_HOST: mailpit",
+            '      MAIL_PORT: "1025"',
+            "      MAIL_ENCRYPTION: none",
+            f"      MAIL_FROM: no-reply@{snake_case(ir['project']).replace('_', '-')}.local",
+        ]
     if engine == "SQLITE":
         lines += ["    volumes:", "      - app-storage:/app/storage"]
     else:
@@ -284,5 +318,9 @@ def _behaviour(route: dict) -> str:
         "auth_refresh": "Exchange a refresh token for new tokens",
         "auth_logout": "Revoke a refresh token",
         "auth_change_password": "Change the current user's password",
+        "auth_forgot_password": "Email a password reset token",
+        "auth_reset_password": "Set a new password with a reset token",
+        "auth_verify_email": "Confirm an email address with a token",
+        "auth_resend_verification": "Send a new verification email",
         "custom": "Declared, not generated (returns 501 until implemented)",
     }[operation["kind"]]

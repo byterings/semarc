@@ -6,8 +6,16 @@ import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
 
+interface MailCheck {
+  to: string;
+  subject: string;
+  pattern: string;
+  save: string;
+}
+
 interface Step {
   name: string;
+  mail?: MailCheck;
   method: string;
   path: string;
   expect: number | number[];
@@ -50,6 +58,20 @@ function resolve(value: unknown, variables: Record<string, unknown>): unknown {
   return value;
 }
 
+function readMail(name: string, mail: MailCheck): string {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { Mailer } = require('../src/common/mailer') as { Mailer: { outbox: { to: string; subject: string; body: string }[] } };
+  for (const message of [...Mailer.outbox].reverse()) {
+    if (message.to === mail.to && message.subject === mail.subject) {
+      const match = new RegExp(mail.pattern).exec(message.body);
+      if (match) {
+        return match[1];
+      }
+    }
+  }
+  throw new Error(`${name}: no email "${mail.subject}" to ${mail.to} matching ${mail.pattern}`);
+}
+
 describe('API scenario (test/api_scenario.json)', () => {
   let app: INestApplication;
 
@@ -67,6 +89,10 @@ describe('API scenario (test/api_scenario.json)', () => {
   it('replays every step', async () => {
     const variables: Record<string, unknown> = {};
     for (const step of scenario.steps) {
+      if (step.mail) {
+        variables[step.mail.save] = readMail(step.name, step.mail);
+        continue;
+      }
       const path = step.path.replace(/\$\{(\w+)\}/g, (_match, name: string) => String(variables[name] ?? ''));
       const method = step.method.toLowerCase() as 'get' | 'post' | 'put' | 'patch' | 'delete' | 'options';
       let call = request(app.getHttpServer())[method](path);

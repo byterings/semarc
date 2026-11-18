@@ -18,6 +18,9 @@ Step format:
     equals   {"dotted.path": value-or-$ref} assertions on the JSON response
     absent   dotted paths that must not exist in the JSON response
     save     {"var": "dotted.path"} values captured from the JSON response
+
+A step with a "mail" key makes no HTTP request: the runner reads the newest email sent to
+mail.to with subject mail.subject, applies mail.pattern and saves group 1 as mail.save.
 """
 from urllib.parse import urlencode
 
@@ -25,6 +28,10 @@ from semarc.generator.utils.inflector import snake_case
 from semarc.generator.utils.resource_views import input_fields, models_in_migration_order, owner_reference, unique_columns
 
 MISSING_ID = 999999
+TOKEN_PATTERN = r"Token: ([0-9a-f]{64})"
+UNKNOWN_TOKEN = "0" * 64
+VERIFY_SUBJECT = "Verify your email address"
+RESET_SUBJECT = "Reset your password"
 ADMIN_EMAIL = "admin@example.com"  # runners set BOOTSTRAP_ADMIN_EMAIL to this address
 CORS_ORIGIN = "https://app.example.com"
 
@@ -126,12 +133,59 @@ class ApiScenarioBuilder:
         )
         self._step("current user requires token", "GET", "/me", 401)
         self._step("current user rejects invalid token", "GET", "/me", 401, token="invalid.token.value")
+        verification = auth.get("features", {}).get("email_verification")
+        if verification:
+            self._verification_steps(identity, verification)
         self._session_steps(auth, identity, secret)
         self.has_token = True
         self.created.append({"model": user, "var": "user_id", "routes": {}, "parents": set()})
         roles = auth.get("features", {}).get("roles")
         if roles:
             self._role_steps(user, auth, roles)
+
+    def _mail_step(self, name: str, to: str, subject: str, save: str) -> None:
+        self.steps.append({"name": name, "mail": {"to": to, "subject": subject, "pattern": TOKEN_PATTERN, "save": save}})
+
+    def _verification_steps(self, identity: str, verification: dict) -> None:
+        field = verification["field"]
+        self._mail_step("registration sends a verification email", identity, VERIFY_SUBJECT, "verify_token")
+        self._step("new accounts are unverified", "GET", "/me", 200, auth=True, equals={f"data.{field}": None})
+        self._step("verification rejects an unknown token", "POST", "/email/verify", 422, body={"token": UNKNOWN_TOKEN})
+        self._step(
+            "email verification",
+            "POST",
+            "/email/verify",
+            200,
+            body={"token": {"$ref": "verify_token"}},
+            equals={"data.id": {"$ref": "user_id"}},
+        )
+        self._step("verification token is single use", "POST", "/email/verify", 422, body={"token": {"$ref": "verify_token"}})
+        self._step("resending verification requires a token", "POST", "/email/resend", 401, body={})
+        self._step("resend verification", "POST", "/email/resend", 202, auth=True, body={})
+
+    def _reset_steps(self, auth: dict, identity: str, password: str) -> None:
+        identity_field, secret_field = auth["identity_field"], auth["secret_field"]
+        new_password = password + "-reset"
+        self._step("forgot password hides unknown accounts", "POST", "/password/forgot", 202, body={identity_field: "nobody@example.com"})
+        self._step("forgot password", "POST", "/password/forgot", 202, body={identity_field: identity})
+        self._mail_step("reset email is sent", identity, RESET_SUBJECT, "reset_token")
+        self._step(
+            "reset rejects an unknown token",
+            "POST",
+            "/password/reset",
+            422,
+            body={"token": UNKNOWN_TOKEN, secret_field: new_password},
+        )
+        self._step("password reset", "POST", "/password/reset", 204, body={"token": {"$ref": "reset_token"}, secret_field: new_password})
+        self._step("reset token is single use", "POST", "/password/reset", 422, body={"token": {"$ref": "reset_token"}, secret_field: new_password})
+        self._step(
+            "login after password reset",
+            "POST",
+            "/login",
+            200,
+            body={identity_field: identity, secret_field: new_password},
+            save={"token": "data.access_token", "refresh_token": "data.refresh_token"},
+        )
 
     def _session_steps(self, auth: dict, identity: str, secret: str) -> None:
         """Refresh token rotation, logout and password change."""
@@ -176,6 +230,8 @@ class ApiScenarioBuilder:
             body={auth["identity_field"]: identity, auth["secret_field"]: changed},
             save={"token": "data.access_token", "refresh_token": "data.refresh_token"},
         )
+        if auth.get("features", {}).get("password_reset"):
+            self._reset_steps(auth, identity, changed)
 
     def _role_steps(self, user: dict, auth: dict, roles: dict) -> None:
         identity = auth["identity_field"]
@@ -447,9 +503,9 @@ class ApiScenarioBuilder:
         auth = self.ir.get("auth")
         if not auth or not self.has_token:
             return
-        login = next(item for item in self.steps if item["path"] == "/login" and item["expect"] == 200)
+        login = next(item for item in self.steps if item.get("path") == "/login" and item.get("expect") == 200)
         credentials = {**login["body"], auth["secret_field"]: login["body"][auth["secret_field"]] + "-wrong"}
-        used = sum(1 for item in self.steps if item["method"] == "POST" and item["path"] == "/login")
+        used = sum(1 for item in self.steps if item.get("method") == "POST" and item.get("path") == "/login")
         attempts = auth["rate_limit"]["attempts"]
 
         # Whether a rejected (422) body counts as an attempt is framework specific,

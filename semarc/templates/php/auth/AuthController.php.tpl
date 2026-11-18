@@ -79,14 +79,7 @@ final class AuthController
     {
         $input = $request->json();
         $current = self::requiredString($input, 'current_password');
-        try {
-            $new = (new Validator())->validate(
-                ['{{secret_field}}' => $input['new_password'] ?? null],
-                ['{{secret_field}}' => {{auth_model}}::FIELDS['{{secret_field}}']],
-            )['{{secret_field}}'];
-        } catch (HttpException $exception) {
-            throw HttpException::validation(['new_password' => str_replace('{{secret_field}}', 'new_password', $exception->details['{{secret_field}}'] ?? [])]);
-        }
+        $new = self::validatedPassword($input['new_password'] ?? null, 'new_password');
 
         $userId = (int) $request->userId;
         $record = $this->repository->findById($userId);
@@ -107,6 +100,19 @@ final class AuthController
         return $this->tokens->issue($userId) + $this->refreshTokens->issue($userId);
     }
 
+    /** Applies the {{secret_field}} field rules to a new password; errors use $label as the field name. */
+    private static function validatedPassword(mixed $value, string $label): string
+    {
+        try {
+            return (new Validator())->validate(
+                ['{{secret_field}}' => $value],
+                ['{{secret_field}}' => {{auth_model}}::FIELDS['{{secret_field}}']],
+            )['{{secret_field}}'];
+        } catch (HttpException $exception) {
+            throw HttpException::validation([$label => str_replace('{{secret_field}}', $label, $exception->details['{{secret_field}}'] ?? [])]);
+        }
+    }
+{{extra_methods}}
     /**
      * @param array<string, mixed> $input
      */

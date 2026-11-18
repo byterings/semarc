@@ -200,6 +200,16 @@ and their modules. `USE` resolves stdlib modules from `semarc/stdlib/**/module.y
 `depends`, `requires` and `conflicts` rules. Resolved profiles and modules appear in the
 architecture report and the generator manifest. Unknown `USE` names are kept as metadata.
 
+Modules that change the generated API (all require `AUTH JWT`):
+
+| Module | Effect |
+| --- | --- |
+| `auth.roles` | `role` field, `ROUTE ... ROLE`, `PUT /users/{id}/role` |
+| `auth.password_reset` | `POST /password/forgot`, `POST /password/reset`, email sending |
+| `auth.email_verification` | `email_verified_at` field, verification email on registration, `POST /email/verify`, `POST /email/resend` |
+
+See [GENERATED_API.md](GENERATED_API.md) for their behaviour.
+
 ## Complete Example
 
 ```text

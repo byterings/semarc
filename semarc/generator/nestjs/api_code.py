@@ -1,7 +1,7 @@
 """Renders NestJS controllers, auth module, app module and TypeORM wiring from IR."""
 from semarc.compiler.version import SEMARC_VERSION
 from semarc.generator.nestjs.typescript import Imports, file_base, folder, route_path, service_property, ts_string
-from semarc.generator.utils.inflector import pascal_case
+from semarc.generator.utils.inflector import kebab_case, pascal_case
 from semarc.generator.utils.resource_views import all_route_labels, field_rules, model_by_name, roles_feature, routes_for_model
 
 HTTP_DECORATORS = {"GET": "Get", "POST": "Post", "PUT": "Put", "PATCH": "Patch", "DELETE": "Delete"}
@@ -174,6 +174,8 @@ def auth_code(ir: dict, reserved: set[str]) -> dict[str, str]:
     if auth["features"]["roles"]:
         imports.use("../../config/settings", "settings")
     role_lines = _role_route_lines(auth, name, imports)
+    mail_lines = _mail_controller_lines(auth, name, imports)
+    mail_enabled_ = bool(mail_lines)
     controller_source = "\n".join(
         imports.render()
         + [
@@ -186,6 +188,7 @@ def auth_code(ir: dict, reserved: set[str]) -> dict[str, str]:
             "    private readonly tokens: TokenService,",
             "    private readonly refreshTokens: RefreshTokenStore,",
             "    private readonly hasher: PasswordHasher,",
+            *(["    private readonly dataSource: DataSource,"] if mail_enabled_ else []),
             "  ) {}",
             "",
             f"  @{post}('register')",
@@ -194,6 +197,7 @@ def auth_code(ir: dict, reserved: set[str]) -> dict[str, str]:
             f"  async register(@{body}() dto: Create{name}Dto) {{",
             "    let user = await this.users.create(dto);",
             *_bootstrap_admin_lines(auth),
+            *(["    await this.sendVerification(user);"] if auth["features"]["email_verification"] else []),
             "    return { data: { user, ...(await this.session(user.id as number)) } };",
             "  }",
             "",
@@ -247,6 +251,7 @@ def auth_code(ir: dict, reserved: set[str]) -> dict[str, str]:
             "    return { data: await this.users.get(userId) };",
             "  }",
             *role_lines,
+            *mail_lines,
             "}",
             "",
         ]
@@ -301,15 +306,187 @@ def auth_code(ir: dict, reserved: set[str]) -> dict[str, str]:
         "src/modules/auth/auth.module.ts": module_source,
         "src/modules/auth/dto/login.dto.ts": dto_source,
         "src/modules/auth/dto/session.dto.ts": _session_dto(model_by_name(ir, auth["model"]), secret),
+        **(
+            {"src/modules/auth/dto/mail.dto.ts": _mail_dto(auth, _new_password_decorators(model_by_name(ir, auth["model"]), secret))}
+            if auth["features"]["password_reset"] or auth["features"]["email_verification"]
+            else {}
+        ),
         **({"src/modules/auth/dto/role-change.dto.ts": role_change_dto(auth["features"]["roles"])} if auth["features"]["roles"] else {}),
     }
 
 
-def _session_dto(model: dict, secret: str) -> str:
+TOKEN_ENTITIES = {"password_reset": "PasswordReset", "email_verification": "EmailVerification"}
+
+
+def token_entity_code(class_name: str, table: str) -> str:
+    return "\n".join(
+        [
+            "import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';",
+            "import { columnType } from '../../database/column-types';",
+            "",
+            f"@Entity({{ name: {ts_string(table)} }})",
+            f"export class {class_name} {{",
+            "  @PrimaryGeneratedColumn({ type: 'integer' })",
+            "  id!: number;",
+            "",
+            "  @Column({ type: columnType('STRING'), length: 255, unique: true })",
+            "  token_hash!: string;",
+            "",
+            "  @Column({ type: columnType('DATETIME') })",
+            "  expires_at!: Date;",
+            "",
+            "  @Column({ type: columnType('DATETIME'), nullable: true })",
+            "  used_at!: Date | null;",
+            "",
+            "  @Index()",
+            "  @Column({ type: columnType('INTEGER') })",
+            "  user_id!: number;",
+            "",
+            "  @Column({ type: columnType('DATETIME') })",
+            "  created_at!: Date;",
+            "",
+            "  @Column({ type: columnType('DATETIME') })",
+            "  updated_at!: Date;",
+            "}",
+            "",
+        ]
+    )
+
+
+def _mail_dto(auth: dict, new_password: list[str]) -> str:
+    identity, secret = auth["identity_field"], auth["secret_field"]
+    return "\n".join(
+        [
+            "import { IsString, MaxLength, MinLength } from 'class-validator';",
+            "",
+            "export class ForgotPasswordDto {",
+            "  @IsString()",
+            "  @MinLength(1)",
+            f"  {identity}!: string;",
+            "}",
+            "",
+            "export class ResetPasswordDto {",
+            "  @IsString()",
+            "  @MinLength(1)",
+            "  token!: string;",
+            "",
+            "  @IsString()",
+            *new_password,
+            f"  {secret}!: string;",
+            "}",
+            "",
+            "export class TokenDto {",
+            "  @IsString()",
+            "  @MinLength(1)",
+            "  token!: string;",
+            "}",
+            "",
+        ]
+    )
+
+
+def _mail_controller_lines(auth: dict, name: str, imports: Imports) -> list[str]:
+    features = auth["features"]
+    if not (features["password_reset"] or features["email_verification"]):
+        return []
+    identity, secret = auth["identity_field"], auth["secret_field"]
+    imports.use("@nestjs/common", "Post")
+    imports.use("../../common/mailer", "Mailer")
+    imports.use("./one-time-tokens", "OneTimeTokens")
+    lines: list[str] = []
+    reset = features["password_reset"]
+    if reset:
+        imports.use("./password-reset.entity", "PasswordReset")
+        imports.use("./dto/mail.dto", "ForgotPasswordDto")
+        imports.use("./dto/mail.dto", "ResetPasswordDto")
+        lines += [
+            "",
+            "  @Post('password/forgot')",
+            "  @HttpCode(202)",
+            "  @UseGuards(AuthRateLimitGuard)",
+            "  async forgotPassword(@Body() dto: ForgotPasswordDto) {",
+            f"    const record = await this.repository.findBy({ts_string(identity)}, dto.{identity});",
+            "    if (record) {",
+            f"      const token = await new OneTimeTokens(this.dataSource, PasswordReset).issue(record.id, {reset['ttl_seconds']});",
+            "      const body = Mailer.body(",
+            "        'Use this token to reset your password.',",
+            "        token,",
+            "        'reset-password',",
+            f"        'The token expires in {reset['ttl_seconds'] // 60} minutes. If you did not ask for a reset, ignore this email.',",
+            "      );",
+            f"      await Mailer.send(dto.{identity}, 'Reset your password', body);",
+            "    }",
+            "    return { data: { message: 'If the account exists, a reset email has been sent.' } };",
+            "  }",
+            "",
+            "  @Post('password/reset')",
+            "  @HttpCode(204)",
+            "  async resetPassword(@Body() dto: ResetPasswordDto) {",
+            "    const userId = await new OneTimeTokens(this.dataSource, PasswordReset).consume(dto.token);",
+            "    const record = userId === undefined ? null : await this.repository.findById(userId);",
+            "    if (!record) {",
+            "      throw ApiError.validation({ token: ['token is invalid or expired'] });",
+            "    }",
+            f"    await this.repository.update(record, {{ {secret}: await this.hasher.hash(dto.{secret}) }} as Partial<{name}>);",
+            "    await this.refreshTokens.revokeAll(record.id);",
+            "  }",
+        ]
+    verification = features["email_verification"]
+    if verification:
+        field = verification["field"]
+        imports.use("./email-verification.entity", "EmailVerification")
+        imports.use("./dto/mail.dto", "TokenDto")
+        lines += [
+            "",
+            "  @Post('email/verify')",
+            "  @HttpCode(200)",
+            "  async verifyEmail(@Body() dto: TokenDto) {",
+            "    const userId = await new OneTimeTokens(this.dataSource, EmailVerification).consume(dto.token);",
+            "    const record = userId === undefined ? null : await this.repository.findById(userId);",
+            "    if (!record) {",
+            "      throw ApiError.validation({ token: ['token is invalid or expired'] });",
+            "    }",
+            f"    await this.repository.update(record, {{ {field}: nowUtc() }} as Partial<{name}>);",
+            "    return { data: await this.users.get(record.id) };",
+            "  }",
+            "",
+            "  @Post('email/resend')",
+            "  @HttpCode(202)",
+            "  @UseGuards(AuthGuard)",
+            "  async resendVerification(@CurrentUserId() userId: number) {",
+            "    const user = await this.users.get(userId);",
+            f"    if (user.{field} === null) {{",
+            "      await this.sendVerification(user);",
+            "    }",
+            "    return { data: { message: 'A verification email is sent when the address is not verified yet.' } };",
+            "  }",
+            "",
+            "  private async sendVerification(user: Record<string, unknown>) {",
+            f"    const token = await new OneTimeTokens(this.dataSource, EmailVerification).issue(user.id as number, {verification['ttl_seconds']});",
+            "    const body = Mailer.body(",
+            "      'Use this token to confirm your email address.',",
+            "      token,",
+            "      'verify-email',",
+            f"      'The token expires in {verification['ttl_seconds'] // 3600} hours.',",
+            "    );",
+            f"    await Mailer.send(String(user.{identity}), 'Verify your email address', body);",
+            "  }",
+        ]
+        imports.use("../../database/column-types", "nowUtc")
+    imports.use("typeorm", "DataSource")
+    return lines
+
+
+def _new_password_decorators(model: dict, secret: str) -> list[str]:
     rules = field_rules(next(item for item in model["fields"] if item["name"] == secret))
-    new_password = [f"  @MinLength({rules['min'] or 1})"]
+    decorators = [f"  @MinLength({rules['min'] or 1})"]
     if rules["max"]:
-        new_password.append(f"  @MaxLength({rules['max']})")
+        decorators.append(f"  @MaxLength({rules['max']})")
+    return decorators
+
+
+def _session_dto(model: dict, secret: str) -> str:
+    new_password = _new_password_decorators(model, secret)
     return "\n".join(
         [
             "import { IsString, MaxLength, MinLength } from 'class-validator';",
@@ -574,6 +751,10 @@ def data_source_code(ir: dict) -> str:
     if ir.get("auth"):
         entity_imports.append("import { RefreshToken } from '../modules/auth/refresh-token.entity';")
         entity_names.append("RefreshToken")
+        for feature, class_name in TOKEN_ENTITIES.items():
+            if ir["auth"]["features"][feature]:
+                entity_imports.append(f"import {{ {class_name} }} from '../modules/auth/{kebab_case(class_name)}.entity';")
+                entity_names.append(class_name)
     migrations = [migration_class(table) for table in ir["migrations"]["tables"]]
     migration_imports = [f"import {{ {class_name} }} from './migrations/{file}';" for class_name, file in migrations]
     return "\n".join(
@@ -685,6 +866,14 @@ def settings_code(ir: dict, settings: dict, port: int) -> str:
                 f"  authRateWindow: Number(env('AUTH_RATE_WINDOW', '{ir['auth']['rate_limit']['window_seconds']}')),",
                 "  bootstrapAdminEmail: env('BOOTSTRAP_ADMIN_EMAIL', ''),",
                 f"  jwtRefreshTtl: Number(env('JWT_REFRESH_TTL', '{ir['auth']['features']['refresh_tokens']['ttl_seconds']}')),",
+                "  appUrl: env('APP_URL', ''),",
+                "  mailDriver: env('MAIL_DRIVER', 'log'),",
+                "  mailHost: env('MAIL_HOST', '127.0.0.1'),",
+                "  mailPort: Number(env('MAIL_PORT', '1025')),",
+                "  mailUsername: env('MAIL_USERNAME', ''),",
+                "  mailPassword: env('MAIL_PASSWORD', ''),",
+                "  mailEncryption: env('MAIL_ENCRYPTION', 'none'),",
+                "  mailFrom: env('MAIL_FROM', 'no-reply@localhost'),",
             ]
         )
     lines.extend(["};", ""])

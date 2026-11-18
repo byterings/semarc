@@ -114,6 +114,46 @@ ROUTE DELETE /sections/{id} ROLE admin
   roles are `admin`, `user` and every role named in a `ROLE` clause.
 - Admins may update and delete records owned by other users.
 
+### Password reset and email verification
+
+```text
+USE auth.password_reset
+USE auth.email_verification
+```
+
+| Route | Behaviour |
+| --- | --- |
+| `POST /password/forgot` | `{"email": ...}`; emails a reset token when the account exists. Always 202, so the response does not reveal which addresses have accounts. Rate limited like login |
+| `POST /password/reset` | `{"token", "password"}`; sets the new password (same rules as registration), revokes every refresh token of the user (204); 422 for an unknown, used or expired token |
+| `POST /email/verify` | `{"token": ...}`; marks the address verified and returns the user (200); 422 for an unknown, used or expired token |
+| `POST /email/resend` | Protected; emails a new verification token when the address is not verified yet (202) |
+
+- Tokens are 64 random hexadecimal characters, single use and stored only as SHA-256
+  hashes (`password_resets`, `email_verifications`). Reset tokens expire after one hour,
+  verification tokens after 24 hours. Deleting a user deletes their tokens.
+- With `auth.email_verification`, `User` gets a managed `email_verified_at` field (`null`
+  until verified, never accepted from request bodies) and registration sends the
+  verification email. Unverified users can still log in; check `email_verified_at` where
+  your business rules need a verified address.
+- Emails are plain text and contain the token. When `APP_URL` is set they also contain a
+  link to `<APP_URL>/reset-password?token=...` or `<APP_URL>/verify-email?token=...` for
+  your front end.
+
+Mail settings:
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `MAIL_DRIVER` | `log` | `smtp` sends mail; `log` writes it to the application log; `memory` keeps it in process (tests) |
+| `MAIL_HOST`, `MAIL_PORT` | | SMTP server |
+| `MAIL_USERNAME`, `MAIL_PASSWORD` | | SMTP credentials (optional) |
+| `MAIL_ENCRYPTION` | `none` | `tls` for STARTTLS, `ssl` for implicit TLS |
+| `MAIL_FROM` | `no-reply@<project>.local` | Sender address |
+| `APP_URL` | | Front-end base URL used for links in emails |
+
+The generated `docker-compose.yml` runs [Mailpit](https://mailpit.axllent.org/) as a local
+SMTP server (`MAIL_DRIVER=smtp`): every email sent by the API appears at
+http://localhost:8025 (`MAIL_UI_PORT` changes the port). Point `MAIL_*` at a real provider before deploying.
+
 ### Ownership
 
 When a model references `User` (for example `RELATION User HAS_MANY Post`), the record has

@@ -52,6 +52,15 @@ def field_defaults(model: dict) -> dict:
     return {model_field["name"]: model_field["default"] for model_field in model["fields"] if model_field.get("default") is not None}
 
 
+def auth_feature(ir: dict, name: str) -> dict | None:
+    auth = ir.get("auth") or {}
+    return auth.get("features", {}).get(name)
+
+
+def mail_enabled(ir: dict) -> bool:
+    return bool(auth_feature(ir, "password_reset") or auth_feature(ir, "email_verification"))
+
+
 def roles_feature(ir: dict) -> dict | None:
     auth = ir.get("auth") or {}
     return auth.get("features", {}).get("roles")
