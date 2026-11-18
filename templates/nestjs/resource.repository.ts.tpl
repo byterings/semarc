@@ -7,10 +7,10 @@ type Filters = Record<string, unknown>;
 export abstract class ResourceRepository<T extends ObjectLiteral> {
   protected constructor(protected readonly repository: Repository<T>) {}
 
-  paginate(limit: number, offset: number, filters: Filters = {}): Promise<T[]> {
+  paginate(limit: number, offset: number, filters: Filters = {}, orderBy = 'id', direction: 'ASC' | 'DESC' = 'ASC'): Promise<T[]> {
     return this.repository.find({
       where: filters as FindOptionsWhere<T>,
-      order: { id: 'ASC' } as never,
+      order: { [orderBy]: direction, id: 'ASC' } as never,
       take: limit,
       skip: offset,
     });

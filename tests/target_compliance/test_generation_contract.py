@@ -126,7 +126,7 @@ class GenerationContractComplianceTests(unittest.TestCase):
             service = (output / "services" / "customer_service.py").read_text(encoding="utf-8")
             self.assertIn("CustomerService", router)
             self.assertIn("return CustomerService(db)", router)
-            self.assertIn("return service.list(limit, offset)", router)
+            self.assertIn("return service.list(limit, offset, http_request.query_params)", router)
             self.assertIn("super().__init__(CustomerRepository(session))", service)
             self.assertIn("CustomerRepository", service)
 
@@ -147,7 +147,7 @@ class GenerationContractComplianceTests(unittest.TestCase):
             self.assertIn("constructor(repository: CustomerRepository)", service)
             self.assertIn("extends ResourceService<Customer>", service)
             self.assertIn("private readonly customerService: CustomerService", controller)
-            self.assertIn("return this.customerService.list(...pageParams(limit, offset));", controller)
+            self.assertIn("return this.customerService.list(...pageParams(query.limit, query.offset), query);", controller)
 
     def test_project_experience_endpoints_exist_for_every_target(self):
         for target in ["php", "fastapi", "nestjs"]:

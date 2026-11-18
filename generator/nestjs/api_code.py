@@ -58,7 +58,7 @@ def _controller_method(ir: dict, route: dict, name: str, service: str, imports: 
     if kind in {"list", "list_related"}:
         query = imports.use("@nestjs/common", "Query")
         imports.use("../../common/resource.service", "pageParams")
-        parameters.extend([f"@{query}('limit') limit?: string", f"@{query}('offset') offset?: string"])
+        parameters.append(f"@{query}() query: Record<string, string>")
     owner = "undefined"
     if protected and kind in {"create", "replace", "update", "delete"}:
         imports.use("../../common/current-user.decorator", "CurrentUserId")
@@ -72,7 +72,7 @@ def _controller_method(ir: dict, route: dict, name: str, service: str, imports: 
     method = _unique(method, used)
 
     body = {
-        "list": f"    return this.{service}.list(...pageParams(limit, offset));",
+        "list": f"    return this.{service}.list(...pageParams(query.limit, query.offset), query);",
         "read": f"    return {{ data: await this.{service}.get(id) }};",
         "create": f"    return {{ data: await this.{service}.create(dto, {owner}) }};",
         "replace": f"    return {{ data: await this.{service}.update(id, dto, false, {owner}) }};",
@@ -82,7 +82,7 @@ def _controller_method(ir: dict, route: dict, name: str, service: str, imports: 
             f"    return this.{service}.listForParent("
             f"{ts_string(model_by_name(ir, operation['parent_model'])['table']) if kind == 'list_related' else ''}, "
             f"{ts_string(operation.get('parent_model', ''))}, {ts_string(operation.get('foreign_key', ''))}, "
-            "id, ...pageParams(limit, offset));"
+            "id, ...pageParams(query.limit, query.offset), query);"
         ),
     }[kind]
     asynchronous = "" if kind == "list" else "async "

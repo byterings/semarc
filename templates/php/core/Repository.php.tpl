@@ -19,12 +19,14 @@ abstract class Repository
      * @param array<string, mixed> $where
      * @return list<array<string, mixed>>
      */
-    public function paginate(int $limit, int $offset, array $where = []): array
+    public function paginate(int $limit, int $offset, array $where = [], string $orderBy = 'id', string $direction = 'ASC'): array
     {
         [$clause, $bindings] = $this->where($where);
+        $direction = $direction === 'DESC' ? 'DESC' : 'ASC';
         $statement = $this->connection->prepare(
             'SELECT * FROM ' . Database::quote($this->table) . $clause
-            . ' ORDER BY ' . Database::quote('id') . ' LIMIT ' . $limit . ' OFFSET ' . $offset
+            . ' ORDER BY ' . Database::quote($orderBy) . ' ' . $direction . ', ' . Database::quote('id') . ' ASC'
+            . ' LIMIT ' . $limit . ' OFFSET ' . $offset
         );
         $this->execute($statement, $bindings);
 

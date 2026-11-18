@@ -176,6 +176,9 @@ def service_code(model: dict, reserved: set[str]) -> str:
     datetimes = [model_field["name"] for model_field in model["fields"] if model_field["type"] == "DATETIME"]
     if datetimes:
         lines.append(f"  protected readonly dateTimes = [{', '.join(ts_string(field) for field in datetimes)}];")
+    filters = ", ".join(f"{name}: {ts_string(field_type)}" for name, field_type in model["query"]["filters"].items())
+    lines.append(f"  protected readonly filters = {{ {filters} }};")
+    lines.append(f"  protected readonly sortFields = [{', '.join(ts_string(field) for field in model['query']['sort'])}];")
 
     lines.append("")
     if secrets:

@@ -25,14 +25,20 @@ abstract class ResourceService
     }
 
     /**
+     * Lists records. $query holds request query parameters (equality filters and
+     * sort); $where holds fixed conditions such as a parent id, which take precedence.
+     *
+     * @param array<string, mixed> $query
      * @param array<string, mixed> $where
      * @return array<string, mixed> data and pagination meta
      */
-    public function list(int $limit, int $offset, array $where = []): array
+    public function list(int $limit, int $offset, array $query = [], array $where = []): array
     {
         $limit = max(1, min($limit, self::MAX_LIMIT));
         $offset = max(0, $offset);
-        $rows = $this->repository->paginate($limit, $offset, $where);
+        [$filters, $orderBy, $direction] = $this->parseQuery($query);
+        $where += $filters;
+        $rows = $this->repository->paginate($limit, $offset, $where, $orderBy, $direction);
 
         return [
             'data' => array_map([$this->model, 'toArray'], $rows),
@@ -43,13 +49,20 @@ abstract class ResourceService
     /**
      * @return array<string, mixed> data and pagination meta
      */
-    public function listForParent(string $parentModel, string $parentTable, string $column, int $parentId, int $limit, int $offset): array
-    {
+    public function listForParent(
+        string $parentModel,
+        string $parentTable,
+        string $column,
+        int $parentId,
+        int $limit,
+        int $offset,
+        array $query = [],
+    ): array {
         if (!$this->repository->rowExists($parentTable, $parentId)) {
             throw HttpException::notFound("{$parentModel} {$parentId} not found.");
         }
 
-        return $this->list($limit, $offset, [$column => $parentId]);
+        return $this->list($limit, $offset, $query, [$column => $parentId]);
     }
 
     /**
@@ -127,6 +140,72 @@ abstract class ResourceService
     protected function find(int $id): array
     {
         return $this->repository->findById($id) ?? throw HttpException::notFound("{$this->name()} {$id} not found.");
+    }
+
+    /**
+     * @param array<string, mixed> $query
+     * @return array{0: array<string, mixed>, 1: string, 2: string}
+     */
+    private function parseQuery(array $query): array
+    {
+        $errors = [];
+        $filters = [];
+        foreach (($this->model)::FILTERS as $field => $type) {
+            if (!array_key_exists($field, $query)) {
+                continue;
+            }
+            $value = is_string($query[$field]) ? self::filterValue($query[$field], $type) : null;
+            if ($value === null) {
+                $errors[$field][] = "{$field} filter must be " . self::describe($type);
+                continue;
+            }
+            $filters[$field] = $value;
+        }
+
+        $orderBy = 'id';
+        $direction = 'ASC';
+        if (array_key_exists('sort', $query)) {
+            $sort = is_string($query['sort']) ? $query['sort'] : '';
+            $field = ltrim($sort, '-');
+            if (!in_array($field, ($this->model)::SORT, true)) {
+                $errors['sort'][] = 'sort must be one of: ' . implode(', ', ($this->model)::SORT) . ' (prefix with - for descending)';
+            } else {
+                $orderBy = $field;
+                $direction = str_starts_with($sort, '-') ? 'DESC' : 'ASC';
+            }
+        }
+
+        if ($errors !== []) {
+            throw HttpException::validation($errors);
+        }
+
+        return [$filters, $orderBy, $direction];
+    }
+
+    private static function filterValue(string $raw, string $type): mixed
+    {
+        return match ($type) {
+            'INTEGER' => preg_match('/^-?\d+$/', $raw) === 1 ? (int) $raw : null,
+            'FLOAT' => is_numeric($raw) ? (float) $raw : null,
+            'BOOLEAN' => match (strtolower($raw)) {
+                'true', '1' => true,
+                'false', '0' => false,
+                default => null,
+            },
+            'DATE' => Validator::isDate($raw) ? $raw : null,
+            default => $raw,
+        };
+    }
+
+    private static function describe(string $type): string
+    {
+        return match ($type) {
+            'INTEGER' => 'an integer',
+            'FLOAT' => 'a number',
+            'BOOLEAN' => 'true or false',
+            'DATE' => 'a date (YYYY-MM-DD)',
+            default => 'text',
+        };
     }
 
     /**

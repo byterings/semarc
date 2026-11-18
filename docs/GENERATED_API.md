@@ -104,7 +104,17 @@ an owner:
 {"data": {"id": 1, "title": "Hello", "user_id": 1, "created_at": "2026-01-01T10:00:00Z", "updated_at": "2026-01-01T10:00:00Z"}}
 ```
 
-Lists accept `?limit=` (default 20, max 100) and `?offset=`:
+Lists accept `?limit=` (default 20, max 100) and `?offset=`, equality filters and sorting:
+
+- `?field=value` filters on any non-secret field, foreign key column or `id` (`DATETIME`
+  fields are sortable but not filterable). Values are parsed by type: integers, numbers,
+  `true`/`false` (or `1`/`0`), `YYYY-MM-DD` dates, or text. Several filters combine with AND.
+- `?sort=field` sorts ascending, `?sort=-field` descending, on the same fields plus
+  `created_at` and `updated_at`; ties are ordered by `id`.
+- An invalid filter value or unknown sort field returns 422. Unknown query parameters are ignored.
+
+Example: `GET /posts?user_id=3&published=true&sort=-created_at&limit=10`.
+
 
 ```json
 {"data": [], "meta": {"total": 0, "limit": 20, "offset": 0}}

@@ -37,24 +37,37 @@ export abstract class ResourceService<T extends ObjectLiteral> {
   protected readonly dependents: Dependent[] = [];
   protected readonly unique: string[] = [];
   protected readonly dateTimes: string[] = [];
+  protected readonly filters: Record<string, string> = { id: 'INTEGER' };
+  protected readonly sortFields: string[] = ['id'];
 
   protected constructor(protected readonly repository: ResourceRepository<T>) {}
 
-  async list(limit: number, offset: number, filters: Data = {}): Promise<Page> {
+  /** Lists records; query holds equality filters and sort, where holds fixed conditions. */
+  async list(limit: number, offset: number, query: Record<string, unknown> = {}, where: Data = {}): Promise<Page> {
     const safeLimit = Math.max(1, Math.min(limit, MAX_LIMIT));
     const safeOffset = Math.max(0, offset);
-    const records = await this.repository.paginate(safeLimit, safeOffset, filters);
+    const [parsed, orderBy, direction] = this.parseQuery(query);
+    const filters = { ...parsed, ...where };
+    const records = await this.repository.paginate(safeLimit, safeOffset, filters, orderBy, direction);
     return {
       data: records.map((record) => this.serialize(record)),
       meta: { total: await this.repository.count(filters), limit: safeLimit, offset: safeOffset },
     };
   }
 
-  async listForParent(parentTable: string, parentName: string, column: string, parentId: number, limit: number, offset: number): Promise<Page> {
+  async listForParent(
+    parentTable: string,
+    parentName: string,
+    column: string,
+    parentId: number,
+    limit: number,
+    offset: number,
+    query: Record<string, unknown> = {},
+  ): Promise<Page> {
     if (!(await this.repository.rowExists(parentTable, parentId))) {
       throw ApiError.notFound(`${parentName} ${parentId} not found.`);
     }
-    return this.list(limit, offset, { [column]: parentId });
+    return this.list(limit, offset, query, { [column]: parentId });
   }
 
   async get(id: number): Promise<Data> {
@@ -113,6 +126,41 @@ export abstract class ResourceService<T extends ObjectLiteral> {
       throw ApiError.notFound(`${this.name} ${id} not found.`);
     }
     return record;
+  }
+
+  private parseQuery(query: Record<string, unknown>): [Data, string, 'ASC' | 'DESC'] {
+    const errors: ErrorDetails = {};
+    const filters: Data = {};
+    for (const [field, type] of Object.entries(this.filters)) {
+      if (!(field in query)) {
+        continue;
+      }
+      const raw = query[field];
+      const value = typeof raw === 'string' ? filterValue(raw, type) : undefined;
+      if (value === undefined) {
+        errors[field] = [`${field} filter must be ${FILTER_DESCRIPTIONS[type] ?? 'text'}`];
+      } else {
+        filters[field] = value;
+      }
+    }
+
+    let orderBy = 'id';
+    let direction: 'ASC' | 'DESC' = 'ASC';
+    if ('sort' in query) {
+      const sort = typeof query.sort === 'string' ? query.sort : '';
+      const field = sort.replace(/^-/, '');
+      if (!this.sortFields.includes(field)) {
+        errors.sort = [`sort must be one of: ${this.sortFields.join(', ')} (prefix with - for descending)`];
+      } else {
+        orderBy = field;
+        direction = sort.startsWith('-') ? 'DESC' : 'ASC';
+      }
+    }
+
+    if (Object.keys(errors).length > 0) {
+      throw ApiError.validation(errors);
+    }
+    return [filters, orderBy, direction];
   }
 
   /** ISO 8601 date-time strings are stored as UTC Date values without milliseconds. */
@@ -180,6 +228,28 @@ export abstract class ResourceService<T extends ObjectLiteral> {
     if (Object.keys(errors).length > 0) {
       throw ApiError.conflict(`${this.name} already exists.`, errors);
     }
+  }
+}
+
+const FILTER_DESCRIPTIONS: Record<string, string> = {
+  INTEGER: 'an integer',
+  FLOAT: 'a number',
+  BOOLEAN: 'true or false',
+  DATE: 'a date (YYYY-MM-DD)',
+};
+
+function filterValue(raw: string, type: string): unknown {
+  switch (type) {
+    case 'INTEGER':
+      return /^-?\d+$/.test(raw) ? Number(raw) : undefined;
+    case 'FLOAT':
+      return raw.trim() !== '' && Number.isFinite(Number(raw)) ? Number(raw) : undefined;
+    case 'BOOLEAN':
+      return ({ true: true, '1': true, false: false, '0': false } as Record<string, boolean>)[raw.toLowerCase()];
+    case 'DATE':
+      return /^\d{4}-\d{2}-\d{2}$/.test(raw) && !Number.isNaN(Date.parse(raw)) ? raw : undefined;
+    default:
+      return raw;
   }
 }
 

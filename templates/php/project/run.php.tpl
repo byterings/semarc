@@ -60,7 +60,10 @@ foreach ($scenario['steps'] as $step) {
         $body = '{}';
     }
 
-    $response = $router->dispatch(new Request($step['method'], Request::normalizePath($path), [], $headers, $body));
+    $query = [];
+    parse_str((string) parse_url($path, PHP_URL_QUERY), $query);
+    $route = (string) parse_url($path, PHP_URL_PATH);
+    $response = $router->dispatch(new Request($step['method'], Request::normalizePath($route), $query, $headers, $body));
     $content = $response->content();
     $json = $response->contentType === 'application/json' && $content !== '' ? json_decode($content, true) : null;
 

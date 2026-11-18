@@ -16,11 +16,19 @@ class Repository(Generic[ModelT]):
     def __init__(self, session: Session) -> None:
         self.session = session
 
-    def paginate(self, limit: int, offset: int, filters: dict[str, Any] | None = None) -> list[ModelT]:
+    def paginate(
+        self,
+        limit: int,
+        offset: int,
+        filters: dict[str, Any] | None = None,
+        order_by: str = "id",
+        descending: bool = False,
+    ) -> list[ModelT]:
+        column = getattr(self.model, order_by)
         statement = (
             select(self.model)
             .filter_by(**(filters or {}))
-            .order_by(self.model.id)
+            .order_by(column.desc() if descending else column.asc(), self.model.id)
             .limit(limit)
             .offset(offset)
         )

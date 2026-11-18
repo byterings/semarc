@@ -76,7 +76,8 @@ selected database, a README, `generator_manifest.json` and `architecture_report.
 All targets share one API contract (see [docs/GENERATED_API.md](docs/GENERATED_API.md)):
 
 - `GET /`, `GET /health` (with a database check) and `GET /routes`
-- `{"data": ...}` responses; lists add `meta` with `total`, `limit`, `offset`
+- `{"data": ...}` responses; lists add `meta` with `total`, `limit`, `offset` and accept
+  equality filters (`?status=paid`) and sorting (`?sort=-created_at`)
 - an `error` object with `code`, `message` and field `details` for 400, 401, 403, 404, 409, 422 and 501
 - owner-only changes for records that belong to a user
 

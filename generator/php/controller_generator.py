@@ -30,6 +30,7 @@ class ControllerGenerator:
                 "return $this->service->list(",
                 "    $request->queryInt('limit', ResourceService::DEFAULT_LIMIT),",
                 "    $request->queryInt('offset', 0),",
+                "    $request->query,",
                 ");",
             ]))
         if "read" in kinds:
@@ -63,6 +64,7 @@ class ControllerGenerator:
                 "    self::id($parentId),",
                 "    $request->queryInt('limit', ResourceService::DEFAULT_LIMIT),",
                 "    $request->queryInt('offset', 0),",
+                "    $request->query,",
                 ");",
             ]))
         if ITEM_KINDS & set(kinds) or related_parents(ir, name):

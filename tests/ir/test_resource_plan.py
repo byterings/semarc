@@ -185,6 +185,20 @@ class ModelSpecTests(unittest.TestCase):
         )
         self.assertEqual(user["dependents"], [{"model": "Post", "table": "posts", "column": "user_id"}])
 
+    def test_list_query_fields_exclude_secrets_and_datetimes(self):
+        user = model(self.ir, "User")
+        post = model(self.ir, "Post")
+        self.assertNotIn("password", user["query"]["filters"])
+        self.assertNotIn("password", user["query"]["sort"])
+        self.assertEqual(post["query"]["filters"], {"id": "INTEGER", "title": "STRING", "body": "TEXT", "user_id": "INTEGER"})
+        self.assertEqual(post["query"]["sort"], ["id", "title", "body", "user_id", "created_at", "updated_at"])
+
+        ir = compile_ir("PROJECT P\n\nMODEL Event\n    starts_at DATETIME\n    day DATE\n")
+        event = model(ir, "Event")
+        self.assertNotIn("starts_at", event["query"]["filters"])
+        self.assertEqual(event["query"]["filters"]["day"], "DATE")
+        self.assertIn("starts_at", event["query"]["sort"])
+
     def test_table_and_resource_names(self):
         self.assertEqual(model(self.ir, "Post")["table"], "posts")
         self.assertEqual(model(self.ir, "Post")["resource"], "posts")

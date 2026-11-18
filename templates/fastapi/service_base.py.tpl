@@ -1,4 +1,7 @@
+import re
+from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import date
 from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel
@@ -38,23 +41,43 @@ class ResourceService(Generic[ModelT]):
     references: tuple[Reference, ...] = ()
     dependents: tuple[Dependent, ...] = ()
     unique: tuple[str, ...] = ()
+    filters: dict[str, str] = {"id": "INTEGER"}
+    sort_fields: tuple[str, ...] = ("id",)
 
     def __init__(self, repository: Repository[ModelT]) -> None:
         self.repository = repository
 
-    def list(self, limit: int, offset: int, filters: dict[str, Any] | None = None) -> dict:
+    def list(
+        self,
+        limit: int,
+        offset: int,
+        query: Mapping[str, str] | None = None,
+        where: dict[str, Any] | None = None,
+    ) -> dict:
+        """Lists records; query holds equality filters and sort, where holds fixed conditions."""
         limit = max(1, min(limit, MAX_LIMIT))
         offset = max(0, offset)
-        records = self.repository.paginate(limit, offset, filters)
+        filters, order_by, descending = self._parse_query(query or {})
+        filters.update(where or {})
+        records = self.repository.paginate(limit, offset, filters, order_by, descending)
         return {
             "data": [self.serialize(record) for record in records],
             "meta": {"total": self.repository.count(filters), "limit": limit, "offset": offset},
         }
 
-    def list_for_parent(self, parent: type[Base], parent_name: str, column: str, parent_id: int, limit: int, offset: int) -> dict:
+    def list_for_parent(
+        self,
+        parent: type[Base],
+        parent_name: str,
+        column: str,
+        parent_id: int,
+        limit: int,
+        offset: int,
+        query: Mapping[str, str] | None = None,
+    ) -> dict:
         if not self.repository.row_exists(parent, parent_id):
             raise ApiError.not_found(f"{parent_name} {parent_id} not found.")
-        return self.list(limit, offset, {column: parent_id})
+        return self.list(limit, offset, query, {column: parent_id})
 
     def get(self, record_id: int) -> dict:
         return self.serialize(self.find(record_id))
@@ -100,6 +123,31 @@ class ResourceService(Generic[ModelT]):
             raise ApiError.not_found(f"{self.name} {record_id} not found.")
         return record
 
+    def _parse_query(self, query: Mapping[str, str]) -> tuple[dict[str, Any], str, bool]:
+        errors: dict[str, list[str]] = {}
+        filters: dict[str, Any] = {}
+        for field, field_type in self.filters.items():
+            if field not in query:
+                continue
+            value = _filter_value(query[field], field_type)
+            if value is None:
+                errors[field] = [f"{field} filter must be {FILTER_DESCRIPTIONS.get(field_type, 'text')}"]
+            else:
+                filters[field] = value
+
+        order_by, descending = "id", False
+        if "sort" in query:
+            sort = query["sort"]
+            if sort.lstrip("-") not in self.sort_fields:
+                choices = ", ".join(self.sort_fields)
+                errors["sort"] = [f"sort must be one of: {choices} (prefix with - for descending)"]
+            else:
+                order_by, descending = sort.lstrip("-"), sort.startswith("-")
+
+        if errors:
+            raise ApiError.validation(errors)
+        return filters, order_by, descending
+
     def _check_owner(self, record: ModelT, owner_id: int | None) -> None:
         """On protected routes, records with an owner column may only be changed by their owner."""
         if owner_id is None:
@@ -137,3 +185,29 @@ class ResourceService(Generic[ModelT]):
                 errors[column] = [f"{column} has already been taken"]
         if errors:
             raise ApiError.conflict(f"{self.name} already exists.", errors)
+
+
+FILTER_DESCRIPTIONS = {
+    "INTEGER": "an integer",
+    "FLOAT": "a number",
+    "BOOLEAN": "true or false",
+    "DATE": "a date (YYYY-MM-DD)",
+}
+
+
+def _filter_value(raw: str, field_type: str) -> Any:
+    if field_type == "INTEGER":
+        return int(raw) if re.fullmatch(r"-?\d+", raw) else None
+    if field_type == "FLOAT":
+        try:
+            return float(raw)
+        except ValueError:
+            return None
+    if field_type == "BOOLEAN":
+        return {"true": True, "1": True, "false": False, "0": False}.get(raw.lower())
+    if field_type == "DATE":
+        try:
+            return date.fromisoformat(raw) if re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw) else None
+        except ValueError:
+            return None
+    return raw

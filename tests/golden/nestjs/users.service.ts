@@ -9,6 +9,8 @@ export class UserService extends ResourceService<User> {
   protected readonly name = 'User';
   protected readonly output = ['id', 'email', 'name', 'created_at', 'updated_at'];
   protected readonly unique = ['email'];
+  protected readonly filters = { id: 'INTEGER', email: 'STRING', name: 'STRING' };
+  protected readonly sortFields = ['id', 'email', 'name', 'created_at', 'updated_at'];
 
   constructor(
     repository: UserRepository,

@@ -9,7 +9,7 @@ export class UserController {
 
   @Get('users')
   @UseGuards(AuthGuard)
-  list(@Query('limit') limit?: string, @Query('offset') offset?: string) {
-    return this.userService.list(...pageParams(limit, offset));
+  list(@Query() query: Record<string, string>) {
+    return this.userService.list(...pageParams(query.limit, query.offset), query);
   }
 }

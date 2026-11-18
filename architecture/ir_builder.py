@@ -77,6 +77,7 @@ class ArchitectureIRBuilder:
                     ],
                     "references": [dict(reference) for reference in model["references"]],
                     "dependents": [dict(dependent) for dependent in model["dependents"]],
+                    "query": {"filters": dict(model["query"]["filters"]), "sort": list(model["query"]["sort"])},
                 }
             )
             ir["repositories"].append(

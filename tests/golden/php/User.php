@@ -23,6 +23,12 @@ final class User
 
     public const HIDDEN = ['password'];
 
+    /** Query parameters list routes accept as equality filters, with their types. */
+    public const FILTERS = ['id' => 'INTEGER', 'email' => 'STRING', 'name' => 'STRING'];
+
+    /** Fields list routes can sort by (?sort=field or ?sort=-field). */
+    public const SORT = ['id', 'email', 'name', 'created_at', 'updated_at'];
+
     /**
      * @return array<string, array<string, mixed>>
      */

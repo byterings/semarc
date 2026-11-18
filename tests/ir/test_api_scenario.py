@@ -73,6 +73,15 @@ class ApiScenarioTests(unittest.TestCase):
         self.assertIn("create User", names)
         self.assertEqual(step(steps, "create User")["save"], {"user_record_id": "data.id"})
 
+    def test_list_routes_check_filters_and_sorting(self):
+        matching = step(self.steps, "filter Tag by label")
+        self.assertEqual(matching["path"], "/tags?label=label+1")
+        self.assertEqual(matching["equals"], {"meta.total": 1})
+        self.assertEqual(step(self.steps, "filter Tag by label without matches")["equals"], {"meta.total": 0})
+        self.assertEqual(step(self.steps, "sort Tag rejects unknown field")["expect"], 422)
+        self.assertEqual(step(self.steps, "filter Tag rejects invalid value")["path"], "/tags?id=not-a-number")
+        self.assertNotIn("filter User by email", [item["name"] for item in self.steps])
+
     def test_date_samples_use_iso_formats(self):
         source = "PROJECT Events\n\nDATABASE SQLITE\n\nMODEL Event\n    starts_on DATE\n    begins_at DATETIME\n\nROUTE POST /events\n"
         body = step(build(source), "create Event")["body"]

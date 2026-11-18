@@ -19,6 +19,8 @@ Step format:
     absent   dotted paths that must not exist in the JSON response
     save     {"var": "dotted.path"} values captured from the JSON response
 """
+from urllib.parse import urlencode
+
 from generator.utils.inflector import snake_case
 from generator.utils.resource_views import input_fields, models_in_migration_order, owner_reference, unique_columns
 
@@ -191,6 +193,7 @@ class ApiScenarioBuilder:
 
         if "list" in routes:
             self._call(routes["list"], f"list {label}", 200, path=self._path(routes["list"]), equals={"meta.offset": 0})
+            self._query_steps(model, routes["list"], body)
 
         for route in self._routes_of_kind(model["name"], "list_related"):
             parent_var = self._parent_var(route["operation"]["parent_model"])
@@ -208,6 +211,36 @@ class ApiScenarioBuilder:
                 path=self._path(routes["replace"], var),
                 body=replacement,
             )
+
+    def _query_steps(self, model: dict, route: dict, body: dict) -> None:
+        """Equality filters and sorting on a list route holding exactly one record of this model."""
+        auth = self.ir.get("auth")
+        if auth and model["name"] == auth["model"]:
+            return
+        label = model["name"]
+        path = self._path(route)
+        filters = model.get("query", {}).get("filters", {})
+        candidate = next(
+            (
+                name
+                for name, value in body.items()
+                if name in filters and filters[name] in {"STRING", "INTEGER", "BOOLEAN", "DATE"} and not isinstance(value, dict)
+            ),
+            None,
+        )
+        if candidate is not None:
+            value = body[candidate]
+            self._call(route, f"filter {label} by {candidate}", 200, path=f"{path}?{urlencode({candidate: _query_text(value)})}", equals={"meta.total": 1})
+            self._call(
+                route,
+                f"filter {label} by {candidate} without matches",
+                200,
+                path=f"{path}?{urlencode({candidate: _query_text(_other_value(value))})}",
+                equals={"meta.total": 0},
+            )
+        self._call(route, f"sort {label} descending", 200, path=f"{path}?sort=-id", equals={"meta.total": 1})
+        self._call(route, f"sort {label} rejects unknown field", 422, path=f"{path}?sort=not_a_field")
+        self._call(route, f"filter {label} rejects invalid value", 422, path=f"{path}?id=not-a-number")
 
     def _update_steps(self, model: dict, route: dict, var: str, body: dict) -> None:
         label = model["name"]
@@ -457,3 +490,19 @@ class ApiScenarioBuilder:
         if save:
             step["save"] = save
         self.steps.append(step)
+
+
+def _query_text(value) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
+
+
+def _other_value(value):
+    if isinstance(value, bool):
+        return not value
+    if isinstance(value, int):
+        return value + 1000
+    if isinstance(value, str) and len(value) == 10 and value[4] == "-" and value[7] == "-":
+        return "1999-01-01"
+    return f"{value} none"

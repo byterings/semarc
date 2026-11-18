@@ -233,6 +233,8 @@ def service_code(model: dict, ir: dict) -> str:
     unique = unique_columns(model)
     if unique:
         lines.append(f"    unique = ({', '.join(repr(column) for column in unique)},)")
+    lines.append(f"    filters = {model['query']['filters']!r}")
+    lines.append(f"    sort_fields = ({', '.join(repr(field) for field in model['query']['sort'])},)")
 
     lines.extend(
         [

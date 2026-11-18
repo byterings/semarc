@@ -75,7 +75,18 @@ class ResourcePlanner:
                 spec_field["rules"] = self._rules_for(spec["name"], spec_field, architecture.validations)
             spec["references"] = self._references_for(spec, foreign_keys, auth)
             spec["dependents"] = self._dependents_for(spec, foreign_keys)
+            spec["query"] = self._query_for(spec)
         return declared
+
+    def _query_for(self, spec: dict) -> dict:
+        """Fields list routes may filter on (equality) and sort by."""
+        visible = [spec_field for spec_field in spec["fields"] if not spec_field["secret"]]
+        filters = {"id": "INTEGER"}
+        filters.update({spec_field["name"]: spec_field["type"] for spec_field in visible if spec_field["type"] != "DATETIME"})
+        filters.update({reference["column"]: "INTEGER" for reference in spec["references"]})
+        sort = ["id"] + [spec_field["name"] for spec_field in visible]
+        sort += [reference["column"] for reference in spec["references"]] + ["created_at", "updated_at"]
+        return {"filters": filters, "sort": sort}
 
     def _complete_credentials(self, spec: dict, auth: dict) -> None:
         fields = {spec_field["name"]: spec_field for spec_field in spec["fields"]}

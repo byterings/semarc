@@ -90,6 +90,8 @@ created it.
 - `references` are this model's foreign key columns; `owner` marks a reference to the auth
   model, which protected creates fill from the token.
 - `dependents` are tables whose rows reference this model; deletes are refused while they exist.
+- `query.filters` maps the query parameters list routes accept as equality filters to their
+  types, and `query.sort` lists the fields lists can be sorted by.
 
 ## routes
 

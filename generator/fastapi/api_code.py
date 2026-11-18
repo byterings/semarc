@@ -18,9 +18,12 @@ def model_router_code(ir: dict, model: dict) -> str | None:
     parents = sorted({route["operation"]["parent_model"] for route in routes if route["operation"]["kind"] == "list_related"})
     kinds = {route["operation"]["kind"] for route in routes}
 
-    lines = ["from fastapi import APIRouter, Depends"]
+    fastapi_names = ["APIRouter", "Depends"]
+    if kinds & {"list", "list_related"}:
+        fastapi_names.append("Request")
     if "delete" in kinds:
-        lines[0] = "from fastapi import APIRouter, Depends, Response"
+        fastapi_names.append("Response")
+    lines = [f"from fastapi import {', '.join(fastapi_names)}"]
     lines.extend(["from sqlalchemy.orm import Session", "", "from database import get_db"])
     if protected:
         lines.append("from middleware.auth import current_user_id")
@@ -82,7 +85,7 @@ def _route_function(route: dict, name: str, module: str, used_names: set[str]) -
     if kind == "update":
         arguments.append(f"payload: {name}Update")
     if kind in {"list", "list_related"}:
-        arguments.extend(["limit: int = DEFAULT_LIMIT", "offset: int = 0"])
+        arguments.extend(["http_request: Request", "limit: int = DEFAULT_LIMIT", "offset: int = 0"])
     owner = "None"
     if route["access"] == "protected":
         arguments.append("current_user: int = Depends(current_user_id)")
@@ -100,7 +103,7 @@ def _route_function(route: dict, name: str, module: str, used_names: set[str]) -
         decorator_options.append("status_code=201")
 
     body = {
-        "list": "    return service.list(limit, offset)",
+        "list": "    return service.list(limit, offset, http_request.query_params)",
         "read": f"    return {{\"data\": service.get({parameter})}}",
         "create": f"    return {{\"data\": service.create(payload, {owner})}}",
         "replace": f"    return {{\"data\": service.update({parameter}, payload, partial=False, owner_id={owner})}}",
@@ -108,7 +111,7 @@ def _route_function(route: dict, name: str, module: str, used_names: set[str]) -
         "delete": f"    service.delete({parameter}, {owner})\n    return Response(status_code=204)",
         "list_related": (
             f"    return service.list_for_parent({operation.get('parent_model')}, \"{operation.get('parent_model')}\", "
-            f"\"{operation.get('foreign_key')}\", {parameter}, limit, offset)"
+            f"\"{operation.get('foreign_key')}\", {parameter}, limit, offset, http_request.query_params)"
         ),
     }[kind]
     return_type = "Response" if kind == "delete" else "dict"
