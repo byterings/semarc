@@ -154,6 +154,49 @@ The generated `docker-compose.yml` runs [Mailpit](https://mailpit.axllent.org/) 
 SMTP server (`MAIL_DRIVER=smtp`): every email sent by the API appears at
 http://localhost:8025 (`MAIL_UI_PORT` changes the port). Point `MAIL_*` at a real provider before deploying.
 
+### Sign in with Google and GitHub (`USE auth.oauth.google`, `USE auth.oauth.github`)
+
+| Route | Behaviour |
+| --- | --- |
+| `GET /oauth/<provider>` | Returns `authorization_url` and `state` (200); 503 when the provider is not configured |
+| `POST /oauth/<provider>/callback` | `{"code", "state"}`; signs the user in and returns `user` and tokens like `POST /register` (200). Rate limited like login |
+
+The flow, for a front end at `https://app.example.com`:
+
+1. The front end calls `GET /oauth/google`, stores `state` (for example in `sessionStorage`)
+   and redirects the browser to `authorization_url`.
+2. The provider redirects to `OAUTH_GOOGLE_REDIRECT_URI` (a front-end page) with `code` and
+   `state` in the query string. The front end checks that `state` equals the stored value.
+3. The front end posts both to `POST /oauth/google/callback` and receives the session.
+
+The API exchanges the code with the client secret, so the secret never reaches the browser.
+
+- `state` is signed with `JWT_SECRET`, bound to the provider and valid for 10 minutes.
+  Unknown, expired or tampered states get 422. Invalid or expired codes get 422; an
+  unreachable provider gets 502 `bad_gateway`.
+- Only an email address the provider marks as verified is accepted (Google:
+  `email_verified`; GitHub: the primary address from `/user/emails`); otherwise 422.
+- The identity is stored in `oauth_accounts` (`provider_subject` such as `google:1234`). On
+  the next sign-in the same user is found even if the email changed at the provider.
+- Without a linked identity, the user with the same email is linked. If that account has not
+  verified its address (always, without `auth.email_verification`), its password is replaced
+  by a random one and its refresh tokens are revoked: whoever registered the address first
+  cannot keep access to an account the address owner now uses. The owner can set a password
+  again through password reset.
+- Otherwise a user is created with a random password, `name` from the provider profile (or
+  the part of the email before `@`), the default role (`admin` for `BOOTSTRAP_ADMIN_EMAIL`)
+  and, with `auth.email_verification`, a verified address.
+- Because users are created from a profile, every other `User` field must be `OPTIONAL`, and
+  `User` cannot reference another model. The validator enforces both.
+
+| Variable | Meaning |
+| --- | --- |
+| `OAUTH_GOOGLE_CLIENT_ID`, `OAUTH_GOOGLE_CLIENT_SECRET` | OAuth client from Google Cloud Console (Credentials → OAuth client ID, type Web application) |
+| `OAUTH_GOOGLE_REDIRECT_URI` | Front-end page that receives the redirect; register it as an authorized redirect URI |
+| `OAUTH_GITHUB_CLIENT_ID`, `OAUTH_GITHUB_CLIENT_SECRET` | OAuth app from GitHub → Settings → Developer settings → OAuth Apps |
+| `OAUTH_GITHUB_REDIRECT_URI` | Must match the app's authorization callback URL |
+| `OAUTH_<PROVIDER>_ENDPOINT` | Testing only: replaces the provider origin, for example with `scripts/oauth_mock.py` |
+
 ### Ownership
 
 When a model references `User` (for example `RELATION User HAS_MANY Post`), the record has

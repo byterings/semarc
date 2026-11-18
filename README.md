@@ -79,9 +79,12 @@ All targets share one API contract (see [docs/GENERATED_API.md](docs/GENERATED_A
   `GET /openapi.json` with Swagger UI at `GET /docs`
 - `{"data": ...}` responses; lists add `meta` with `total`, `limit`, `offset` and accept
   equality filters (`?status=paid`) and sorting (`?sort=-created_at`)
-- an `error` object with `code`, `message` and field `details` for 400, 401, 403, 404, 409, 422, 429 and 501
-- rate-limited `/register` and `/login`
+- an `error` object with `code`, `message` and field `details` for 400, 401, 403, 404, 409, 422, 429, 501 and, with OAuth, 502 and 503
+- rate-limited `/register` and `/login`, rotating refresh tokens, logout and password change
 - owner-only changes for records that belong to a user
+- optional modules: roles (`USE auth.roles`), password reset and email verification by email
+  (`USE auth.password_reset`, `USE auth.email_verification`) and sign-in with Google or
+  GitHub (`USE auth.oauth.google`, `USE auth.oauth.github`)
 
 ## Semantic language
 
@@ -96,7 +99,7 @@ All targets share one API contract (see [docs/GENERATED_API.md](docs/GENERATED_A
 | `VALIDATE` | `VALIDATE password REQUIRED MIN 8`, `VALIDATE Post.title MAX 120` |
 | `ROUTE` | `ROUTE GET /posts/{id}`, `ROUTE DELETE /posts/{id} PUBLIC`, `ROUTE DELETE /posts/{id} ROLE admin` |
 | `PROFILE` | `PROFILE ECOMMERCE` |
-| `USE` | `USE payment.razorpay` |
+| `USE` | `USE auth.roles`, `USE auth.oauth.google`, `USE payment.razorpay` |
 
 Field types are `STRING`, `TEXT`, `INTEGER`, `FLOAT`, `BOOLEAN`, `DATE` and `DATETIME`. Routes are mapped to
 operations by shape: `GET|POST /posts`, `GET|PUT|PATCH|DELETE /posts/{id}` and

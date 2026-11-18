@@ -87,6 +87,18 @@ class FastApiGenerator:
                 {"table": auth["features"]["refresh_tokens"]["table"], "users_table": model_by_name(ir, auth["model"])["table"]},
             )
             self._render("services/password_hasher.py", "password_hasher.py.tpl")
+            oauth = auth["features"]["oauth"]
+            if oauth:
+                self._render(
+                    "core/oauth.py",
+                    "oauth.py.tpl",
+                    {
+                        "providers": _oauth_providers_code(oauth),
+                        "table": oauth["table"],
+                        "users_table": model_by_name(ir, auth["model"])["table"],
+                        "state_ttl": oauth["state_ttl_seconds"],
+                    },
+                )
             self._render(
                 "middleware/auth.py",
                 "auth_dependency.py.tpl",
@@ -357,3 +369,17 @@ def _one_time_tokens_code(ir: dict) -> str:
         "",
     ]
     return "\n".join(lines)
+
+
+OAUTH_PROVIDER_KEYS = ["authorize_url", "token_url", "profile_url", "emails_url", "scopes", "subject_field", "email_field", "verified_field", "name_field"]
+
+
+def _oauth_providers_code(oauth: dict) -> str:
+    """Provider endpoints and profile fields from the IR as a Python literal."""
+    lines = ["PROVIDERS = {"]
+    for provider in oauth["providers"]:
+        lines.append(f'    "{provider["name"]}": {{')
+        lines += [f"        {key!r}: {provider[key]!r}," for key in OAUTH_PROVIDER_KEYS]
+        lines.append("    },")
+    lines.append("}")
+    return "\n".join(lines).replace("'", '"')

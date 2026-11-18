@@ -17,6 +17,39 @@ EMAIL_VERIFICATION_ROUTES = {
     ("POST", "/email/verify"): "verify_email",
     ("POST", "/email/resend"): "resend_verification",
 }
+OAUTH_MODULE_PREFIX = "auth.oauth."
+OAUTH_TABLE = "oauth_accounts"
+OAUTH_STATE_TTL_SECONDS = 600
+# Authorization code flow endpoints and profile fields of each supported provider.
+# A provider either reports the email and whether it is verified in the profile
+# (verified_field), or lists addresses with their verification state (emails_url).
+OAUTH_PROVIDERS = {
+    "github": {
+        "label": "GitHub",
+        "authorize_url": "https://github.com/login/oauth/authorize",
+        "token_url": "https://github.com/login/oauth/access_token",
+        "profile_url": "https://api.github.com/user",
+        "emails_url": "https://api.github.com/user/emails",
+        "scopes": ["read:user", "user:email"],
+        "subject_field": "id",
+        "email_field": None,
+        "verified_field": None,
+        "name_field": "name",
+    },
+    "google": {
+        "label": "Google",
+        "authorize_url": "https://accounts.google.com/o/oauth2/v2/auth",
+        "token_url": "https://oauth2.googleapis.com/token",
+        "profile_url": "https://openidconnect.googleapis.com/v1/userinfo",
+        "emails_url": None,
+        "scopes": ["openid", "email", "profile"],
+        "subject_field": "sub",
+        "email_field": "email",
+        "verified_field": "email_verified",
+        "name_field": "name",
+    },
+}
+OAUTH_NAME_FIELD = "name"
 REFRESH_TOKEN_TABLE = "refresh_tokens"
 REFRESH_TOKEN_TTL_SECONDS = 14 * 24 * 3600
 

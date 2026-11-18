@@ -213,6 +213,7 @@ def auth_router_code(ir: dict) -> str:
             "from core.rate_limit import auth_rate_limit",
             "from core.refresh_tokens import RefreshTokenStore",
             *_mail_imports(auth),
+            *_oauth_imports(auth),
             "from database import get_db",
             "from middleware.auth import current_user_id" + (", require_roles" if auth["features"]["roles"] else ""),
             *(["from config.settings import settings"] if auth["features"]["roles"] else []),
@@ -309,9 +310,109 @@ def auth_router_code(ir: dict) -> str:
             "def me(user_id: int = Depends(current_user_id), db: Session = Depends(get_db)) -> dict:",
             f'    return {{"data": {name}Service(db).get(user_id)}}',
             *_role_route_lines(auth, name),
+            *_oauth_route_lines(auth, model),
             "",
         ]
     )
+
+
+def _oauth_imports(auth: dict) -> list[str]:
+    if not auth["features"]["oauth"]:
+        return []
+    lines = ["from secrets import token_hex", "from sqlalchemy import select", "from core import oauth", "from core.oauth import OAuthAccount"]
+    if auth["features"]["email_verification"]:
+        lines.append("from database import utc_now")
+    return lines
+
+
+def _oauth_route_lines(auth: dict, model: dict) -> list[str]:
+    oauth = auth["features"]["oauth"]
+    if not oauth:
+        return []
+    name = model["name"]
+    identity, secret = auth["identity_field"], auth["secret_field"]
+    roles = auth["features"]["roles"]
+    verification = auth["features"]["email_verification"]
+    new_user = [
+        "            data = {",
+        f'                "{identity}": identity["{identity}"],',
+        f'                "{secret}": PasswordHasher().hash(token_hex(32)),',
+        "            }",
+    ]
+    name_field = oauth["name_field"]
+    if name_field:
+        limit = field_rules(next(item for item in model["fields"] if item["name"] == name_field))["max"] or 255
+        new_user.append(f'            data["{name_field}"] = identity["name"][:{limit}]')
+    if roles:
+        new_user += [
+            f'            admin = settings.bootstrap_admin_email and identity["{identity}"].lower() == settings.bootstrap_admin_email.lower()',
+            f'            data["role"] = {roles["admin"]!r} if admin else {roles["default"]!r}',
+        ]
+    if verification:
+        new_user.append(f'            data["{verification["field"]}"] = utc_now()')
+    if verification:
+        relink = [
+            f"        elif record.{verification['field']} is None:",
+            "            # Ownership of the address is proven by the provider, not by whoever set the password.",
+            f'            repository.update(record, {{"{secret}": PasswordHasher().hash(token_hex(32)), "{verification["field"]}": utc_now()}})',
+            "            RefreshTokenStore(db).revoke_all(record.id)",
+        ]
+    else:
+        relink = [
+            "        else:",
+            "            # Ownership of the address is proven by the provider, not by whoever set the password.",
+            f'            repository.update(record, {{"{secret}": PasswordHasher().hash(token_hex(32))}})',
+            "            RefreshTokenStore(db).revoke_all(record.id)",
+        ]
+    lines = [
+        "",
+        "",
+        "class OAuthStart(BaseModel):",
+        "    authorization_url: str",
+        "    state: str",
+        "",
+        "",
+        "class OAuthCallback(InputSchema):",
+        "    code: str = Field(min_length=1)",
+        "    state: str = Field(min_length=1)",
+        "",
+        "",
+        "def oauth_sign_in(db: Session, provider: str, payload: OAuthCallback) -> dict:",
+        '    """Finds the user linked to the provider identity, links one by verified email, or creates one."""',
+        "    oauth.verify_state(provider, payload.state)",
+        "    profile = oauth.fetch_identity(provider, payload.code)",
+        f'    identity = {{"{identity}": profile["email"], "name": profile["name"]}}',
+        '    account = db.scalars(select(OAuthAccount).filter_by(provider_subject=profile["subject"])).first()',
+        "    if account is not None:",
+        "        user_id = account.user_id",
+        "    else:",
+        f"        repository = {name}Repository(db)",
+        f'        record = repository.find_by("{identity}", identity["{identity}"])',
+        "        if record is None:",
+        *new_user,
+        "            record = repository.create(data)",
+        *relink,
+        '        db.add(OAuthAccount(provider=provider, provider_subject=profile["subject"], user_id=record.id))',
+        "        db.commit()",
+        "        user_id = record.id",
+        f'    result = {{"user": {name}Service(db).get(user_id), **issue_session(db, user_id)}}',
+        '    return {"data": result}',
+    ]
+    for provider in oauth["providers"]:
+        key = provider["name"]
+        lines += [
+            "",
+            "",
+            f'@router.get("/oauth/{key}", response_model=DataResponse[OAuthStart])',
+            f"def oauth_start_{key}() -> dict:",
+            f'    return {{"data": oauth.start("{key}")}}',
+            "",
+            "",
+            f'@router.post("/oauth/{key}/callback", response_model=DataResponse[RegisterResult], dependencies=[Depends(auth_rate_limit)])',
+            f"def oauth_callback_{key}(payload: OAuthCallback, db: Session = Depends(get_db)) -> dict:",
+            f'    return oauth_sign_in(db, "{key}", payload)',
+        ]
+    return lines
 
 
 def _mail_imports(auth: dict) -> list[str]:

@@ -14,6 +14,8 @@ os.environ["DB_DATABASE"] = str(Path(tempfile.mkdtemp()) / "test.sqlite")
 os.environ.setdefault("JWT_SECRET", "semarc-test-secret-semarc-test-secret")
 os.environ["BOOTSTRAP_ADMIN_EMAIL"] = "admin@example.com"
 os.environ["MAIL_DRIVER"] = "memory"
+SCENARIO = json.loads((ROOT / "tests" / "api_scenario.json").read_text(encoding="utf-8"))
+os.environ.update(SCENARIO.get("env", {}))
 
 from alembic import command  # noqa: E402
 from alembic.config import Config  # noqa: E402
@@ -56,11 +58,12 @@ def read_mail(step: dict) -> str:
 
 def test_api_scenario() -> None:
     command.upgrade(Config(str(ROOT / "alembic.ini")), "head")
-    scenario = json.loads((ROOT / "tests" / "api_scenario.json").read_text(encoding="utf-8"))
     client = TestClient(app, raise_server_exceptions=False)
     variables: dict = {}
 
-    for step in scenario["steps"]:
+    for step in SCENARIO["steps"]:
+        if "external" in step:
+            continue  # needs an external service (see the scenario description)
         if "mail" in step:
             variables[step["mail"]["save"]] = read_mail(step)
             continue

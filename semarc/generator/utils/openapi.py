@@ -34,6 +34,8 @@ ERROR_DESCRIPTIONS = {
     "422": "Validation failed",
     "429": "Too many attempts",
     "501": "Declared but not implemented",
+    "502": "The OAuth provider could not be reached",
+    "503": "The OAuth provider is not configured",
 }
 
 
@@ -135,6 +137,20 @@ class OpenApiBuilder:
                     },
                 ]
             }
+            if auth.get("features", {}).get("oauth"):
+                schemas["OAuthStart"] = {
+                    "type": "object",
+                    "required": ["authorization_url", "state"],
+                    "properties": {
+                        "authorization_url": {"type": "string", "format": "uri"},
+                        "state": {"type": "string", "description": "Keep it and send it back with the code"},
+                    },
+                }
+                schemas["OAuthCallback"] = {
+                    "type": "object",
+                    "required": ["code", "state"],
+                    "properties": {"code": {"type": "string"}, "state": {"type": "string"}},
+                }
             roles = auth.get("features", {}).get("roles")
             if roles:
                 schemas["RoleChange"] = {
@@ -222,7 +238,7 @@ class OpenApiBuilder:
         model = operation.get("model")
         tag = "Auth" if kind.startswith("auth_") else (model or "Custom")
         result = {
-            "summary": SUMMARIES[kind].format(model=model, parent=operation.get("parent_model")),
+            "summary": SUMMARIES[kind].format(model=model, parent=operation.get("parent_model"), provider=operation.get("provider")),
             "operationId": self._operation_id(route, used_ids),
             "tags": [tag],
             "parameters": self._parameters(route),
@@ -255,6 +271,7 @@ class OpenApiBuilder:
             "auth_forgot_password": "EmailRequest",
             "auth_reset_password": "PasswordReset",
             "auth_verify_email": "TokenRequest",
+            "auth_oauth_callback": "OAuthCallback",
         }.get(kind)
         if schema is None:
             return None
@@ -281,6 +298,8 @@ class OpenApiBuilder:
             "auth_reset_password": ("204", {"description": "Password reset; refresh tokens revoked"}),
             "auth_verify_email": ("200", self._json("Verified user", self._data(record))),
             "auth_resend_verification": ("202", {"description": "Verification email sent if the address is not verified"}),
+            "auth_oauth_start": ("200", self._json("Provider authorization URL", self._data({"$ref": "#/components/schemas/OAuthStart"}))),
+            "auth_oauth_callback": ("200", self._json("Signed in", self._data({"$ref": "#/components/schemas/Registration"}))),
         }
         responses = {}
         if kind in success:
@@ -291,6 +310,7 @@ class OpenApiBuilder:
         if kind in {
             "create", "replace", "update", "auth_register", "auth_login", "auth_refresh", "auth_logout",
             "auth_change_password", "auth_forgot_password", "auth_reset_password", "auth_verify_email",
+            "auth_oauth_callback",
         }:
             errors += ["400", "422"]
         if kind in {"create", "replace", "update", "auth_register"} and self._has_unique(model):
@@ -307,8 +327,12 @@ class OpenApiBuilder:
             errors.append("404")
         if kind in {"list", "list_related"}:
             errors.append("422")
-        if kind in {"auth_register", "auth_login", "auth_refresh", "auth_forgot_password"}:
+        if kind in {"auth_register", "auth_login", "auth_refresh", "auth_forgot_password", "auth_oauth_callback"}:
             errors.append("429")
+        if kind == "auth_oauth_start":
+            errors.append("503")
+        if kind == "auth_oauth_callback":
+            errors += ["502", "503"]
         if kind == "custom":
             errors.append("501")
         for status in sorted(set(errors)):
@@ -404,6 +428,8 @@ SUMMARIES = {
     "auth_reset_password": "Set a new password with a reset token",
     "auth_verify_email": "Confirm an email address",
     "auth_resend_verification": "Send a new verification email",
+    "auth_oauth_start": "Start sign-in with {provider}",
+    "auth_oauth_callback": "Finish sign-in with {provider}",
     "custom": "Declared route without generated behaviour",
 }
 

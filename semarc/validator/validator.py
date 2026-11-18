@@ -1,7 +1,15 @@
 import re
 
 from semarc.ast_loader import load_semantic_nodes
-from semarc.architecture.rules.auth_rules import AUTH_IDENTITY_FIELD, AUTH_MODEL, AUTH_ROUTES, AUTH_SECRET_FIELD
+from semarc.architecture.rules.auth_rules import (
+    AUTH_IDENTITY_FIELD,
+    AUTH_MODEL,
+    AUTH_ROUTES,
+    AUTH_SECRET_FIELD,
+    OAUTH_MODULE_PREFIX,
+    OAUTH_NAME_FIELD,
+    OAUTH_PROVIDERS,
+)
 from semarc.generator.utils.inflector import snake_case
 from semarc.generator.utils.resource_views import SECRET_MAX_LENGTH, STRING_MAX_LENGTH
 
@@ -268,9 +276,11 @@ class SemanticValidator:
                         self._error(f"Route {route.method} {route.path} requires AUTH JWT", route)
                     )
             for package in architecture.packages:
-                if package.name in AUTH_JWT_MODULES:
+                if package.name in AUTH_JWT_MODULES or package.name.startswith(OAUTH_MODULE_PREFIX):
                     errors.append(self._error(f"USE {package.name} requires AUTH JWT", package))
             return
+
+        self._validate_oauth(architecture, errors)
 
         auth_model = next((model for model in architecture.models if model.name == AUTH_MODEL), None)
         if auth_model is not None and self._uses(architecture, ROLES_MODULE):
@@ -290,6 +300,40 @@ class SemanticValidator:
                     self._error(
                         f"AUTH JWT requires {AUTH_MODEL}.{credential} to be a required STRING field",
                         credential_field,
+                    )
+                )
+
+    def _validate_oauth(self, architecture: ArchitectureNode, errors: list[str]) -> None:
+        """OAuth sign-in creates users from a provider profile: email, a name and nothing else."""
+        modules = [package for package in architecture.packages if package.name.startswith(OAUTH_MODULE_PREFIX)]
+        for package in modules:
+            provider = package.name.removeprefix(OAUTH_MODULE_PREFIX)
+            if provider not in OAUTH_PROVIDERS:
+                supported = ", ".join(f"{OAUTH_MODULE_PREFIX}{name}" for name in sorted(OAUTH_PROVIDERS))
+                errors.append(self._error(f"Unsupported OAuth provider: {package.name} (use {supported})", package))
+        if not modules:
+            return
+        module = modules[0].name
+        auth_model = next((model for model in architecture.models if model.name == AUTH_MODEL), None)
+        for model_field in auth_model.fields if auth_model else []:
+            if model_field.name in {AUTH_IDENTITY_FIELD, AUTH_SECRET_FIELD} or "OPTIONAL" in model_field.modifiers:
+                continue
+            if model_field.name == OAUTH_NAME_FIELD and model_field.field_type in TEXT_TYPES:
+                continue
+            errors.append(
+                self._error(
+                    f"USE {module} creates {AUTH_MODEL} records from the provider profile, so "
+                    f"{AUTH_MODEL}.{model_field.name} must be OPTIONAL (only {OAUTH_NAME_FIELD} is filled in)",
+                    model_field,
+                )
+            )
+        for relation in architecture.relations:
+            child = relation.source_model if relation.relation_type == "BELONGS_TO" else relation.target_model
+            if child == AUTH_MODEL:
+                errors.append(
+                    self._error(
+                        f"USE {module} cannot create {AUTH_MODEL} records that reference another model",
+                        relation,
                     )
                 )
 

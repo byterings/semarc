@@ -1,0 +1,26 @@
+PROJECT Social
+
+DATABASE SQLITE
+
+AUTH JWT
+
+USE auth.roles
+USE auth.password_reset
+USE auth.oauth.google
+USE auth.oauth.github
+
+MODEL User
+    name STRING
+    bio TEXT OPTIONAL
+
+MODEL Post
+    title STRING
+
+RELATION User HAS_MANY Post
+
+VALIDATE email REQUIRED EMAIL
+VALIDATE password REQUIRED MIN 8
+
+ROUTE GET /posts
+ROUTE POST /posts
+ROUTE DELETE /posts/{id} ROLE admin

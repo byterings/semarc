@@ -21,6 +21,13 @@ Step format:
 
 A step with a "mail" key makes no HTTP request: the runner reads the newest email sent to
 mail.to with subject mail.subject, applies mail.pattern and saves group 1 as mail.save.
+
+A step with "external": "oauth" needs an OAuth provider. Only runners that start the mock
+provider (scripts/oauth_mock.py, used by scripts/e2e_runtime.py) replay it; the runners in
+generated projects skip it. Codes for the mock provider have the form "email|verified|name".
+
+The optional top-level "env" holds environment variables every runner sets before the
+application starts.
 """
 from urllib.parse import urlencode
 
@@ -32,6 +39,8 @@ TOKEN_PATTERN = r"Token: ([0-9a-f]{64})"
 UNKNOWN_TOKEN = "0" * 64
 VERIFY_SUBJECT = "Verify your email address"
 RESET_SUBJECT = "Reset your password"
+OAUTH_CLIENT_ID = "semarc-test-client"
+OAUTH_CLIENT_SECRET = "semarc-test-secret"
 ADMIN_EMAIL = "admin@example.com"  # runners set BOOTSTRAP_ADMIN_EMAIL to this address
 CORS_ORIGIN = "https://app.example.com"
 
@@ -45,6 +54,7 @@ class ApiScenarioBuilder:
         self.role_checked: set[tuple[str, str]] = set()
         self.created: list[dict] = []
         self.variants: dict[str, int] = {}
+        self.account: dict | None = None
 
         self._experience_steps()
         self._auth_steps()
@@ -53,8 +63,23 @@ class ApiScenarioBuilder:
         self._ownership_steps()
         self._custom_steps()
         self._delete_steps()
+        self._oauth_steps()
         self._rate_limit_steps()
-        return {"project": ir["project"], "steps": self.steps}
+        scenario = {"project": ir["project"], "steps": self.steps}
+        env = self._env()
+        if env:
+            scenario["env"] = env
+        return scenario
+
+    def _env(self) -> dict:
+        env = {}
+        oauth = (self.ir.get("auth") or {}).get("features", {}).get("oauth") or {}
+        for provider in oauth.get("providers", []):
+            prefix = provider["env_prefix"]
+            env[f"{prefix}_CLIENT_ID"] = OAUTH_CLIENT_ID
+            env[f"{prefix}_CLIENT_SECRET"] = OAUTH_CLIENT_SECRET
+            env[f"{prefix}_REDIRECT_URI"] = f"{CORS_ORIGIN}/oauth/{provider['name']}/callback"
+        return env
 
     def _experience_steps(self) -> None:
         self._step("home page", "GET", "/", 200)
@@ -137,6 +162,8 @@ class ApiScenarioBuilder:
         if verification:
             self._verification_steps(identity, verification)
         self._session_steps(auth, identity, secret)
+        final_secret = secret + "-new" + ("-reset" if auth.get("features", {}).get("password_reset") else "")
+        self.account = {"identity": identity, "secret": final_secret, "verified": bool(verification)}
         self.has_token = True
         self.created.append({"model": user, "var": "user_id", "routes": {}, "parents": set()})
         roles = auth.get("features", {}).get("roles")
@@ -498,6 +525,89 @@ class ApiScenarioBuilder:
                 self._call(entry["routes"]["read"], f"read deleted {label}", 404, path=self._path(entry["routes"]["read"], entry["var"]))
             self._call(delete, f"delete missing {label}", 404, path=self._path(delete, entry["var"]))
 
+    def _oauth_steps(self) -> None:
+        auth = self.ir.get("auth") or {}
+        oauth = auth.get("features", {}).get("oauth")
+        if not oauth or self.account is None:
+            return
+        providers = oauth["providers"]
+        identity_field = auth["identity_field"]
+        for provider in providers:
+            name, label = provider["name"], provider["label"]
+            self._step(f"GET /oauth/{name} returns an authorization URL", "GET", f"/oauth/{name}", 200, save={f"{name}_state": "data.state"})
+            callback = f"/oauth/{name}/callback"
+            self._step(f"{label} callback requires code and state", "POST", callback, 422, body={})
+            self._step(f"{label} callback rejects a forged state", "POST", callback, 422, body={"code": "unused", "state": f"{name}.9999999999.forged.0"})
+        if len(providers) > 1:
+            first, second = providers[0]["name"], providers[1]["name"]
+            self._step(
+                "OAuth state is bound to its provider",
+                "POST",
+                f"/oauth/{second}/callback",
+                422,
+                body={"code": "unused", "state": {"$ref": f"{first}_state"}},
+            )
+
+        roles = auth["features"].get("roles")
+        for provider in providers:
+            name, label = provider["name"], provider["label"]
+            callback = f"/oauth/{name}/callback"
+            state = {"$ref": f"{name}_state"}
+            email, display_name = f"{name}.user@example.com", f"{label} User"
+            code = _mock_code(email, True, display_name)
+            equals = {f"data.user.{identity_field}": email, "data.token_type": "Bearer"}
+            if oauth["name_field"]:
+                equals[f"data.user.{oauth['name_field']}"] = display_name
+            if roles:
+                equals["data.user.role"] = roles["default"]
+            self._external(
+                f"{label} sign-in creates an account",
+                "POST",
+                callback,
+                200,
+                body={"code": code, "state": state},
+                equals=equals,
+                absent=[f"data.user.{auth['secret_field']}"],
+                save={f"{name}_user_id": "data.user.id", f"{name}_token": "data.access_token"},
+            )
+            self._external(f"{label} access token works", "GET", "/me", 200, auth=True, auth_as=f"{name}_token", equals={"data.id": {"$ref": f"{name}_user_id"}})
+            self._external(
+                f"{label} sign-in finds the linked account",
+                "POST",
+                callback,
+                200,
+                body={"code": code, "state": state},
+                equals={"data.user.id": {"$ref": f"{name}_user_id"}},
+            )
+            self._external(
+                f"{label} sign-in requires a verified email",
+                "POST",
+                callback,
+                422,
+                body={"code": _mock_code(f"{name}.unverified@example.com", False, "Unverified"), "state": state},
+            )
+            self._external(f"{label} sign-in rejects an invalid code", "POST", callback, 422, body={"code": "invalid", "state": state})
+
+        first = providers[0]["name"]
+        self._external(
+            "OAuth sign-in links an existing account by verified email",
+            "POST",
+            f"/oauth/{first}/callback",
+            200,
+            body={"code": _mock_code(self.account["identity"], True, "Linked"), "state": {"$ref": f"{first}_state"}},
+            equals={"data.user.id": {"$ref": "user_id"}},
+            save={"linked_token": "data.access_token"},
+        )
+        changed = {"current_password": self.account["secret"], "new_password": self.account["secret"] + "-linked"}
+        if self.account["verified"]:
+            self._external("linking keeps the password of a verified account", "POST", "/me/password", 204, auth=True, auth_as="linked_token", body=changed)
+        else:
+            self._external("linking disables the password of an unverified account", "POST", "/me/password", 422, auth=True, auth_as="linked_token", body=changed)
+
+    def _external(self, name, method, path, expect, **options) -> None:
+        self._step(name, method, path, expect, **options)
+        self.steps[-1]["external"] = "oauth"
+
     def _rate_limit_steps(self) -> None:
         """Exceeds the login limit last: afterwards nobody from this client can log in."""
         auth = self.ir.get("auth")
@@ -687,3 +797,8 @@ def _other_value(value):
     if isinstance(value, str) and len(value) == 10 and value[4] == "-" and value[7] == "-":
         return "1999-01-01"
     return f"{value} none"
+
+
+def _mock_code(email: str, verified: bool, name: str) -> str:
+    """Authorization code understood by scripts/oauth_mock.py."""
+    return f"{email}|{1 if verified else 0}|{name}"

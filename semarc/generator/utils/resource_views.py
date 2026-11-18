@@ -61,6 +61,18 @@ def mail_enabled(ir: dict) -> bool:
     return bool(auth_feature(ir, "password_reset") or auth_feature(ir, "email_verification"))
 
 
+def oauth_providers(ir: dict) -> list[dict]:
+    return (auth_feature(ir, "oauth") or {}).get("providers", [])
+
+
+OAUTH_SETTINGS = ["CLIENT_ID", "CLIENT_SECRET", "REDIRECT_URI", "ENDPOINT"]
+
+
+def oauth_env_names(provider: dict) -> dict[str, str]:
+    """Environment variable per OAuth setting; ENDPOINT replaces the provider origin (tests only)."""
+    return {setting.lower(): f"{provider['env_prefix']}_{setting}" for setting in OAUTH_SETTINGS}
+
+
 def roles_feature(ir: dict) -> dict | None:
     auth = ir.get("auth") or {}
     return auth.get("features", {}).get("roles")

@@ -6,7 +6,8 @@ For each requested (example, target, database) combination this script:
 1. compiles the semantic source with the database engine overridden,
 2. starts the generated project with `docker compose up --build`,
 3. waits for GET /health,
-4. replays the generated tests/api_scenario.json over real HTTP,
+4. replays the generated tests/api_scenario.json over real HTTP, reading email from the
+   project's Mailpit and, for OAuth projects, signing in through scripts/oauth_mock.py,
 5. tears the stack down (containers and volumes).
 
 Usage:
@@ -39,6 +40,8 @@ from semarc.validator.validator import SemanticValidationError  # noqa: E402
 TARGETS = ["php", "fastapi", "nestjs"]
 DATABASES = {"sqlite": "SQLITE", "mysql": "MYSQL", "postgresql": "POSTGRESQL"}
 MISSING = object()
+MOCK_IMAGE = "python:3.12-slim"
+MOCK_PORT = 9000
 
 
 class ScenarioFailure(AssertionError):
@@ -173,7 +176,9 @@ def with_database(source: str, engine: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-def compose(project_dir: Path, name: str, port: int, *args: str, capture: bool = False, mail_port: int = 0) -> subprocess.CompletedProcess:
+def compose(
+    project_dir: Path, name: str, port: int, *args: str, capture: bool = False, mail_port: int = 0, extra_env: dict | None = None
+) -> subprocess.CompletedProcess:
     return subprocess.run(
         ["docker", "compose", "-p", name, *args],
         cwd=project_dir,
@@ -182,11 +187,41 @@ def compose(project_dir: Path, name: str, port: int, *args: str, capture: bool =
             "APP_PORT": str(port),
             "MAIL_UI_PORT": str(mail_port or free_port()),
             "BOOTSTRAP_ADMIN_EMAIL": "admin@example.com",
+            **(extra_env or {}),
         },
         capture_output=capture,
         text=True,
         check=False,
     )
+
+
+def oauth_env(scenario: dict) -> dict:
+    """Scenario settings plus OAUTH_<PROVIDER>_ENDPOINT pointing every provider at the mock."""
+    env = dict(scenario.get("env", {}))
+    for key in list(env):
+        if key.startswith("OAUTH_") and key.endswith("_CLIENT_ID"):
+            env[key.removesuffix("_CLIENT_ID") + "_ENDPOINT"] = f"http://oauth-mock:{MOCK_PORT}"
+    return env
+
+
+def start_oauth_mock(name: str) -> str:
+    """Runs scripts/oauth_mock.py on the project network as host oauth-mock."""
+    container = f"{name}-oauth-mock"
+    subprocess.run(["docker", "rm", "-f", container], capture_output=True, check=False)
+    result = subprocess.run(
+        [
+            "docker", "run", "-d", "--rm", "--name", container,
+            "--network", f"{name}_default", "--network-alias", "oauth-mock",
+            "-v", f"{ROOT / 'scripts' / 'oauth_mock.py'}:/oauth_mock.py:ro",
+            MOCK_IMAGE, "python", "/oauth_mock.py", str(MOCK_PORT),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise ScenarioFailure(f"could not start the OAuth mock provider: {result.stderr.strip()}")
+    return container
 
 
 def _base_env() -> dict:
@@ -216,10 +251,17 @@ def run_case(source_path: Path, target: str, database: str, keep: bool, verbose:
     base_url = f"http://127.0.0.1:{port}"
     print(f"[{label}] building and starting on port {port}")
     mail_port = free_port()
-    started = compose(output_dir, name, port, "up", "--build", "-d", "--wait-timeout", "300", capture=True, mail_port=mail_port)
+    extra_env = oauth_env(scenario)
+    needs_mock = any(step.get("external") == "oauth" for step in scenario["steps"])
+    mock = None
+    started = compose(
+        output_dir, name, port, "up", "--build", "-d", "--wait-timeout", "300", capture=True, mail_port=mail_port, extra_env=extra_env
+    )
     try:
         if started.returncode != 0:
             return False, f"{label}: docker compose up failed\n{started.stdout[-2000:]}\n{started.stderr[-2000:]}"
+        if needs_mock:
+            mock = start_oauth_mock(name)
         wait_for_health(base_url, timeout=240)
         steps = ScenarioClient(base_url, f"http://127.0.0.1:{mail_port}").run(scenario, verbose=verbose)
         return True, f"{label}: {steps} scenario steps passed"
@@ -228,6 +270,8 @@ def run_case(source_path: Path, target: str, database: str, keep: bool, verbose:
         return False, f"{label}: {error}\n--- logs ---\n{logs.stdout[-3000:]}"
     finally:
         if not keep:
+            if mock:
+                subprocess.run(["docker", "rm", "-f", mock], capture_output=True, check=False)
             compose(output_dir, name, port, "down", "-v", "--remove-orphans", capture=True)
 
 

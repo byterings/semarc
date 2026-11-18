@@ -3,6 +3,8 @@ from pathlib import Path
 
 from semarc.generator.nestjs.api_code import (
     TOKEN_ENTITIES,
+    oauth_account_entity_code,
+    oauth_providers_code,
     token_entity_code,
     app_controller_code,
     app_module_code,
@@ -126,6 +128,14 @@ class NestJSGenerator:
                             token_entity_code(class_name, auth["features"][feature]["table"]),
                             "nestjs token entity",
                         )
+            oauth = auth["features"]["oauth"]
+            if oauth:
+                self._render(
+                    "src/modules/auth/oauth.ts",
+                    "oauth.ts.tpl",
+                    {"providers": oauth_providers_code(oauth), "state_ttl": oauth["state_ttl_seconds"]},
+                )
+                self._write("src/modules/auth/oauth-account.entity.ts", oauth_account_entity_code(oauth["table"]), "nestjs oauth entity")
             self._render(
                 "src/guards/auth.guard.ts",
                 "auth.guard.ts.tpl",

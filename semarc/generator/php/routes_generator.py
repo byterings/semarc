@@ -68,6 +68,9 @@ class RoutesGenerator:
 
         if kind == "auth_set_role":
             return f"{prefix}static fn (Request $request, array $params): array => (new RoleController())->update($request, $params['id']){protected});"
+        if kind in {"auth_oauth_start", "auth_oauth_callback"}:
+            action = "oauthStart" if kind == "auth_oauth_start" else "oauthCallback"
+            return f"{prefix}static fn (Request $request): array => (new AuthController())->{action}($request, {php_literal(operation['provider'])}){protected});"
         if kind.startswith("auth_"):
             action = pascal_case(kind.removeprefix("auth_"))
             action = action[:1].lower() + action[1:]

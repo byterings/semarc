@@ -27,6 +27,10 @@ language; such changes are listed under **Changed**.
 - Plain-text email in every target (`MAIL_DRIVER` smtp/log/memory, `MAIL_*` settings, `APP_URL`
   links) and a Mailpit inbox in the generated `docker-compose.yml`.
 - `api_scenario.json` mail steps, replayed by every runner (Mailpit in `scripts/e2e_runtime.py`).
+- Sign in with Google and GitHub (`USE auth.oauth.google`, `USE auth.oauth.github`): signed
+  state, server-side code exchange, accounts linked by verified email in `oauth_accounts`.
+- `api_scenario.json` `env` settings and `external` steps; `scripts/oauth_mock.py` provides a
+  deterministic OAuth provider for `scripts/e2e_runtime.py`.
 
 ### Changed
 - All compiler code moved into the `semarc` package (`semarc.compiler`, `semarc.generator`,

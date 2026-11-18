@@ -175,7 +175,8 @@ def auth_code(ir: dict, reserved: set[str]) -> dict[str, str]:
         imports.use("../../config/settings", "settings")
     role_lines = _role_route_lines(auth, name, imports)
     mail_lines = _mail_controller_lines(auth, name, imports)
-    mail_enabled_ = bool(mail_lines)
+    oauth_lines = _oauth_controller_lines(ir, imports)
+    mail_enabled_ = bool(mail_lines or oauth_lines)
     controller_source = "\n".join(
         imports.render()
         + [
@@ -252,6 +253,7 @@ def auth_code(ir: dict, reserved: set[str]) -> dict[str, str]:
             "  }",
             *role_lines,
             *mail_lines,
+            *oauth_lines,
             "}",
             "",
         ]
@@ -312,7 +314,182 @@ def auth_code(ir: dict, reserved: set[str]) -> dict[str, str]:
             else {}
         ),
         **({"src/modules/auth/dto/role-change.dto.ts": role_change_dto(auth["features"]["roles"])} if auth["features"]["roles"] else {}),
+        **({"src/modules/auth/dto/oauth-callback.dto.ts": OAUTH_CALLBACK_DTO} if auth["features"]["oauth"] else {}),
     }
+
+
+OAUTH_CALLBACK_DTO = "\n".join(
+    [
+        "import { IsString, MinLength } from 'class-validator';",
+        "",
+        "export class OAuthCallbackDto {",
+        "  @IsString()",
+        "  @MinLength(1)",
+        "  code!: string;",
+        "",
+        "  @IsString()",
+        "  @MinLength(1)",
+        "  state!: string;",
+        "}",
+        "",
+    ]
+)
+OAUTH_PROVIDER_KEYS = ["authorize_url", "token_url", "profile_url", "emails_url", "scopes", "subject_field", "email_field", "verified_field", "name_field"]
+
+
+def oauth_providers_code(oauth: dict) -> str:
+    """Provider endpoints and profile fields from the IR as a TypeScript literal."""
+    lines = ["{"]
+    for provider in oauth["providers"]:
+        lines.append(f"  {provider['name']}: {{")
+        for key in OAUTH_PROVIDER_KEYS:
+            value = provider[key]
+            if value is None:
+                literal = "null"
+            elif isinstance(value, list):
+                literal = "[" + ", ".join(ts_string(item) for item in value) + "]"
+            else:
+                literal = ts_string(value)
+            lines.append(f"    {key}: {literal},")
+        lines.append("  },")
+    lines.append("}")
+    return "\n".join(lines)
+
+
+def oauth_account_entity_code(table: str) -> str:
+    return "\n".join(
+        [
+            "import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';",
+            "import { columnType } from '../../database/column-types';",
+            "",
+            "/** Links a provider identity (provider:subject) to a user. */",
+            f"@Entity({{ name: {ts_string(table)} }})",
+            "export class OAuthAccount {",
+            "  @PrimaryGeneratedColumn({ type: 'integer' })",
+            "  id!: number;",
+            "",
+            "  @Column({ type: columnType('STRING'), length: 255 })",
+            "  provider!: string;",
+            "",
+            "  @Column({ type: columnType('STRING'), length: 255, unique: true })",
+            "  provider_subject!: string;",
+            "",
+            "  @Index()",
+            "  @Column({ type: columnType('INTEGER') })",
+            "  user_id!: number;",
+            "",
+            "  @Column({ type: columnType('DATETIME') })",
+            "  created_at!: Date;",
+            "",
+            "  @Column({ type: columnType('DATETIME') })",
+            "  updated_at!: Date;",
+            "}",
+            "",
+        ]
+    )
+
+
+COMMON_DECORATORS = ["Body", "Get", "HttpCode", "Param", "Post", "Put", "UseGuards"]
+
+
+def _with_decorators(lines: list[str], imports: Imports) -> list[str]:
+    """Imports the @nestjs/common decorators the lines use, under their alias when a model shadows the name."""
+    result = []
+    for line in lines:
+        for name in COMMON_DECORATORS:
+            if f"@{name}(" in line:
+                line = line.replace(f"@{name}(", f"@{imports.use('@nestjs/common', name)}(")
+        result.append(line)
+    return result
+
+
+def _oauth_controller_lines(ir: dict, imports: Imports) -> list[str]:
+    auth = ir["auth"]
+    oauth = auth["features"]["oauth"]
+    if not oauth:
+        return []
+    model = model_by_name(ir, auth["model"])
+    name = model["name"]
+    identity, secret = auth["identity_field"], auth["secret_field"]
+    roles = auth["features"]["roles"]
+    verification = auth["features"]["email_verification"]
+    imports.use("crypto", "randomBytes")
+    imports.use("typeorm", "DataSource")
+    imports.use("../../database/column-types", "nowUtc")
+    imports.use("./oauth", "OAuth")
+    imports.use("./oauth-account.entity", "OAuthAccount")
+    imports.use("./dto/oauth-callback.dto", "OAuthCallbackDto")
+    random_secret = "await this.hasher.hash(randomBytes(32).toString('hex'))"
+    new_user = [
+        f"        const data: Record<string, unknown> = {{ {identity}: identity.email, {secret}: {random_secret} }};",
+    ]
+    if oauth["name_field"]:
+        limit = field_rules(next(item for item in model["fields"] if item["name"] == oauth["name_field"]))["max"] or 255
+        new_user.append(f"        data.{oauth['name_field']} = identity.name.slice(0, {limit});")
+    if roles:
+        imports.use("../../config/settings", "settings")
+        new_user += [
+            "        const bootstrap = settings.bootstrapAdminEmail.toLowerCase();",
+            f"        data.role = bootstrap && identity.email.toLowerCase() === bootstrap ? {ts_string(roles['admin'])} : {ts_string(roles['default'])};",
+        ]
+    if verification:
+        new_user.append(f"        data.{verification['field']} = nowUtc();")
+        relink = [
+            f"      }} else if (record.{verification['field']} === null) {{",
+            "        // Ownership of the address is proven by the provider, not by whoever set the password.",
+            f"        await this.repository.update(record, {{ {secret}: {random_secret}, {verification['field']}: nowUtc() }} as Partial<{name}>);",
+        ]
+    else:
+        relink = [
+            "      } else {",
+            "        // Ownership of the address is proven by the provider, not by whoever set the password.",
+            f"        await this.repository.update(record, {{ {secret}: {random_secret} }} as Partial<{name}>);",
+        ]
+    lines: list[str] = []
+    for provider in oauth["providers"]:
+        key = provider["name"]
+        method = key[:1].upper() + key[1:]
+        lines += [
+            "",
+            f"  @Get('oauth/{key}')",
+            f"  oauthStart{method}() {{",
+            f"    return {{ data: OAuth.start({ts_string(key)}) }};",
+            "  }",
+            "",
+            f"  @Post('oauth/{key}/callback')",
+            "  @HttpCode(200)",
+            "  @UseGuards(AuthRateLimitGuard)",
+            f"  async oauthCallback{method}(@Body() dto: OAuthCallbackDto) {{",
+            f"    return this.oauthSignIn({ts_string(key)}, dto);",
+            "  }",
+        ]
+    lines += [
+        "",
+        "  /** Finds the user linked to the provider identity, links one by verified email, or creates one. */",
+        "  private async oauthSignIn(provider: string, dto: OAuthCallbackDto) {",
+        "    OAuth.verifyState(provider, dto.state);",
+        "    const identity = await OAuth.fetchIdentity(provider, dto.code);",
+        "    const accounts = this.dataSource.getRepository(OAuthAccount);",
+        "    const account = await accounts.findOneBy({ provider_subject: identity.subject });",
+        "    let userId: number;",
+        "    if (account) {",
+        "      userId = account.user_id;",
+        "    } else {",
+        f"      let record = await this.repository.findBy({ts_string(identity)}, identity.email);",
+        "      if (!record) {",
+        *new_user,
+        f"        record = await this.repository.create(data as Partial<{name}>);",
+        *relink,
+        "        await this.refreshTokens.revokeAll(record.id);",
+        "      }",
+        "      const now = nowUtc();",
+        "      await accounts.insert({ provider, provider_subject: identity.subject, user_id: record.id, created_at: now, updated_at: now });",
+        "      userId = record.id;",
+        "    }",
+        "    return { data: { user: await this.users.get(userId), ...(await this.session(userId)) } };",
+        "  }",
+    ]
+    return _with_decorators(lines, imports)
 
 
 TOKEN_ENTITIES = {"password_reset": "PasswordReset", "email_verification": "EmailVerification"}
@@ -390,7 +567,6 @@ def _mail_controller_lines(auth: dict, name: str, imports: Imports) -> list[str]
     if not (features["password_reset"] or features["email_verification"]):
         return []
     identity, secret = auth["identity_field"], auth["secret_field"]
-    imports.use("@nestjs/common", "Post")
     imports.use("../../common/mailer", "Mailer")
     imports.use("./one-time-tokens", "OneTimeTokens")
     lines: list[str] = []
@@ -474,7 +650,7 @@ def _mail_controller_lines(auth: dict, name: str, imports: Imports) -> list[str]
         ]
         imports.use("../../database/column-types", "nowUtc")
     imports.use("typeorm", "DataSource")
-    return lines
+    return _with_decorators(lines, imports)
 
 
 def _new_password_decorators(model: dict, secret: str) -> list[str]:
@@ -528,12 +704,10 @@ def _role_route_lines(auth: dict, name: str, imports: Imports) -> list[str]:
     roles = auth["features"]["roles"]
     if not roles:
         return []
-    imports.use("@nestjs/common", "Put")
-    imports.use("@nestjs/common", "Param")
     imports.use("../../common/id.pipe", "IdPipe")
     imports.use("../../guards/auth.guard", "Roles")
     imports.use("./dto/role-change.dto", "RoleChangeDto")
-    return [
+    return _with_decorators([
         "",
         "  @Put('users/:id/role')",
         "  @UseGuards(AuthGuard)",
@@ -541,7 +715,7 @@ def _role_route_lines(auth: dict, name: str, imports: Imports) -> list[str]:
         "  async setRole(@Param('id', IdPipe) id: number, @Body() dto: RoleChangeDto) {",
         "    return { data: await this.users.setRole(id, dto.role) };",
         "  }",
-    ]
+    ], imports)
 
 
 def role_change_dto(roles: dict) -> str:
@@ -755,6 +929,9 @@ def data_source_code(ir: dict) -> str:
             if ir["auth"]["features"][feature]:
                 entity_imports.append(f"import {{ {class_name} }} from '../modules/auth/{kebab_case(class_name)}.entity';")
                 entity_names.append(class_name)
+        if ir["auth"]["features"]["oauth"]:
+            entity_imports.append("import { OAuthAccount } from '../modules/auth/oauth-account.entity';")
+            entity_names.append("OAuthAccount")
     migrations = [migration_class(table) for table in ir["migrations"]["tables"]]
     migration_imports = [f"import {{ {class_name} }} from './migrations/{file}';" for class_name, file in migrations]
     return "\n".join(

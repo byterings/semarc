@@ -1,8 +1,9 @@
 from semarc.generator.php.base import PHP_HEADER, PhpFileWriter
 from semarc.generator.php.php_syntax import php_literal
-from semarc.generator.utils.resource_views import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
+from semarc.generator.utils.resource_views import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, field_rules, model_by_name
 
 
+OAUTH_PROVIDER_KEYS = ["authorize_url", "token_url", "profile_url", "emails_url", "scopes", "subject_field", "email_field", "verified_field", "name_field"]
 CORE_FILES = [
     "Env",
     "HttpException",
@@ -47,7 +48,7 @@ class CoreGenerator:
             "attempts": auth["rate_limit"]["attempts"],
             "window": auth["rate_limit"]["window_seconds"],
             "register_extra": self._bootstrap_admin(auth) + self._send_verification(auth),
-            "extra_methods": self._mail_methods(auth),
+            "extra_methods": self._mail_methods(auth) + self._oauth_methods(ir),
         }
         self.writer.render("core/Jwt.php", "auth/Jwt.php.tpl")
         self.writer.render("core/RateLimiter.php", "auth/RateLimiter.php.tpl", values)
@@ -56,6 +57,18 @@ class CoreGenerator:
             self.writer.render("core/Mailer.php", "auth/Mailer.php.tpl")
             self.writer.render("core/OneTimeTokens.php", "auth/OneTimeTokens.php.tpl")
             mail_sources = ["core/Mailer.php", "core/OneTimeTokens.php"]
+        oauth = auth["features"]["oauth"]
+        if oauth:
+            self.writer.render(
+                "core/OAuth.php",
+                "auth/OAuth.php.tpl",
+                {
+                    "providers": php_literal({provider["name"]: {key: provider[key] for key in OAUTH_PROVIDER_KEYS} for provider in oauth["providers"]}, 4),
+                    "table": oauth["table"],
+                    "state_ttl": oauth["state_ttl_seconds"],
+                },
+            )
+            mail_sources.append("core/OAuth.php")
         self.writer.render(
             "core/RefreshTokens.php",
             "auth/RefreshTokens.php.tpl",
@@ -129,6 +142,79 @@ class CoreGenerator:
                 "        return ['data' => $this->users->get($userId)];",
                 "    }",
                 "}",
+                "",
+            ]
+        )
+
+    def _oauth_methods(self, ir: dict) -> str:
+        auth = ir["auth"]
+        oauth = auth["features"]["oauth"]
+        if not oauth:
+            return ""
+        identity, secret = auth["identity_field"], auth["secret_field"]
+        roles = auth["features"]["roles"]
+        verification = auth["features"]["email_verification"]
+        random_secret = "$this->hasher->hash(bin2hex(random_bytes(32)))"
+        new_user = [
+            f"                $data = ['{identity}' => $identity['email'], '{secret}' => {random_secret}];",
+        ]
+        if oauth["name_field"]:
+            model = model_by_name(ir, auth["model"])
+            limit = field_rules(next(item for item in model["fields"] if item["name"] == oauth["name_field"]))["max"] or 255
+            new_user.append(f"                $data['{oauth['name_field']}'] = mb_substr($identity['name'], 0, {limit});")
+        if roles:
+            new_user += [
+                "                $bootstrap = Env::get('BOOTSTRAP_ADMIN_EMAIL');",
+                f"                $admin = $bootstrap !== null && strcasecmp($identity['email'], $bootstrap) === 0;",
+                f"                $data['role'] = $admin ? '{roles['admin']}' : '{roles['default']}';",
+            ]
+        if verification:
+            new_user.append(f"                $data['{verification['field']}'] = Database::now();")
+            relink_condition = f"            }} elseif ($record['{verification['field']}'] === null) {{"
+            relink_data = f"['{secret}' => {random_secret}, '{verification['field']}' => Database::now()]"
+        else:
+            relink_condition = "            } else {"
+            relink_data = f"['{secret}' => {random_secret}]"
+        return "\n".join(
+            [
+                "",
+                "    /**",
+                "     * @return array<string, mixed>",
+                "     */",
+                "    public function oauthStart(Request $request, string $provider): array",
+                "    {",
+                "        return ['data' => OAuth::start($provider)];",
+                "    }",
+                "",
+                "    /**",
+                "     * Finds the user linked to the provider identity, links one by verified email, or creates one.",
+                "     *",
+                "     * @return array<string, mixed>",
+                "     */",
+                "    public function oauthCallback(Request $request, string $provider): array",
+                "    {",
+                "        RateLimiter::forAuth()->hit('oauth|' . $provider . '|' . $request->ip);",
+                "        $input = $request->json();",
+                "        $code = self::requiredString($input, 'code');",
+                "        OAuth::verifyState($provider, self::requiredString($input, 'state'));",
+                "        $identity = OAuth::fetchIdentity($provider, $code);",
+                "        $userId = OAuth::findUserId($identity['subject']);",
+                "        if ($userId === null) {",
+                f"            $record = $this->repository->findBy('{identity}', $identity['email']);",
+                "            if ($record === null) {",
+                *new_user,
+                "                $record = $this->repository->create($data);",
+                relink_condition,
+                "                // Ownership of the address is proven by the provider, not by whoever set the password.",
+                f"                $this->repository->update((int) $record['id'], {relink_data});",
+                "                $this->refreshTokens->revokeAll((int) $record['id']);",
+                "            }",
+                "            $userId = (int) $record['id'];",
+                "            OAuth::link($provider, $identity['subject'], $userId);",
+                "        }",
+                "",
+                "        return ['data' => ['user' => $this->users->get($userId)] + $this->session($userId)];",
+                "    }",
                 "",
             ]
         )

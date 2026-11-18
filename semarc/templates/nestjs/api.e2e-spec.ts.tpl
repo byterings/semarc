@@ -16,6 +16,7 @@ interface MailCheck {
 interface Step {
   name: string;
   mail?: MailCheck;
+  external?: string;
   method: string;
   path: string;
   expect: number | number[];
@@ -89,6 +90,9 @@ describe('API scenario (test/api_scenario.json)', () => {
   it('replays every step', async () => {
     const variables: Record<string, unknown> = {};
     for (const step of scenario.steps) {
+      if (step.external) {
+        continue; // needs an external service (see the scenario description)
+      }
       if (step.mail) {
         variables[step.mail.save] = readMail(step.name, step.mail);
         continue;

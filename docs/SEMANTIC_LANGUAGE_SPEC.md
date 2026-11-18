@@ -207,6 +207,7 @@ Modules that change the generated API (all require `AUTH JWT`):
 | `auth.roles` | `role` field, `ROUTE ... ROLE`, `PUT /users/{id}/role` |
 | `auth.password_reset` | `POST /password/forgot`, `POST /password/reset`, email sending |
 | `auth.email_verification` | `email_verified_at` field, verification email on registration, `POST /email/verify`, `POST /email/resend` |
+| `auth.oauth.google`, `auth.oauth.github` | sign-in with the provider: `GET /oauth/<provider>`, `POST /oauth/<provider>/callback` |
 
 See [GENERATED_API.md](GENERATED_API.md) for their behaviour.
 

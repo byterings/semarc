@@ -6,7 +6,7 @@ PostgreSQL and SQLite without regenerating it.
 """
 from semarc.compiler.version import SEMARC_VERSION
 from semarc.generator.utils.inflector import snake_case
-from semarc.generator.utils.resource_views import database_engine, mail_enabled
+from semarc.generator.utils.resource_views import database_engine, mail_enabled, oauth_env_names, oauth_providers
 
 MAILPIT_IMAGE = "axllent/mailpit:v1.32.0"
 
@@ -81,6 +81,10 @@ def env_values(ir: dict) -> dict[str, str]:
                 "MAIL_FROM": f"no-reply@{snake_case(ir['project']).replace('_', '-')}.local",
             }
         )
+    for provider in oauth_providers(ir):
+        names = oauth_env_names(provider)
+        for setting in ["client_id", "client_secret", "redirect_uri"]:
+            values[names[setting]] = ""
     return values
 
 
@@ -96,6 +100,8 @@ def env_example(ir: dict) -> str:
             lines.append("# BOOTSTRAP_ADMIN_EMAIL: the account registering with this email becomes admin.")
     if mail_enabled(ir):
         lines.append("# MAIL_DRIVER: smtp, log (write emails to the log) or memory (tests). MAIL_ENCRYPTION: none, tls or ssl.")
+    if oauth_providers(ir):
+        lines.append("# OAUTH_*: credentials of the OAuth app; REDIRECT_URI is the front-end page that receives ?code=&state=.")
     lines.extend(f"{key}={value}" for key, value in env_values(ir).items())
     return "\n".join(lines) + "\n"
 
@@ -173,6 +179,8 @@ def _app_service(ir: dict, port: int, engine: str, publish_port: bool) -> list[s
             "      MAIL_ENCRYPTION: none",
             f"      MAIL_FROM: no-reply@{snake_case(ir['project']).replace('_', '-')}.local",
         ]
+    for provider in oauth_providers(ir):
+        lines += [f"      {name}: ${{{name}:-}}" for name in oauth_env_names(provider).values()]
     if engine == "SQLITE":
         lines += ["    volumes:", "      - app-storage:/app/storage"]
     else:
@@ -322,5 +330,7 @@ def _behaviour(route: dict) -> str:
         "auth_reset_password": "Set a new password with a reset token",
         "auth_verify_email": "Confirm an email address with a token",
         "auth_resend_verification": "Send a new verification email",
+        "auth_oauth_start": f"Start sign-in with {operation.get('provider')}",
+        "auth_oauth_callback": f"Finish sign-in with {operation.get('provider')}",
         "custom": "Declared, not generated (returns 501 until implemented)",
     }[operation["kind"]]

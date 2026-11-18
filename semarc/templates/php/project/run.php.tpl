@@ -14,12 +14,16 @@ if (getenv('JWT_SECRET') === false) {
     putenv('JWT_SECRET=semarc-test-secret-semarc-test-secret');
 }
 
+$scenario = json_decode((string) file_get_contents(__DIR__ . '/api_scenario.json'), true, 512, JSON_THROW_ON_ERROR);
+foreach ($scenario['env'] ?? [] as $name => $value) {
+    putenv("{$name}={$value}");
+}
+
 require_once __DIR__ . '/../bootstrap.php';
 
 (new Migrator(Database::connection(), __DIR__ . '/../migrations'))->run();
 /** @var Router $router */
 $router = require __DIR__ . '/../routes.php';
-$scenario = json_decode((string) file_get_contents(__DIR__ . '/api_scenario.json'), true, 512, JSON_THROW_ON_ERROR);
 
 $missing = new stdClass();
 $dig = static function (mixed $data, string $path) use ($missing): mixed {
@@ -47,6 +51,10 @@ $resolve = static function (mixed $value, array $vars) use (&$resolve): mixed {
 $vars = [];
 $passed = 0;
 foreach ($scenario['steps'] as $step) {
+    if (isset($step['external'])) {
+        echo "SKIP {$step['name']} (needs an external service)" . PHP_EOL;
+        continue;
+    }
     if (isset($step['mail'])) {
         $mail = $step['mail'];
         $found = null;
