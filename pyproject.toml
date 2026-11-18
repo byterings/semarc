@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "semarc"
+version = "0.14.0"
+description = "Semantic Architecture Compiler: compiles declarative architecture specifications into runnable backend projects."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+semarc = "semarc_cli:main"
+
+[tool.setuptools]
+# Only the entry point is installed; it runs SEMARC from this checkout (install with pip install -e .).
+py-modules = ["semarc_cli"]

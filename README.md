@@ -109,12 +109,20 @@ Free-form natural language is not supported. The full grammar is in
 
 ## Command line
 
+Install the `semarc` command from a checkout (editable install; SEMARC runs from the checkout):
+
 ```bash
-python3 main.py examples/blog_api.sem                       # writes ./output
-python3 main.py examples/blog_api.sem --target nestjs       # override TARGET
-python3 main.py examples/blog_api.sem --output ../my-api    # choose the directory
-python3 main.py examples/blog_api.sem --debug               # print tokens, AST, IR and passes
+pip install -e .
+semarc build examples/blog_api.sem                       # writes ./output
+semarc build examples/blog_api.sem --target nestjs       # override TARGET
+semarc build examples/blog_api.sem --output ../my-api    # choose the directory
+semarc build examples/blog_api.sem --debug               # print tokens, AST, IR and passes
+semarc check examples/blog_api.sem                       # validate and show the planned API, no files
+semarc targets                                           # list targets
+semarc version
 ```
+
+Without installing, `python3 main.py <file> [options]` is the same as `semarc build`.
 
 SEMARC only clears an output directory it generated earlier. Use `--force` to replace
 any other non-empty directory. Generation stops before writing files if validation or

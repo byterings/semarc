@@ -213,15 +213,27 @@ Status: current.
 - generated `api_scenario.json` and `scripts/e2e_runtime.py` verify every example on every
   target and database over HTTP
 - CLI `--output` and `--force`; safe output directory handling; diagnostic errors block generation
+- owner-only writes for records that belong to a user
+- `DATE` and `DATETIME` field types
+- equality filters and sorting on list routes
+- CORS, rate limiting on `/register` and `/login`
+- OpenAPI 3.1 document and Swagger UI on every target
+- `semarc` command (`build`, `check`, `targets`, `version`) and GitHub Actions CI
 
 ## v0.15.0: Language Depth
 
 Status: planned.
 
-- date and datetime field types
-- query filters and sorting on list routes
 - roles and permissions as stdlib modules
 - explicit many-to-many relations
+- range filters and text search on list routes
+
+## v0.15.x: Packaging
+
+Status: planned.
+
+- move the compiler under a `semarc/` package namespace so it can ship as a regular wheel
+  (today the `semarc` command needs an editable install)
 
 ## v0.16.0: Community Target Architecture
 

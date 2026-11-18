@@ -23,6 +23,7 @@ CHECKS = [
             "-m",
             "compileall",
             "main.py",
+            "semarc_cli.py",
             "architecture",
             "compiler",
             "generator",

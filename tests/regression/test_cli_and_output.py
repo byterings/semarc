@@ -90,6 +90,60 @@ class OutputDirectoryTests(unittest.TestCase):
             self.assertEqual(manifest["generator"], "fastapi")
 
 
+class SemarcCommandTests(unittest.TestCase):
+    def run_cli(self, *arguments: str) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            [sys.executable, str(ROOT / "semarc_cli.py"), *arguments],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    def test_version_matches_compiler_and_package_metadata(self):
+        from compiler.version import SEMARC_VERSION
+
+        result = self.run_cli("version")
+        self.assertEqual(result.stdout.strip(), f"semarc {SEMARC_VERSION}")
+        pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        self.assertIn(f'version = "{SEMARC_VERSION}"', pyproject)
+
+    def test_targets_lists_every_generator(self):
+        result = self.run_cli("targets")
+        self.assertEqual([line.split()[0] for line in result.stdout.splitlines()], ["fastapi", "nestjs", "php"])
+
+    def test_check_prints_planned_api_without_generating(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "app.sem"
+            source.write_text(SOURCE + "\nAUTH JWT\nROUTE PATCH /posts/{id}\n", encoding="utf-8")
+            result = subprocess.run(
+                [sys.executable, str(ROOT / "semarc_cli.py"), "check", str(source)],
+                cwd=tmpdir,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout)
+            self.assertIn("Project CliDemo", result.stdout)
+            self.assertIn("PATCH  /posts/{id}", result.stdout)
+            self.assertFalse((Path(tmpdir) / "output").exists())
+
+    def test_check_fails_on_diagnostic_errors(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "app.sem"
+            source.write_text(SOURCE + "\nAUTH JWT\nAUTH SESSION\n", encoding="utf-8")
+            result = self.run_cli("check", str(source))
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("error AUTH002", result.stdout)
+
+    def test_build_generates_like_main(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "app.sem"
+            source.write_text(SOURCE, encoding="utf-8")
+            result = self.run_cli("build", str(source), "--output", str(Path(tmpdir) / "out"), "--target", "nestjs")
+            self.assertEqual(result.returncode, 0, result.stdout)
+            self.assertTrue((Path(tmpdir) / "out" / "package.json").exists())
+
+
 class DiagnosticBlockingTests(unittest.TestCase):
     def test_diagnostic_errors_block_generation(self):
         source = SOURCE + "\nAUTH JWT\nAUTH SESSION\n"
