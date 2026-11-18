@@ -5,7 +5,12 @@ AUTH_ROUTES = {
     ("POST", "/register"): "register",
     ("POST", "/login"): "login",
     ("GET", "/me"): "me",
+    ("POST", "/token/refresh"): "refresh",
+    ("POST", "/logout"): "logout",
+    ("POST", "/me/password"): "change_password",
 }
+REFRESH_TOKEN_TABLE = "refresh_tokens"
+REFRESH_TOKEN_TTL_SECONDS = 14 * 24 * 3600
 
 
 def apply_auth_rules(architecture, plan: dict, graph) -> None:

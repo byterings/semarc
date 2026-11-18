@@ -93,6 +93,16 @@ class RouteOperationTests(unittest.TestCase):
         self.assertEqual(route(self.ir, "GET", "/stats")["operation"], {"kind": "custom", "model": None})
         self.assertEqual(route(self.ir, "GET", "/stats")["handler"], {"type": "todo", "action": "custom"})
 
+    def test_session_routes_and_refresh_token_table(self):
+        self.assertEqual(route(self.ir, "POST", "/token/refresh")["access"], "public")
+        self.assertEqual(route(self.ir, "POST", "/logout")["operation"]["kind"], "auth_logout")
+        self.assertEqual(route(self.ir, "POST", "/me/password")["access"], "protected")
+        table = next(item for item in self.ir["migrations"]["tables"] if item["table"] == "refresh_tokens")
+        self.assertTrue(table["internal"])
+        self.assertEqual(table["foreign_keys"][0]["on_delete"], "CASCADE")
+        names = [item["table"] for item in self.ir["migrations"]["tables"]]
+        self.assertLess(names.index("users"), names.index("refresh_tokens"))
+
     def test_auth_routes_are_added(self):
         for method, path, kind in [("POST", "/register", "auth_register"), ("POST", "/login", "auth_login"), ("GET", "/me", "auth_me")]:
             with self.subTest(path=path):

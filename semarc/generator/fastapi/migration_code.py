@@ -31,7 +31,8 @@ def migration_code(table: dict, previous: dict | None) -> str:
         options = [
             f'"{foreign_key["column"]}"',
             "sa.Integer()",
-            f'sa.ForeignKey("{foreign_key["references_table"]}.id")',
+            f'sa.ForeignKey("{foreign_key["references_table"]}.id"'
+            + (', ondelete="CASCADE")' if foreign_key.get("on_delete") == "CASCADE" else ")"),
             "nullable=False",
         ]
         if foreign_key.get("unique"):

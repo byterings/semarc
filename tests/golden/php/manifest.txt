@@ -17,6 +17,7 @@ core/HttpException.php
 core/Jwt.php
 core/Migrator.php
 core/RateLimiter.php
+core/RefreshTokens.php
 core/Repository.php
 core/Request.php
 core/ResourceService.php
@@ -27,6 +28,7 @@ docker-compose.yml
 generator_manifest.json
 middleware/AuthMiddleware.php
 migrations/001_create_users_table.php
+migrations/002_create_refresh_tokens_table.php
 models/User.php
 openapi.json
 public/.htaccess

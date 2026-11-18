@@ -1,6 +1,13 @@
 import re
 
-from semarc.architecture.rules.auth_rules import AUTH_IDENTITY_FIELD, AUTH_MODEL, AUTH_ROUTES, AUTH_SECRET_FIELD
+from semarc.architecture.rules.auth_rules import (
+    AUTH_IDENTITY_FIELD,
+    AUTH_MODEL,
+    AUTH_ROUTES,
+    AUTH_SECRET_FIELD,
+    REFRESH_TOKEN_TABLE,
+    REFRESH_TOKEN_TTL_SECONDS,
+)
 from semarc.generator.utils.inflector import pluralize, resource_path, snake_case
 
 
@@ -32,7 +39,36 @@ class ResourcePlanner:
             "auth": auth,
             "models": models,
             "routes": routes,
+            "internal_tables": self._internal_tables(auth),
         }
+
+    def _internal_tables(self, auth: dict | None) -> list[dict]:
+        """Tables owned by generated infrastructure rather than declared models."""
+        if not auth:
+            return []
+        users = self._table_name(auth["model"])
+        return [
+            {
+                "model": None,
+                "table": auth["features"]["refresh_tokens"]["table"],
+                "internal": True,
+                "fields": [
+                    {"name": "token_hash", "type": "STRING", "required": True, "unique": True},
+                    {"name": "expires_at", "type": "DATETIME", "required": True, "unique": False},
+                    {"name": "revoked_at", "type": "DATETIME", "required": False, "unique": False},
+                ],
+                "foreign_keys": [
+                    {
+                        "table": auth["features"]["refresh_tokens"]["table"],
+                        "column": "user_id",
+                        "references_table": users,
+                        "references_column": "id",
+                        "unique": False,
+                        "on_delete": "CASCADE",
+                    }
+                ],
+            }
+        ]
 
     def _auth(self, architecture) -> dict | None:
         if architecture.auth is None or architecture.auth.strategy != "JWT":
@@ -46,7 +82,10 @@ class ResourcePlanner:
             "token_ttl_seconds": TOKEN_TTL_SECONDS,
             "rate_limit": dict(AUTH_RATE_LIMIT),
             "implicit_model": not declared,
-            "features": {"roles": self._roles(architecture)},
+            "features": {
+                "roles": self._roles(architecture),
+                "refresh_tokens": {"table": REFRESH_TOKEN_TABLE, "ttl_seconds": REFRESH_TOKEN_TTL_SECONDS},
+            },
         }
 
     def _roles(self, architecture) -> dict | None:
@@ -280,9 +319,9 @@ class ResourcePlanner:
     def _access(self, method: str, declared: str | None, operation: dict, auth: dict | None) -> str:
         if auth is None:
             return "public"
-        if operation["kind"] in {"auth_register", "auth_login"}:
+        if operation["kind"] in {"auth_register", "auth_login", "auth_refresh", "auth_logout"}:
             return "public"
-        if operation["kind"] == "auth_me":
+        if operation["kind"] in {"auth_me", "auth_change_password"}:
             return "protected"
         if declared:
             return declared.lower()

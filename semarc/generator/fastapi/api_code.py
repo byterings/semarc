@@ -2,7 +2,7 @@
 from semarc.compiler.version import SEMARC_VERSION
 from semarc.generator.fastapi.entity_code import module_name
 from semarc.generator.utils.inflector import snake_case
-from semarc.generator.utils.resource_views import all_route_labels, model_by_name, roles_feature, routes_for_model
+from semarc.generator.utils.resource_views import all_route_labels, field_rules, model_by_name, roles_feature, routes_for_model
 
 DECORATORS = {"GET": "get", "POST": "post", "PUT": "put", "PATCH": "patch", "DELETE": "delete"}
 
@@ -198,15 +198,20 @@ def auth_router_code(ir: dict) -> str:
     name = model["name"]
     module = module_name(name)
     identity, secret = auth["identity_field"], auth["secret_field"]
+    secret_rules = field_rules(next(item for item in model["fields"] if item["name"] == secret))
+    new_password = [f"min_length={secret_rules['min'] or 1}"]
+    if secret_rules["max"]:
+        new_password.append(f"max_length={secret_rules['max']}")
     return "\n".join(
         [
-            "from fastapi import APIRouter, Depends",
+            "from fastapi import APIRouter, Depends, Response",
             "from pydantic import BaseModel, Field",
             "from sqlalchemy.orm import Session",
             "",
             *(["from typing import Literal", ""] if auth["features"]["roles"] else []),
             "from core.errors import ApiError",
             "from core.rate_limit import auth_rate_limit",
+            "from core.refresh_tokens import RefreshTokenStore",
             "from database import get_db",
             "from middleware.auth import current_user_id" + (", require_roles" if auth["features"]["roles"] else ""),
             *(["from config.settings import settings"] if auth["features"]["roles"] else []),
@@ -229,6 +234,22 @@ def auth_router_code(ir: dict) -> str:
             "    access_token: str",
             "    token_type: str",
             "    expires_in: int",
+            "    refresh_token: str",
+            "    refresh_expires_in: int",
+            "",
+            "",
+            "class RefreshRequest(InputSchema):",
+            "    refresh_token: str = Field(min_length=1)",
+            "",
+            "",
+            "class PasswordChange(InputSchema):",
+            "    current_password: str = Field(min_length=1)",
+            f"    new_password: str = Field({', '.join(new_password)})",
+            "",
+            "",
+            "def issue_session(db: Session, user_id: int) -> dict:",
+            '    """Access token plus a new refresh token."""',
+            "    return {**TokenService().issue(user_id), **RefreshTokenStore(db).issue(user_id)}",
             "",
             "",
             "class RegisterResult(TokenResult):",
@@ -244,7 +265,7 @@ def auth_router_code(ir: dict) -> str:
             f"def register(payload: {name}Create, db: Session = Depends(get_db)) -> dict:",
             f"    user = {name}Service(db).create(payload)",
             *_bootstrap_admin_lines(auth, name),
-            '    result = {"user": user, **TokenService().issue(user["id"])}',
+            '    result = {"user": user, **issue_session(db, user["id"])}',
             '    return {"data": result}',
             "",
             "",
@@ -253,7 +274,32 @@ def auth_router_code(ir: dict) -> str:
             f'    record = {name}Repository(db).find_by("{identity}", payload.{identity})',
             f"    if record is None or not PasswordHasher().verify(payload.{secret}, record.{secret}):",
             '        raise ApiError.unauthorized("Invalid credentials.")',
-            '    return {"data": TokenService().issue(record.id)}',
+            '    return {"data": issue_session(db, record.id)}',
+            "",
+            "",
+            '@router.post("/token/refresh", response_model=DataResponse[TokenResult], dependencies=[Depends(auth_rate_limit)])',
+            "def refresh(payload: RefreshRequest, db: Session = Depends(get_db)) -> dict:",
+            "    user_id = RefreshTokenStore(db).rotate(payload.refresh_token)",
+            f"    if {name}Repository(db).get(user_id) is None:",
+            '        raise ApiError.unauthorized("Token user no longer exists.")',
+            '    return {"data": issue_session(db, user_id)}',
+            "",
+            "",
+            '@router.post("/logout", status_code=204)',
+            "def logout(payload: RefreshRequest, db: Session = Depends(get_db)) -> Response:",
+            "    RefreshTokenStore(db).revoke(payload.refresh_token)",
+            "    return Response(status_code=204)",
+            "",
+            "",
+            '@router.post("/me/password", status_code=204)',
+            "def change_password(payload: PasswordChange, user_id: int = Depends(current_user_id), db: Session = Depends(get_db)) -> Response:",
+            f"    repository = {name}Repository(db)",
+            "    record = repository.get(user_id)",
+            f"    if record is None or not PasswordHasher().verify(payload.current_password, record.{secret}):",
+            '        raise ApiError.validation({"current_password": ["current_password is incorrect"]})',
+            f'    repository.update(record, {{"{secret}": PasswordHasher().hash(payload.new_password)}})',
+            "    RefreshTokenStore(db).revoke_all(user_id)",
+            "    return Response(status_code=204)",
             "",
             "",
             f'@router.get("/me", response_model=DataResponse[{name}Read])',

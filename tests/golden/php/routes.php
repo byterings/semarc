@@ -13,7 +13,7 @@ $project = [
     'target' => 'PHP',
     'semarc_version' => '0.14.0',
     'models' => ['User'],
-    'routes' => ['GET /', 'GET /health', 'GET /routes', 'GET /openapi.json', 'GET /docs', 'POST /login', 'GET /users', 'POST /register', 'GET /me'],
+    'routes' => ['GET /', 'GET /health', 'GET /routes', 'GET /openapi.json', 'GET /docs', 'POST /login', 'GET /users', 'POST /register', 'GET /me', 'POST /token/refresh', 'POST /logout', 'POST /me/password'],
 ];
 
 $router->add('GET', '/', static fn (): Response => Response::html(HomePage::render($project)));
@@ -39,5 +39,8 @@ $router->add('POST', '/login', static fn (Request $request): array => (new AuthC
 $router->add('GET', '/users', static fn (Request $request): array => (new UserController())->list($request), true);
 $router->add('POST', '/register', static fn (Request $request): Response => (new AuthController())->register($request));
 $router->add('GET', '/me', static fn (Request $request): array => (new AuthController())->me($request), true);
+$router->add('POST', '/token/refresh', static fn (Request $request): array => (new AuthController())->refresh($request));
+$router->add('POST', '/logout', static fn (Request $request): Response => (new AuthController())->logout($request));
+$router->add('POST', '/me/password', static fn (Request $request): Response => (new AuthController())->changePassword($request), true);
 
 return $router;

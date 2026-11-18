@@ -8,7 +8,7 @@ from semarc.generator.project_files import ProjectFileWriter
 from semarc.generator.utils.api_scenario import ApiScenarioBuilder
 from semarc.generator.utils.openapi import OpenApiBuilder
 from semarc.generator.utils.project_runtime import database_settings, docker_compose, env_example, readme
-from semarc.generator.utils.resource_views import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
+from semarc.generator.utils.resource_views import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, model_by_name
 from semarc.generator.utils.template_engine import TemplateEngine
 
 PORT = 8000
@@ -78,6 +78,11 @@ class FastApiGenerator:
             self._write("middleware/__init__.py", '"""Request authentication dependencies."""\n', "python package")
             self._render("services/token_service.py", "token_service.py.tpl")
             self._render("core/rate_limit.py", "rate_limit.py.tpl")
+            self._render(
+                "core/refresh_tokens.py",
+                "refresh_tokens.py.tpl",
+                {"table": auth["features"]["refresh_tokens"]["table"], "users_table": model_by_name(ir, auth["model"])["table"]},
+            )
             self._render("services/password_hasher.py", "password_hasher.py.tpl")
             self._render(
                 "middleware/auth.py",
@@ -201,6 +206,7 @@ class FastApiGenerator:
                     f'        self.auth_rate_limit = int(env("AUTH_RATE_LIMIT", "{ir["auth"]["rate_limit"]["attempts"]}"))',
                     f'        self.auth_rate_window = int(env("AUTH_RATE_WINDOW", "{ir["auth"]["rate_limit"]["window_seconds"]}"))',
                     '        self.bootstrap_admin_email = env("BOOTSTRAP_ADMIN_EMAIL", "")',
+                    f'        self.jwt_refresh_ttl = int(env("JWT_REFRESH_TTL", "{ir["auth"]["features"]["refresh_tokens"]["ttl_seconds"]}"))',
                 ]
             )
         lines.extend(

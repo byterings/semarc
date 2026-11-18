@@ -7,6 +7,7 @@ final class AuthController
     private {{auth_model}}Service $users;
     private {{auth_model}}Repository $repository;
     private TokenService $tokens;
+    private RefreshTokens $refreshTokens;
     private PasswordHasher $hasher;
 
     public function __construct()
@@ -14,6 +15,7 @@ final class AuthController
         $this->users = new {{auth_model}}Service();
         $this->repository = new {{auth_model}}Repository();
         $this->tokens = new TokenService();
+        $this->refreshTokens = new RefreshTokens();
         $this->hasher = new PasswordHasher();
     }
 
@@ -22,7 +24,7 @@ final class AuthController
         RateLimiter::forAuth()->hit('register|' . $request->ip);
         $user = $this->users->create($request->json());
 {{register_extra}}
-        return Response::json(['data' => ['user' => $user] + $this->tokens->issue($user['id'])], 201);
+        return Response::json(['data' => ['user' => $user] + $this->session($user['id'])], 201);
     }
 
     /**
@@ -47,7 +49,74 @@ final class AuthController
             throw HttpException::unauthorized('Invalid credentials.');
         }
 
-        return ['data' => $this->tokens->issue((int) $record['id'])];
+        return ['data' => $this->session((int) $record['id'])];
+    }
+
+    /**
+     * Exchanges a refresh token for new tokens; the old refresh token stops working.
+     *
+     * @return array<string, mixed>
+     */
+    public function refresh(Request $request): array
+    {
+        RateLimiter::forAuth()->hit('refresh|' . $request->ip);
+        $userId = $this->refreshTokens->rotate(self::requiredString($request->json(), 'refresh_token'));
+        if ($this->repository->findById($userId) === null) {
+            throw HttpException::unauthorized('Token user no longer exists.');
+        }
+
+        return ['data' => $this->session($userId)];
+    }
+
+    public function logout(Request $request): Response
+    {
+        $this->refreshTokens->revoke(self::requiredString($request->json(), 'refresh_token'));
+
+        return Response::noContent();
+    }
+
+    public function changePassword(Request $request): Response
+    {
+        $input = $request->json();
+        $current = self::requiredString($input, 'current_password');
+        try {
+            $new = (new Validator())->validate(
+                ['{{secret_field}}' => $input['new_password'] ?? null],
+                ['{{secret_field}}' => {{auth_model}}::FIELDS['{{secret_field}}']],
+            )['{{secret_field}}'];
+        } catch (HttpException $exception) {
+            throw HttpException::validation(['new_password' => str_replace('{{secret_field}}', 'new_password', $exception->details['{{secret_field}}'] ?? [])]);
+        }
+
+        $userId = (int) $request->userId;
+        $record = $this->repository->findById($userId);
+        if ($record === null || !$this->hasher->verify($current, (string) $record['{{secret_field}}'])) {
+            throw HttpException::validation(['current_password' => ['current_password is incorrect']]);
+        }
+        $this->repository->update($userId, ['{{secret_field}}' => $this->hasher->hash($new)]);
+        $this->refreshTokens->revokeAll($userId);
+
+        return Response::noContent();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function session(int $userId): array
+    {
+        return $this->tokens->issue($userId) + $this->refreshTokens->issue($userId);
+    }
+
+    /**
+     * @param array<string, mixed> $input
+     */
+    private static function requiredString(array $input, string $field): string
+    {
+        if (!isset($input[$field]) || !is_string($input[$field]) || $input[$field] === '') {
+            throw HttpException::validation([$field => ["{$field} is required"]]);
+        }
+
+        return $input[$field];
     }
 
     /**

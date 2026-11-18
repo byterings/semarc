@@ -91,11 +91,26 @@ class OpenApiBuilder:
         if auth:
             token = {
                 "type": "object",
-                "required": ["access_token", "token_type", "expires_in"],
+                "required": ["access_token", "token_type", "expires_in", "refresh_token", "refresh_expires_in"],
                 "properties": {
                     "access_token": {"type": "string"},
                     "token_type": {"type": "string", "const": "Bearer"},
                     "expires_in": {"type": "integer"},
+                    "refresh_token": {"type": "string"},
+                    "refresh_expires_in": {"type": "integer"},
+                },
+            }
+            schemas["RefreshRequest"] = {
+                "type": "object",
+                "required": ["refresh_token"],
+                "properties": {"refresh_token": {"type": "string", "minLength": 1}},
+            }
+            schemas["PasswordChange"] = {
+                "type": "object",
+                "required": ["current_password", "new_password"],
+                "properties": {
+                    "current_password": {"type": "string", "format": "password"},
+                    "new_password": {"type": "string", "format": "password"},
                 },
             }
             schemas["Token"] = token
@@ -223,6 +238,9 @@ class OpenApiBuilder:
             "auth_register": f"{self.ir['auth']['model']}Create" if self.ir.get("auth") else None,
             "auth_login": "Login",
             "auth_set_role": "RoleChange",
+            "auth_refresh": "RefreshRequest",
+            "auth_logout": "RefreshRequest",
+            "auth_change_password": "PasswordChange",
         }.get(kind)
         if schema is None:
             return None
@@ -242,6 +260,9 @@ class OpenApiBuilder:
             "auth_login": ("200", self._json("Token issued", self._data({"$ref": "#/components/schemas/Token"}))),
             "auth_me": ("200", self._json("Current user", self._data(record))),
             "auth_set_role": ("200", self._json("User with the new role", self._data(record))),
+            "auth_refresh": ("200", self._json("New tokens", self._data({"$ref": "#/components/schemas/Token"}))),
+            "auth_logout": ("204", {"description": "Refresh token revoked"}),
+            "auth_change_password": ("204", {"description": "Password changed; refresh tokens revoked"}),
         }
         responses = {}
         if kind in success:
@@ -249,13 +270,13 @@ class OpenApiBuilder:
             responses[status] = response
 
         errors = []
-        if kind in {"create", "replace", "update", "auth_register", "auth_login"}:
+        if kind in {"create", "replace", "update", "auth_register", "auth_login", "auth_refresh", "auth_logout", "auth_change_password"}:
             errors += ["400", "422"]
         if kind in {"create", "replace", "update", "auth_register"} and self._has_unique(model):
             errors.append("409")
         if kind == "delete":
             errors.append("409")
-        if route["access"] == "protected" or kind == "auth_login":
+        if route["access"] == "protected" or kind in {"auth_login", "auth_refresh"}:
             errors.append("401")
         if route["operation"].get("owner_only") or route.get("roles"):
             errors.append("403")
@@ -265,7 +286,7 @@ class OpenApiBuilder:
             errors.append("404")
         if kind in {"list", "list_related"}:
             errors.append("422")
-        if kind in {"auth_register", "auth_login"}:
+        if kind in {"auth_register", "auth_login", "auth_refresh"}:
             errors.append("429")
         if kind == "custom":
             errors.append("501")
@@ -355,6 +376,9 @@ SUMMARIES = {
     "auth_login": "Exchange credentials for a token",
     "auth_me": "Current authenticated user",
     "auth_set_role": "Change a user's role (admin)",
+    "auth_refresh": "Exchange a refresh token for new tokens",
+    "auth_logout": "Revoke a refresh token",
+    "auth_change_password": "Change the current user's password",
     "custom": "Declared route without generated behaviour",
 }
 

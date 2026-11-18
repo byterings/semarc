@@ -73,6 +73,12 @@ class ApiScenarioTests(unittest.TestCase):
         self.assertIn("create User", names)
         self.assertEqual(step(steps, "create User")["save"], {"user_record_id": "data.id"})
 
+    def test_refresh_tokens_rotate_and_passwords_change(self):
+        self.assertEqual(step(self.steps, "used refresh token is rejected")["expect"], 401)
+        self.assertEqual(step(self.steps, "logout revokes the refresh token")["expect"], 204)
+        self.assertEqual(step(self.steps, "password change checks the current password")["expect"], 422)
+        self.assertEqual(step(self.steps, "old password stops working")["expect"], 401)
+
     def test_login_rate_limit_is_exceeded_last(self):
         self.assertEqual(self.steps[-1]["name"], "login is rate limited")
         self.assertEqual(self.steps[-1]["expect"], 429)

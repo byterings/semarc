@@ -127,7 +127,7 @@ def related_parents(ir: dict, model_name: str) -> list[dict]:
 
 
 def models_in_migration_order(ir: dict) -> list[dict]:
-    order = [table["model"] for table in ir["migrations"].get("tables", [])]
+    order = [table["model"] for table in ir["migrations"].get("tables", []) if not table.get("internal")]
     return [model_by_name(ir, name) for name in order]
 
 

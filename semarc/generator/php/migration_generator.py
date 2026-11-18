@@ -27,6 +27,7 @@ class MigrationGenerator:
                         "column": foreign_key["column"],
                         "references": foreign_key["references_table"],
                         "unique": foreign_key.get("unique", False),
+                        "on_delete": foreign_key.get("on_delete", "RESTRICT"),
                     }
                     for foreign_key in table["foreign_keys"]
                 ],

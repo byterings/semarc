@@ -110,6 +110,8 @@ class NestJSGenerator:
             self._render("src/common/current-user.decorator.ts", "current-user.decorator.ts.tpl")
             self._render("src/common/rate-limit.guard.ts", "rate-limit.guard.ts.tpl")
             self._render("src/modules/auth/token.service.ts", "token.service.ts.tpl")
+            self._render("src/modules/auth/refresh-token.entity.ts", "refresh-token.entity.ts.tpl", {"table": auth["features"]["refresh_tokens"]["table"]})
+            self._render("src/modules/auth/refresh-token.store.ts", "refresh-token.store.ts.tpl")
             self._render(
                 "src/guards/auth.guard.ts",
                 "auth.guard.ts.tpl",

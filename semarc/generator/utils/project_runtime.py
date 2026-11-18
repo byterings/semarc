@@ -61,6 +61,7 @@ def env_values(ir: dict) -> dict[str, str]:
     if ir.get("auth"):
         values["JWT_SECRET"] = DEV_JWT_SECRET
         values["JWT_TTL"] = str(ir["auth"]["token_ttl_seconds"])
+        values["JWT_REFRESH_TTL"] = str(ir["auth"]["features"]["refresh_tokens"]["ttl_seconds"])
         values["AUTH_RATE_LIMIT"] = str(ir["auth"]["rate_limit"]["attempts"])
         values["AUTH_RATE_WINDOW"] = str(ir["auth"]["rate_limit"]["window_seconds"])
         if ir["auth"].get("features", {}).get("roles"):
@@ -280,5 +281,8 @@ def _behaviour(route: dict) -> str:
         "auth_login": "Exchange credentials for a token",
         "auth_me": "Current authenticated user",
         "auth_set_role": "Change a user's role",
+        "auth_refresh": "Exchange a refresh token for new tokens",
+        "auth_logout": "Revoke a refresh token",
+        "auth_change_password": "Change the current user's password",
         "custom": "Declared, not generated (returns 501 until implemented)",
     }[operation["kind"]]

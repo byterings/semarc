@@ -113,7 +113,7 @@ class ApiScenarioBuilder:
             200,
             body={auth["identity_field"]: identity, auth["secret_field"]: secret},
             equals={"data.token_type": "Bearer"},
-            save={"token": "data.access_token"},
+            save={"token": "data.access_token", "refresh_token": "data.refresh_token"},
         )
         self._step(
             "current user",
@@ -126,11 +126,56 @@ class ApiScenarioBuilder:
         )
         self._step("current user requires token", "GET", "/me", 401)
         self._step("current user rejects invalid token", "GET", "/me", 401, token="invalid.token.value")
+        self._session_steps(auth, identity, secret)
         self.has_token = True
         self.created.append({"model": user, "var": "user_id", "routes": {}, "parents": set()})
         roles = auth.get("features", {}).get("roles")
         if roles:
             self._role_steps(user, auth, roles)
+
+    def _session_steps(self, auth: dict, identity: str, secret: str) -> None:
+        """Refresh token rotation, logout and password change."""
+        self._step("refresh requires a token", "POST", "/token/refresh", 422, body={})
+        self._step(
+            "refresh rotates tokens",
+            "POST",
+            "/token/refresh",
+            200,
+            body={"refresh_token": {"$ref": "refresh_token"}},
+            equals={"data.token_type": "Bearer"},
+            save={"token": "data.access_token", "rotated_refresh_token": "data.refresh_token"},
+        )
+        self._step("used refresh token is rejected", "POST", "/token/refresh", 401, body={"refresh_token": {"$ref": "refresh_token"}})
+        self._step("logout revokes the refresh token", "POST", "/logout", 204, body={"refresh_token": {"$ref": "rotated_refresh_token"}})
+        self._step("revoked refresh token is rejected", "POST", "/token/refresh", 401, body={"refresh_token": {"$ref": "rotated_refresh_token"}})
+
+        changed = secret + "-new"
+        self._step("password change requires a token", "POST", "/me/password", 401, body={})
+        self._step(
+            "password change checks the current password",
+            "POST",
+            "/me/password",
+            422,
+            auth=True,
+            body={"current_password": secret + "-wrong", "new_password": changed},
+        )
+        self._step(
+            "password change",
+            "POST",
+            "/me/password",
+            204,
+            auth=True,
+            body={"current_password": secret, "new_password": changed},
+        )
+        self._step("old password stops working", "POST", "/login", 401, body={auth["identity_field"]: identity, auth["secret_field"]: secret})
+        self._step(
+            "login with the new password",
+            "POST",
+            "/login",
+            200,
+            body={auth["identity_field"]: identity, auth["secret_field"]: changed},
+            save={"token": "data.access_token", "refresh_token": "data.refresh_token"},
+        )
 
     def _role_steps(self, user: dict, auth: dict, roles: dict) -> None:
         identity = auth["identity_field"]

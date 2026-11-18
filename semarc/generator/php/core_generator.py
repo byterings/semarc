@@ -50,6 +50,11 @@ class CoreGenerator:
         }
         self.writer.render("core/Jwt.php", "auth/Jwt.php.tpl")
         self.writer.render("core/RateLimiter.php", "auth/RateLimiter.php.tpl", values)
+        self.writer.render(
+            "core/RefreshTokens.php",
+            "auth/RefreshTokens.php.tpl",
+            {"table": auth["features"]["refresh_tokens"]["table"], "ttl": auth["features"]["refresh_tokens"]["ttl_seconds"]},
+        )
         self.writer.render("services/TokenService.php", "auth/TokenService.php.tpl", values)
         self.writer.render("services/PasswordHasher.php", "auth/PasswordHasher.php.tpl")
         self.writer.render("middleware/AuthMiddleware.php", "auth/AuthMiddleware.php.tpl", values)
@@ -60,7 +65,7 @@ class CoreGenerator:
             self.writer.write("controllers/RoleController.php", self._role_controller(auth, roles), "php role controller")
             controllers.append("controllers/RoleController.php")
         return {
-            "core": ["core/Jwt.php", "core/RateLimiter.php", "services/TokenService.php", "services/PasswordHasher.php"],
+            "core": ["core/Jwt.php", "core/RateLimiter.php", "core/RefreshTokens.php", "services/TokenService.php", "services/PasswordHasher.php"],
             "middleware": ["middleware/AuthMiddleware.php"],
             "controllers": controllers,
         }

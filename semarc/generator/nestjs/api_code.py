@@ -2,7 +2,7 @@
 from semarc.compiler.version import SEMARC_VERSION
 from semarc.generator.nestjs.typescript import Imports, file_base, folder, route_path, service_property, ts_string
 from semarc.generator.utils.inflector import pascal_case
-from semarc.generator.utils.resource_views import all_route_labels, model_by_name, roles_feature, routes_for_model
+from semarc.generator.utils.resource_views import all_route_labels, field_rules, model_by_name, roles_feature, routes_for_model
 
 HTTP_DECORATORS = {"GET": "Get", "POST": "Post", "PUT": "Put", "PATCH": "Patch", "DELETE": "Delete"}
 MIGRATION_EPOCH = 1700000000000
@@ -164,9 +164,13 @@ def auth_code(ir: dict, reserved: set[str]) -> dict[str, str]:
     imports.use("../../guards/auth.guard", "AuthGuard")
     imports.use(f"../{model_folder}/{model_folder}.repository", f"{name}Repository")
     imports.use(f"../{model_folder}/{model_folder}.service", f"{name}Service")
+    imports.use(f"../{model_folder}/{model_file}.entity", name)
     imports.use(f"../{model_folder}/dto/create-{model_file}.dto", f"Create{name}Dto")
     imports.use("./dto/login.dto", "LoginDto")
     imports.use("./token.service", "TokenService")
+    imports.use("./refresh-token.store", "RefreshTokenStore")
+    imports.use("./dto/session.dto", "RefreshDto")
+    imports.use("./dto/session.dto", "PasswordChangeDto")
     if auth["features"]["roles"]:
         imports.use("../../config/settings", "settings")
     role_lines = _role_route_lines(auth, name, imports)
@@ -180,6 +184,7 @@ def auth_code(ir: dict, reserved: set[str]) -> dict[str, str]:
             f"    private readonly users: {name}Service,",
             f"    private readonly repository: {name}Repository,",
             "    private readonly tokens: TokenService,",
+            "    private readonly refreshTokens: RefreshTokenStore,",
             "    private readonly hasher: PasswordHasher,",
             "  ) {}",
             "",
@@ -189,8 +194,7 @@ def auth_code(ir: dict, reserved: set[str]) -> dict[str, str]:
             f"  async register(@{body}() dto: Create{name}Dto) {{",
             "    let user = await this.users.create(dto);",
             *_bootstrap_admin_lines(auth),
-            "    const token = await this.tokens.issue(user.id as number);",
-            "    return { data: { user, ...token } };",
+            "    return { data: { user, ...(await this.session(user.id as number)) } };",
             "  }",
             "",
             f"  @{post}('login')",
@@ -201,7 +205,40 @@ def auth_code(ir: dict, reserved: set[str]) -> dict[str, str]:
             f"    if (!record || !(await this.hasher.verify(dto.{secret}, record.{secret}))) {{",
             "      throw ApiError.unauthorized('Invalid credentials.');",
             "    }",
-            "    return { data: await this.tokens.issue(record.id) };",
+            "    return { data: await this.session(record.id) };",
+            "  }",
+            "",
+            f"  @{post}('token/refresh')",
+            f"  @{http_code}(200)",
+            f"  @{use_guards}(AuthRateLimitGuard)",
+            f"  async refresh(@{body}() dto: RefreshDto) {{",
+            "    const userId = await this.refreshTokens.rotate(dto.refresh_token);",
+            "    if (!(await this.repository.findById(userId))) {",
+            "      throw ApiError.unauthorized('Token user no longer exists.');",
+            "    }",
+            "    return { data: await this.session(userId) };",
+            "  }",
+            "",
+            f"  @{post}('logout')",
+            f"  @{http_code}(204)",
+            f"  async logout(@{body}() dto: RefreshDto) {{",
+            "    await this.refreshTokens.revoke(dto.refresh_token);",
+            "  }",
+            "",
+            f"  @{post}('me/password')",
+            f"  @{http_code}(204)",
+            f"  @{use_guards}(AuthGuard)",
+            f"  async changePassword(@CurrentUserId() userId: number, @{body}() dto: PasswordChangeDto) {{",
+            "    const record = await this.repository.findById(userId);",
+            f"    if (!record || !(await this.hasher.verify(dto.current_password, record.{secret}))) {{",
+            "      throw ApiError.validation({ current_password: ['current_password is incorrect'] });",
+            "    }",
+            f"    await this.repository.update(record, {{ {secret}: await this.hasher.hash(dto.new_password) }} as Partial<{name}>);",
+            "    await this.refreshTokens.revokeAll(userId);",
+            "  }",
+            "",
+            "  private async session(userId: number) {",
+            "    return { ...(await this.tokens.issue(userId)), ...(await this.refreshTokens.issue(userId)) };",
             "  }",
             "",
             f"  @{get}('me')",
@@ -223,6 +260,7 @@ def auth_code(ir: dict, reserved: set[str]) -> dict[str, str]:
     module_imports.use(f"../{model_folder}/{model_folder}.module", f"{name}Module")
     module_imports.use("./auth.controller", "AuthController")
     module_imports.use("./token.service", "TokenService")
+    module_imports.use("./refresh-token.store", "RefreshTokenStore")
     module_source = "\n".join(
         module_imports.render()
         + [
@@ -231,7 +269,7 @@ def auth_code(ir: dict, reserved: set[str]) -> dict[str, str]:
             f"@{module}({{",
             f"  imports: [JwtModule.register({{}}), {name}Module],",
             "  controllers: [AuthController],",
-            "  providers: [TokenService, AuthGuard],",
+            "  providers: [TokenService, RefreshTokenStore, AuthGuard],",
             "  exports: [TokenService, AuthGuard],",
             "})",
             "export class AuthModule {}",
@@ -262,8 +300,38 @@ def auth_code(ir: dict, reserved: set[str]) -> dict[str, str]:
         "src/modules/auth/auth.controller.ts": controller_source,
         "src/modules/auth/auth.module.ts": module_source,
         "src/modules/auth/dto/login.dto.ts": dto_source,
+        "src/modules/auth/dto/session.dto.ts": _session_dto(model_by_name(ir, auth["model"]), secret),
         **({"src/modules/auth/dto/role-change.dto.ts": role_change_dto(auth["features"]["roles"])} if auth["features"]["roles"] else {}),
     }
+
+
+def _session_dto(model: dict, secret: str) -> str:
+    rules = field_rules(next(item for item in model["fields"] if item["name"] == secret))
+    new_password = [f"  @MinLength({rules['min'] or 1})"]
+    if rules["max"]:
+        new_password.append(f"  @MaxLength({rules['max']})")
+    return "\n".join(
+        [
+            "import { IsString, MaxLength, MinLength } from 'class-validator';",
+            "",
+            "export class RefreshDto {",
+            "  @IsString()",
+            "  @MinLength(1)",
+            "  refresh_token!: string;",
+            "}",
+            "",
+            "export class PasswordChangeDto {",
+            "  @IsString()",
+            "  @MinLength(1)",
+            "  current_password!: string;",
+            "",
+            "  @IsString()",
+            *new_password,
+            "  new_password!: string;",
+            "}",
+            "",
+        ]
+    )
 
 
 def _bootstrap_admin_lines(auth: dict) -> list[str]:
@@ -452,7 +520,9 @@ def migration_code(table: dict) -> str:
         ]
     )
     foreign_keys = [
-        f"        {{ columnNames: [{ts_string(foreign_key['column'])}], referencedTableName: {ts_string(foreign_key['references_table'])}, referencedColumnNames: ['id'] }},"
+        f"        {{ columnNames: [{ts_string(foreign_key['column'])}], referencedTableName: {ts_string(foreign_key['references_table'])}, referencedColumnNames: ['id']"
+        + (", onDelete: 'CASCADE'" if foreign_key.get("on_delete") == "CASCADE" else "")
+        + " },"
         for foreign_key in table["foreign_keys"]
     ]
     indices = [
@@ -500,6 +570,10 @@ def data_source_code(ir: dict) -> str:
         f"import {{ {model['name']} }} from '../modules/{folder(model['name'])}/{file_base(model['name'])}.entity';"
         for model in ir["models"]
     ]
+    entity_names = [model["name"] for model in ir["models"]]
+    if ir.get("auth"):
+        entity_imports.append("import { RefreshToken } from '../modules/auth/refresh-token.entity';")
+        entity_names.append("RefreshToken")
     migrations = [migration_class(table) for table in ir["migrations"]["tables"]]
     migration_imports = [f"import {{ {class_name} }} from './migrations/{file}';" for class_name, file in migrations]
     return "\n".join(
@@ -511,7 +585,7 @@ def data_source_code(ir: dict) -> str:
             *entity_imports,
             *migration_imports,
             "",
-            f"export const ENTITIES = [{', '.join(model['name'] for model in ir['models'])}];",
+            f"export const ENTITIES = [{', '.join(entity_names)}];",
             f"export const MIGRATIONS = [{', '.join(class_name for class_name, _ in migrations)}];",
             "",
             "export function dataSourceOptions(): DataSourceOptions {",
@@ -610,6 +684,7 @@ def settings_code(ir: dict, settings: dict, port: int) -> str:
                 f"  authRateLimit: Number(env('AUTH_RATE_LIMIT', '{ir['auth']['rate_limit']['attempts']}')),",
                 f"  authRateWindow: Number(env('AUTH_RATE_WINDOW', '{ir['auth']['rate_limit']['window_seconds']}')),",
                 "  bootstrapAdminEmail: env('BOOTSTRAP_ADMIN_EMAIL', ''),",
+                f"  jwtRefreshTtl: Number(env('JWT_REFRESH_TTL', '{ir['auth']['features']['refresh_tokens']['ttl_seconds']}')),",
             ]
         )
     lines.extend(["};", ""])

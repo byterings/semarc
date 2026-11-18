@@ -64,11 +64,18 @@ declared, matching the behaviour of earlier SEMARC versions.
 | `POST /register` | Validates the `User` fields, hashes the password, returns 201 with `user` and a token |
 | `POST /login` | Exchanges `email` and `password` for a token; 401 on bad credentials |
 | `GET /me` | Returns the authenticated user |
+| `POST /token/refresh` | Exchanges `{"refresh_token": ...}` for a new access token and a new refresh token; the old refresh token stops working (401 if reused, expired or revoked) |
+| `POST /logout` | Revokes `{"refresh_token": ...}` (204) |
+| `POST /me/password` | Changes the password with `{"current_password", "new_password"}`; 422 for a wrong current password; revokes every refresh token of the user (204) |
 
 - The account model is `User`. If the specification does not declare it, SEMARC creates it
   with `email` and `password`. If it is declared without them, they are added. `email`
   becomes unique, and `password` is a secret: it is hashed with bcrypt, never returned, and
   limited to 72 characters.
+- Register, login and refresh return `access_token`, `expires_in`, `refresh_token` and
+  `refresh_expires_in`. Refresh tokens are random, single use, stored only as SHA-256 hashes
+  in the `refresh_tokens` table and expire after `JWT_REFRESH_TTL` seconds (default 14 days).
+  Deleting a user deletes their refresh tokens.
 - Tokens are HS256 JWTs signed with `JWT_SECRET` (at least 32 characters; the server refuses
   to sign with a shorter secret) and expire after `JWT_TTL` seconds (default 3600).
 - Send `Authorization: Bearer <token>`. Missing, malformed, expired or orphaned tokens get 401.

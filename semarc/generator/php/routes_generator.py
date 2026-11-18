@@ -69,8 +69,8 @@ class RoutesGenerator:
         if kind == "auth_set_role":
             return f"{prefix}static fn (Request $request, array $params): array => (new RoleController())->update($request, $params['id']){protected});"
         if kind.startswith("auth_"):
-            action = kind.removeprefix("auth_")
-            return_type = "Response" if action == "register" else "array"
+            action = {"change_password": "changePassword"}.get(kind.removeprefix("auth_"), kind.removeprefix("auth_"))
+            return_type = "Response" if action in {"register", "logout", "changePassword"} else "array"
             return f"{prefix}static fn (Request $request): {return_type} => (new AuthController())->{action}($request){protected});"
 
         if kind == "custom":

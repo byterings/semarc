@@ -47,8 +47,9 @@ final class Schema
             if ($foreignKey['unique']) {
                 $lines[] = 'UNIQUE (' . $quote($foreignKey['column']) . ')';
             }
+            $onDelete = ($foreignKey['on_delete'] ?? 'RESTRICT') === 'CASCADE' ? ' ON DELETE CASCADE' : '';
             $lines[] = 'FOREIGN KEY (' . $quote($foreignKey['column']) . ') REFERENCES '
-                . $quote($foreignKey['references']) . ' (' . $quote('id') . ')';
+                . $quote($foreignKey['references']) . ' (' . $quote('id') . ')' . $onDelete;
         }
 
         $suffix = $driver === 'mysql' ? ' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4' : '';

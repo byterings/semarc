@@ -18,6 +18,9 @@ language; such changes are listed under **Changed**.
 - Roles: `USE auth.roles` and `ROUTE ... ROLE admin editor`, a managed `role` field,
   `BOOTSTRAP_ADMIN_EMAIL`, `PUT /users/{id}/role`, and admin access to records owned by others.
 - `RELATION User ...` works when `User` is created by `AUTH JWT` rather than declared.
+- Refresh tokens (rotating, hashed, `JWT_REFRESH_TTL`), `POST /token/refresh`, `POST /logout`
+  and `POST /me/password` for every `AUTH JWT` project.
+- Migrations support `ON DELETE CASCADE` for infrastructure tables.
 
 ### Changed
 - All compiler code moved into the `semarc` package (`semarc.compiler`, `semarc.generator`,

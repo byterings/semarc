@@ -18,7 +18,7 @@ PROJECT = {
     "target": 'FASTAPI',
     "semarc_version": '0.14.0',
     "models": ['User'],
-    "routes": ['GET /', 'GET /health', 'GET /routes', 'GET /openapi.json', 'GET /docs', 'POST /login', 'GET /users', 'POST /register', 'GET /me'],
+    "routes": ['GET /', 'GET /health', 'GET /routes', 'GET /openapi.json', 'GET /docs', 'POST /login', 'GET /users', 'POST /register', 'GET /me', 'POST /token/refresh', 'POST /logout', 'POST /me/password'],
 }
 
 OPENAPI_DOCUMENT = json.loads((Path(__file__).resolve().parent / "openapi.json").read_text(encoding="utf-8"))

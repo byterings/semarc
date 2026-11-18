@@ -129,7 +129,8 @@ class ArchitectureIRBuilder:
                     ],
                 }
                 for model in resource_plan["models"]
-            ],
+            ]
+            + [dict(table) for table in resource_plan.get("internal_tables", [])],
             "foreign_keys": foreign_keys,
         }
 
