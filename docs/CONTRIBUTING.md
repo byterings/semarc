@@ -128,6 +128,17 @@ python3 scripts/e2e_runtime.py              # Docker: examples x targets x datab
 Narrow an end-to-end run with source paths, `--targets` and `--databases`, for example
 `python3 scripts/e2e_runtime.py examples/blog_api.sem --targets php --databases sqlite`.
 
+## Continuous Integration
+
+`.github/workflows/ci.yml` runs on pushes to `master` and `dev` and on pull requests:
+
+- **Release validation**: `scripts/validate_release.py` on Python 3.12, with PHP for syntax
+  checks and `openapi-spec-validator` for the OpenAPI test.
+- **Runtime**: one job per target runs `scripts/e2e_runtime.py` for `examples/blog_api.sem`
+  and `tests/fixtures/edge_public.sem` on SQLite and PostgreSQL in Docker.
+
+The full matrix (every example, target and database) is slower; run it locally before a release.
+
 ## Documentation
 
 Update `docs/` when changing architecture behavior.
