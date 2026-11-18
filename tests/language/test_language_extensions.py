@@ -232,6 +232,15 @@ class AuthRuleTests(unittest.TestCase):
         validate("PROJECT Demo\nAUTH JWT\nMODEL User\n    email STRING\n")
 
 
+class DiagnosticRuleTests(unittest.TestCase):
+    def test_relationship_recommendation_needs_relationships(self):
+        source = "PROJECT Demo\n\nDATABASE SQLITE\n\nMODEL Item\n    name STRING\n"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            context = compile_source(source, tmpdir, "php", generate=False)
+        codes = [item["code"] for item in context.architecture_report["recommendations"]]
+        self.assertNotIn("REL002", codes)
+
+
 class ExampleCompatibilityTests(unittest.TestCase):
     def test_full_syntax_compiles_through_ir(self):
         source = BASE + "\n".join(

@@ -7,7 +7,7 @@ class RelationshipDepthRule:
     def evaluate(self, context: dict, result) -> None:
         relationship_plan = context["relationship_plan"]
         graph = relationship_plan.get("graph", {})
-        if not graph:
+        if not graph or not relationship_plan.get("relationships"):
             return
 
         max_depth = max((self._depth(node, graph, set()) for node in graph), default=0)
