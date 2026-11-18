@@ -49,6 +49,7 @@ ROUTE GET /orders PROTECTED
 - `VALIDATE` adds input rules (`REQUIRED`, `EMAIL`, `MIN n`, `MAX n`).
 - `ROUTE` declares endpoints. The shape decides the behaviour: `GET /products` lists,
   `GET /products/{id}` reads, `PATCH /products/{id}` updates, and so on.
+- `AUTH JWT` issues bearer tokens; `AUTH SESSION` uses cookie sessions for browser front ends.
 - With `AUTH JWT`, reads are public and writes need a token; add `PUBLIC` or `PROTECTED` to a
   route to change that.
 

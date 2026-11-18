@@ -28,6 +28,12 @@ generated projects skip it. Codes for the mock provider have the form "email|ver
 
 The optional top-level "env" holds environment variables every runner sets before the
 application starts.
+
+With a top-level "session" (AUTH SESSION) credentials are cookies: when a step saves a
+variable from a path ending in "csrf_token", the runner also keeps the session cookie the
+response set (and checks it is HttpOnly and SameSite=Lax) under that variable name. "auth"
+then sends that cookie plus the CSRF header, except for POST, PUT, PATCH and DELETE steps
+with "csrf": false; "token" sends its value as both.
 """
 from urllib.parse import urlencode
 
@@ -55,6 +61,7 @@ class ApiScenarioBuilder:
         self.created: list[dict] = []
         self.variants: dict[str, int] = {}
         self.account: dict | None = None
+        self.sessions = ((ir.get("auth") or {}).get("features") or {}).get("sessions")
 
         self._experience_steps()
         self._auth_steps()
@@ -66,6 +73,8 @@ class ApiScenarioBuilder:
         self._oauth_steps()
         self._rate_limit_steps()
         scenario = {"project": ir["project"], "steps": self.steps}
+        if self.sessions:
+            scenario["session"] = {key: self.sessions[key] for key in ["cookie", "csrf_cookie", "csrf_header"]}
         env = self._env()
         if env:
             scenario["env"] = env
@@ -125,9 +134,9 @@ class ApiScenarioBuilder:
             "/register",
             201,
             body=body,
-            equals={f"data.user.{auth['identity_field']}": identity, "data.token_type": "Bearer"},
+            equals={f"data.user.{auth['identity_field']}": identity, **self._issued()},
             absent=hidden,
-            save={"token": "data.access_token", "user_id": "data.user.id"},
+            save={**self._credentials("token"), "user_id": "data.user.id"},
         )
         self._step("register rejects duplicate identity", "POST", "/register", 409, body=body)
         self._step(
@@ -144,8 +153,8 @@ class ApiScenarioBuilder:
             "/login",
             200,
             body={auth["identity_field"]: identity, auth["secret_field"]: secret},
-            equals={"data.token_type": "Bearer"},
-            save={"token": "data.access_token", "refresh_token": "data.refresh_token"},
+            equals=self._issued(),
+            save=self._credentials("token", "refresh_token"),
         )
         self._step(
             "current user",
@@ -211,11 +220,40 @@ class ApiScenarioBuilder:
             "/login",
             200,
             body={identity_field: identity, secret_field: new_password},
-            save={"token": "data.access_token", "refresh_token": "data.refresh_token"},
+            save=self._credentials("token", "refresh_token"),
         )
 
     def _session_steps(self, auth: dict, identity: str, secret: str) -> None:
-        """Refresh token rotation, logout and password change."""
+        """Refresh token rotation (or session end and CSRF), logout and password change."""
+        if self.sessions:
+            self._cookie_session_steps(auth, identity, secret)
+        else:
+            self._refresh_steps()
+        self._password_steps(auth, identity, secret)
+
+    def _cookie_session_steps(self, auth: dict, identity: str, secret: str) -> None:
+        self._step(
+            "unsafe requests need the CSRF header",
+            "POST",
+            "/me/password",
+            403,
+            auth=True,
+            csrf=False,
+            body={"current_password": secret + "-wrong", "new_password": secret + "-new"},
+        )
+        self._step("logout requires a session", "POST", "/logout", 401)
+        self._step("logout ends the session", "POST", "/logout", 204, auth=True)
+        self._step("ended session is rejected", "GET", "/me", 401, auth=True)
+        self._step(
+            "login after logout",
+            "POST",
+            "/login",
+            200,
+            body={auth["identity_field"]: identity, auth["secret_field"]: secret},
+            save=self._credentials("token"),
+        )
+
+    def _refresh_steps(self) -> None:
         self._step("refresh requires a token", "POST", "/token/refresh", 422, body={})
         self._step(
             "refresh rotates tokens",
@@ -230,6 +268,7 @@ class ApiScenarioBuilder:
         self._step("logout revokes the refresh token", "POST", "/logout", 204, body={"refresh_token": {"$ref": "rotated_refresh_token"}})
         self._step("revoked refresh token is rejected", "POST", "/token/refresh", 401, body={"refresh_token": {"$ref": "rotated_refresh_token"}})
 
+    def _password_steps(self, auth: dict, identity: str, secret: str) -> None:
         changed = secret + "-new"
         self._step("password change requires a token", "POST", "/me/password", 401, body={})
         self._step(
@@ -248,6 +287,8 @@ class ApiScenarioBuilder:
             auth=True,
             body={"current_password": secret, "new_password": changed},
         )
+        if self.sessions:
+            self._step("password change ends every session", "GET", "/me", 401, auth=True)
         self._step("old password stops working", "POST", "/login", 401, body={auth["identity_field"]: identity, auth["secret_field"]: secret})
         self._step(
             "login with the new password",
@@ -255,7 +296,7 @@ class ApiScenarioBuilder:
             "/login",
             200,
             body={auth["identity_field"]: identity, auth["secret_field"]: changed},
-            save={"token": "data.access_token", "refresh_token": "data.refresh_token"},
+            save=self._credentials("token", "refresh_token"),
         )
         if auth.get("features", {}).get("password_reset"):
             self._reset_steps(auth, identity, changed)
@@ -271,7 +312,7 @@ class ApiScenarioBuilder:
             201,
             body=admin,
             equals={"data.user.role": roles["admin"]},
-            save={"admin_token": "data.access_token", "admin_id": "data.user.id"},
+            save={**self._credentials("admin_token"), "admin_id": "data.user.id"},
         )
         self.has_admin = True
         path = "/users/${user_id}/role"
@@ -460,7 +501,7 @@ class ApiScenarioBuilder:
             "/register",
             201,
             body=self._body(user, include_owner=False),
-            save={"other_token": "data.access_token"},
+            save=self._credentials("other_token"),
         )
         for entry in owned:
             label = entry["model"]["name"]
@@ -555,7 +596,7 @@ class ApiScenarioBuilder:
             state = {"$ref": f"{name}_state"}
             email, display_name = f"{name}.user@example.com", f"{label} User"
             code = _mock_code(email, True, display_name)
-            equals = {f"data.user.{identity_field}": email, "data.token_type": "Bearer"}
+            equals = {f"data.user.{identity_field}": email, **self._issued()}
             if oauth["name_field"]:
                 equals[f"data.user.{oauth['name_field']}"] = display_name
             if roles:
@@ -568,7 +609,7 @@ class ApiScenarioBuilder:
                 body={"code": code, "state": state},
                 equals=equals,
                 absent=[f"data.user.{auth['secret_field']}"],
-                save={f"{name}_user_id": "data.user.id", f"{name}_token": "data.access_token"},
+                save={f"{name}_user_id": "data.user.id", **self._credentials(f"{name}_token")},
             )
             self._external(f"{label} access token works", "GET", "/me", 200, auth=True, auth_as=f"{name}_token", equals={"data.id": {"$ref": f"{name}_user_id"}})
             self._external(
@@ -596,13 +637,25 @@ class ApiScenarioBuilder:
             200,
             body={"code": _mock_code(self.account["identity"], True, "Linked"), "state": {"$ref": f"{first}_state"}},
             equals={"data.user.id": {"$ref": "user_id"}},
-            save={"linked_token": "data.access_token"},
+            save=self._credentials("linked_token"),
         )
         changed = {"current_password": self.account["secret"], "new_password": self.account["secret"] + "-linked"}
         if self.account["verified"]:
             self._external("linking keeps the password of a verified account", "POST", "/me/password", 204, auth=True, auth_as="linked_token", body=changed)
         else:
             self._external("linking disables the password of an unverified account", "POST", "/me/password", 422, auth=True, auth_as="linked_token", body=changed)
+
+    def _credentials(self, token_var: str, refresh_var: str | None = None) -> dict:
+        """Where a session response keeps the credential: the CSRF token (cookie sessions) or the tokens."""
+        if self.sessions:
+            return {token_var: "data.csrf_token"}
+        saved = {token_var: "data.access_token"}
+        if refresh_var:
+            saved[refresh_var] = "data.refresh_token"
+        return saved
+
+    def _issued(self) -> dict:
+        return {} if self.sessions else {"data.token_type": "Bearer"}
 
     def _external(self, name, method, path, expect, **options) -> None:
         self._step(name, method, path, expect, **options)
@@ -759,9 +812,11 @@ class ApiScenarioBuilder:
 
     def _step(
         self, name, method, path, expect, auth=False, body=None, equals=None, absent=None, save=None, token=None, auth_as=None,
-        headers=None, expect_headers=None,
+        headers=None, expect_headers=None, csrf=True,
     ) -> None:
         step = {"name": name, "method": method, "path": path, "expect": expect}
+        if not csrf:
+            step["csrf"] = False
         if headers:
             step["headers"] = headers
         if expect_headers:

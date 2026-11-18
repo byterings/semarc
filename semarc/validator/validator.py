@@ -2,6 +2,7 @@ import re
 
 from semarc.ast_loader import load_semantic_nodes
 from semarc.architecture.rules.auth_rules import (
+    ACCOUNT_STRATEGIES,
     AUTH_IDENTITY_FIELD,
     AUTH_MODEL,
     AUTH_ROUTES,
@@ -9,6 +10,7 @@ from semarc.architecture.rules.auth_rules import (
     OAUTH_MODULE_PREFIX,
     OAUTH_NAME_FIELD,
     OAUTH_PROVIDERS,
+    REFRESH_ROUTE,
 )
 from semarc.generator.utils.inflector import snake_case
 from semarc.generator.utils.resource_views import SECRET_MAX_LENGTH, STRING_MAX_LENGTH
@@ -114,8 +116,8 @@ class SemanticValidator:
 
     def _validate_relations(self, architecture: ArchitectureNode, errors: list[str]) -> None:
         model_names = {model.name for model in architecture.models}
-        if architecture.auth is not None and architecture.auth.strategy == "JWT":
-            model_names.add(AUTH_MODEL)  # created by AUTH JWT when not declared
+        if architecture.auth is not None and architecture.auth.strategy in ACCOUNT_STRATEGIES:
+            model_names.add(AUTH_MODEL)  # created by AUTH JWT / AUTH SESSION when not declared
         seen = set()
         ownership_edges = {}
 
@@ -263,22 +265,20 @@ class SemanticValidator:
                     )
 
     def _validate_auth(self, architecture: ArchitectureNode, errors: list[str]) -> None:
-        strategies = architecture.metadata.get("auth_strategies", [])
-        if architecture.auth and architecture.auth.strategy == "SESSION" and "JWT" not in strategies:
-            errors.append(
-                self._error("AUTH SESSION is not implemented by any target yet; use AUTH JWT", architecture.auth)
-            )
-
-        if architecture.auth is None or architecture.auth.strategy != "JWT":
+        if architecture.auth is None or architecture.auth.strategy not in ACCOUNT_STRATEGIES:
             for route in architecture.routes:
                 if (route.method, route.path) in AUTH_ROUTES and (route.method, route.path) != ("POST", "/login"):
                     errors.append(
-                        self._error(f"Route {route.method} {route.path} requires AUTH JWT", route)
+                        self._error(f"Route {route.method} {route.path} requires AUTH JWT or AUTH SESSION", route)
                     )
             for package in architecture.packages:
                 if package.name in AUTH_JWT_MODULES or package.name.startswith(OAUTH_MODULE_PREFIX):
-                    errors.append(self._error(f"USE {package.name} requires AUTH JWT", package))
+                    errors.append(self._error(f"USE {package.name} requires AUTH JWT or AUTH SESSION", package))
             return
+        if architecture.auth.strategy == "SESSION":
+            for route in architecture.routes:
+                if (route.method, route.path) == REFRESH_ROUTE:
+                    errors.append(self._error(f"Route {route.method} {route.path} requires AUTH JWT (sessions have no refresh token)", route))
 
         self._validate_oauth(architecture, errors)
 
@@ -339,7 +339,7 @@ class SemanticValidator:
 
     def _validate_validation_rules(self, architecture: ArchitectureNode, errors: list[str]) -> None:
         models = {model.name: model for model in architecture.models}
-        auth_jwt = architecture.auth is not None and architecture.auth.strategy == "JWT"
+        auth_jwt = architecture.auth is not None and architecture.auth.strategy in ACCOUNT_STRATEGIES
         credential_fields = {AUTH_IDENTITY_FIELD: "STRING", AUTH_SECRET_FIELD: "STRING"} if auth_jwt else {}
         seen = set()
 

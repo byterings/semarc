@@ -66,7 +66,7 @@ still owns posts.
 | Runtime | PHP 8.1+, no framework (nginx + php-fpm in Docker) | FastAPI, Pydantic v2 | NestJS 11 |
 | Persistence | PDO | SQLAlchemy 2 | TypeORM 0.3 |
 | Migrations | `php bin/migrate.php` | Alembic (`python migrate.py`) | TypeORM, run on start |
-| Auth | HS256 JWT, bcrypt | PyJWT, bcrypt | @nestjs/jwt, bcryptjs |
+| Auth | HS256 JWT or cookie sessions, bcrypt | PyJWT or cookie sessions, bcrypt | @nestjs/jwt or cookie sessions, bcryptjs |
 | Tests | `php tests/run.php` | `pytest` | `npm test` |
 | Databases | MySQL, PostgreSQL, SQLite | MySQL, PostgreSQL, SQLite | MySQL, PostgreSQL, SQLite |
 
@@ -93,7 +93,7 @@ All targets share one API contract (see [docs/GENERATED_API.md](docs/GENERATED_A
 | `PROJECT` | `PROJECT BlogAPI` |
 | `TARGET` | `TARGET PHP`, `TARGET FASTAPI`, `TARGET NESTJS` (default PHP) |
 | `DATABASE` | `DATABASE MYSQL`, `DATABASE POSTGRESQL`, `DATABASE SQLITE` |
-| `AUTH` | `AUTH JWT` |
+| `AUTH` | `AUTH JWT` (bearer tokens) or `AUTH SESSION` (cookie sessions with CSRF protection) |
 | `MODEL` | `MODEL Post` followed by indented `name TYPE [UNIQUE] [OPTIONAL]` fields |
 | `RELATION` | `RELATION User HAS_MANY Post` (`HAS_MANY`, `HAS_ONE`, `BELONGS_TO`) |
 | `VALIDATE` | `VALIDATE password REQUIRED MIN 8`, `VALIDATE Post.title MAX 120` |

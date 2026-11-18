@@ -1,0 +1,26 @@
+PROJECT Portal
+
+DATABASE SQLITE
+
+AUTH SESSION
+
+USE auth.roles
+USE auth.email_verification
+USE auth.oauth.github
+
+MODEL User
+    name STRING
+
+MODEL Post
+    title STRING
+    body TEXT OPTIONAL
+
+RELATION User HAS_MANY Post
+
+VALIDATE email REQUIRED EMAIL
+VALIDATE password REQUIRED MIN 8
+
+ROUTE GET /posts
+ROUTE POST /posts
+ROUTE PATCH /posts/{id}
+ROUTE DELETE /posts/{id} ROLE admin

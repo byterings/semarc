@@ -167,12 +167,22 @@ def auth_code(ir: dict, reserved: set[str]) -> dict[str, str]:
     imports.use(f"../{model_folder}/{model_file}.entity", name)
     imports.use(f"../{model_folder}/dto/create-{model_file}.dto", f"Create{name}Dto")
     imports.use("./dto/login.dto", "LoginDto")
-    imports.use("./token.service", "TokenService")
-    imports.use("./refresh-token.store", "RefreshTokenStore")
-    imports.use("./dto/session.dto", "RefreshDto")
+    sessions = auth["features"]["sessions"]
+    if sessions:
+        imports.use("./session.store", "SessionStore")
+        imports.use("express", "Response")
+        imports.use("@nestjs/common", "Res")
+        response_param = ", @Res({ passthrough: true }) response: Response"
+        response_arg = ", response"
+    else:
+        imports.use("./token.service", "TokenService")
+        imports.use("./refresh-token.store", "RefreshTokenStore")
+        imports.use("./dto/session.dto", "RefreshDto")
+        response_param = response_arg = ""
     imports.use("./dto/session.dto", "PasswordChangeDto")
     if auth["features"]["roles"]:
         imports.use("../../config/settings", "settings")
+    credential_lines = _refresh_and_logout_lines(imports, sessions, post, http_code, use_guards, body)
     role_lines = _role_route_lines(auth, name, imports)
     mail_lines = _mail_controller_lines(auth, name, imports)
     oauth_lines = _oauth_controller_lines(ir, imports)
@@ -186,8 +196,11 @@ def auth_code(ir: dict, reserved: set[str]) -> dict[str, str]:
             "  constructor(",
             f"    private readonly users: {name}Service,",
             f"    private readonly repository: {name}Repository,",
-            "    private readonly tokens: TokenService,",
-            "    private readonly refreshTokens: RefreshTokenStore,",
+            *(
+                ["    private readonly credentials: SessionStore,"]
+                if sessions
+                else ["    private readonly tokens: TokenService,", "    private readonly credentials: RefreshTokenStore,"]
+            ),
             "    private readonly hasher: PasswordHasher,",
             *(["    private readonly dataSource: DataSource,"] if mail_enabled_ else []),
             "  ) {}",
@@ -195,40 +208,24 @@ def auth_code(ir: dict, reserved: set[str]) -> dict[str, str]:
             f"  @{post}('register')",
             f"  @{http_code}(201)",
             f"  @{use_guards}(AuthRateLimitGuard)",
-            f"  async register(@{body}() dto: Create{name}Dto) {{",
+            f"  async register(@{body}() dto: Create{name}Dto{response_param}) {{",
             "    let user = await this.users.create(dto);",
             *_bootstrap_admin_lines(auth),
             *(["    await this.sendVerification(user);"] if auth["features"]["email_verification"] else []),
-            "    return { data: { user, ...(await this.session(user.id as number)) } };",
+            f"    return {{ data: {{ user, ...(await this.session(user.id as number{response_arg})) }} }};",
             "  }",
             "",
             f"  @{post}('login')",
             f"  @{http_code}(200)",
             f"  @{use_guards}(AuthRateLimitGuard)",
-            f"  async login(@{body}() dto: LoginDto) {{",
+            f"  async login(@{body}() dto: LoginDto{response_param}) {{",
             f"    const record = await this.repository.findBy({ts_string(identity)}, dto.{identity});",
             f"    if (!record || !(await this.hasher.verify(dto.{secret}, record.{secret}))) {{",
             "      throw ApiError.unauthorized('Invalid credentials.');",
             "    }",
-            "    return { data: await this.session(record.id) };",
+            f"    return {{ data: await this.session(record.id{response_arg}) }};",
             "  }",
-            "",
-            f"  @{post}('token/refresh')",
-            f"  @{http_code}(200)",
-            f"  @{use_guards}(AuthRateLimitGuard)",
-            f"  async refresh(@{body}() dto: RefreshDto) {{",
-            "    const userId = await this.refreshTokens.rotate(dto.refresh_token);",
-            "    if (!(await this.repository.findById(userId))) {",
-            "      throw ApiError.unauthorized('Token user no longer exists.');",
-            "    }",
-            "    return { data: await this.session(userId) };",
-            "  }",
-            "",
-            f"  @{post}('logout')",
-            f"  @{http_code}(204)",
-            f"  async logout(@{body}() dto: RefreshDto) {{",
-            "    await this.refreshTokens.revoke(dto.refresh_token);",
-            "  }",
+            *credential_lines,
             "",
             f"  @{post}('me/password')",
             f"  @{http_code}(204)",
@@ -239,12 +236,22 @@ def auth_code(ir: dict, reserved: set[str]) -> dict[str, str]:
             "      throw ApiError.validation({ current_password: ['current_password is incorrect'] });",
             "    }",
             f"    await this.repository.update(record, {{ {secret}: await this.hasher.hash(dto.new_password) }} as Partial<{name}>);",
-            "    await this.refreshTokens.revokeAll(userId);",
+            "    await this.credentials.revokeAll(userId);",
             "  }",
             "",
-            "  private async session(userId: number) {",
-            "    return { ...(await this.tokens.issue(userId)), ...(await this.refreshTokens.issue(userId)) };",
-            "  }",
+            *(
+                [
+                    "  private async session(userId: number, response: Response) {",
+                    "    return this.credentials.issue(userId, response);",
+                    "  }",
+                ]
+                if sessions
+                else [
+                    "  private async session(userId: number) {",
+                    "    return { ...(await this.tokens.issue(userId)), ...(await this.credentials.issue(userId)) };",
+                    "  }",
+                ]
+            ),
             "",
             f"  @{get}('me')",
             f"  @{use_guards}(AuthGuard)",
@@ -262,22 +269,27 @@ def auth_code(ir: dict, reserved: set[str]) -> dict[str, str]:
     module_imports = Imports(reserved)
     global_ = module_imports.use("@nestjs/common", "Global")
     module = module_imports.use("@nestjs/common", "Module")
-    module_imports.use("@nestjs/jwt", "JwtModule")
+    if not sessions:
+        module_imports.use("@nestjs/jwt", "JwtModule")
     module_imports.use("../../guards/auth.guard", "AuthGuard")
     module_imports.use(f"../{model_folder}/{model_folder}.module", f"{name}Module")
     module_imports.use("./auth.controller", "AuthController")
-    module_imports.use("./token.service", "TokenService")
-    module_imports.use("./refresh-token.store", "RefreshTokenStore")
+    credential_providers = ["SessionStore"] if sessions else ["TokenService", "RefreshTokenStore"]
+    if sessions:
+        module_imports.use("./session.store", "SessionStore")
+    else:
+        module_imports.use("./token.service", "TokenService")
+        module_imports.use("./refresh-token.store", "RefreshTokenStore")
     module_source = "\n".join(
         module_imports.render()
         + [
             "",
             f"@{global_}()",
             f"@{module}({{",
-            f"  imports: [JwtModule.register({{}}), {name}Module],",
+            f"  imports: [{'' if sessions else 'JwtModule.register({}), '}{name}Module],",
             "  controllers: [AuthController],",
-            "  providers: [TokenService, RefreshTokenStore, AuthGuard],",
-            "  exports: [TokenService, AuthGuard],",
+            f"  providers: [{', '.join(credential_providers)}, AuthGuard],",
+            f"  exports: [{credential_providers[0]}, AuthGuard],",
             "})",
             "export class AuthModule {}",
             "",
@@ -389,6 +401,42 @@ def oauth_account_entity_code(table: str) -> str:
     )
 
 
+def _refresh_and_logout_lines(imports: Imports, sessions: dict | None, post: str, http_code: str, use_guards: str, body: str) -> list[str]:
+    if sessions:
+        imports.use("@nestjs/common", "Req")
+        imports.use("express", "Request")
+        imports.use("./session.store", "SESSION_COOKIE")
+        imports.use("./session.store", "readCookie")
+        return [
+            "",
+            f"  @{post}('logout')",
+            f"  @{http_code}(204)",
+            f"  @{use_guards}(AuthGuard)",
+            "  async logout(@Req() request: Request, @Res({ passthrough: true }) response: Response) {",
+            "    await this.credentials.end(readCookie(request, SESSION_COOKIE), response);",
+            "  }",
+        ]
+    return [
+        "",
+        f"  @{post}('token/refresh')",
+        f"  @{http_code}(200)",
+        f"  @{use_guards}(AuthRateLimitGuard)",
+        f"  async refresh(@{body}() dto: RefreshDto) {{",
+        "    const userId = await this.credentials.rotate(dto.refresh_token);",
+        "    if (!(await this.repository.findById(userId))) {",
+        "      throw ApiError.unauthorized('Token user no longer exists.');",
+        "    }",
+        "    return { data: await this.session(userId) };",
+        "  }",
+        "",
+        f"  @{post}('logout')",
+        f"  @{http_code}(204)",
+        f"  async logout(@{body}() dto: RefreshDto) {{",
+        "    await this.credentials.revoke(dto.refresh_token);",
+        "  }",
+    ]
+
+
 COMMON_DECORATORS = ["Body", "Get", "HttpCode", "Param", "Post", "Put", "UseGuards"]
 
 
@@ -413,6 +461,9 @@ def _oauth_controller_lines(ir: dict, imports: Imports) -> list[str]:
     identity, secret = auth["identity_field"], auth["secret_field"]
     roles = auth["features"]["roles"]
     verification = auth["features"]["email_verification"]
+    sessions = auth["features"]["sessions"]
+    response_param = ", @Res({ passthrough: true }) response: Response" if sessions else ""
+    response_arg = ", response" if sessions else ""
     imports.use("crypto", "randomBytes")
     imports.use("typeorm", "DataSource")
     imports.use("../../database/column-types", "nowUtc")
@@ -459,14 +510,14 @@ def _oauth_controller_lines(ir: dict, imports: Imports) -> list[str]:
             f"  @Post('oauth/{key}/callback')",
             "  @HttpCode(200)",
             "  @UseGuards(AuthRateLimitGuard)",
-            f"  async oauthCallback{method}(@Body() dto: OAuthCallbackDto) {{",
-            f"    return this.oauthSignIn({ts_string(key)}, dto);",
+            f"  async oauthCallback{method}(@Body() dto: OAuthCallbackDto{response_param}) {{",
+            f"    return this.oauthSignIn({ts_string(key)}, dto{response_arg});",
             "  }",
         ]
     lines += [
         "",
         "  /** Finds the user linked to the provider identity, links one by verified email, or creates one. */",
-        "  private async oauthSignIn(provider: string, dto: OAuthCallbackDto) {",
+        f"  private async oauthSignIn(provider: string, dto: OAuthCallbackDto{', response: Response' if sessions else ''}) {{",
         "    OAuth.verifyState(provider, dto.state);",
         "    const identity = await OAuth.fetchIdentity(provider, dto.code);",
         "    const accounts = this.dataSource.getRepository(OAuthAccount);",
@@ -480,13 +531,13 @@ def _oauth_controller_lines(ir: dict, imports: Imports) -> list[str]:
         *new_user,
         f"        record = await this.repository.create(data as Partial<{name}>);",
         *relink,
-        "        await this.refreshTokens.revokeAll(record.id);",
+        "        await this.credentials.revokeAll(record.id);",
         "      }",
         "      const now = nowUtc();",
         "      await accounts.insert({ provider, provider_subject: identity.subject, user_id: record.id, created_at: now, updated_at: now });",
         "      userId = record.id;",
         "    }",
-        "    return { data: { user: await this.users.get(userId), ...(await this.session(userId)) } };",
+        f"    return {{ data: {{ user: await this.users.get(userId), ...(await this.session(userId{response_arg})) }} }};",
         "  }",
     ]
     return _with_decorators(lines, imports)
@@ -604,7 +655,7 @@ def _mail_controller_lines(auth: dict, name: str, imports: Imports) -> list[str]
             "      throw ApiError.validation({ token: ['token is invalid or expired'] });",
             "    }",
             f"    await this.repository.update(record, {{ {secret}: await this.hasher.hash(dto.{secret}) }} as Partial<{name}>);",
-            "    await this.refreshTokens.revokeAll(record.id);",
+            "    await this.credentials.revokeAll(record.id);",
             "  }",
         ]
     verification = features["email_verification"]
@@ -923,8 +974,12 @@ def data_source_code(ir: dict) -> str:
     ]
     entity_names = [model["name"] for model in ir["models"]]
     if ir.get("auth"):
-        entity_imports.append("import { RefreshToken } from '../modules/auth/refresh-token.entity';")
-        entity_names.append("RefreshToken")
+        if ir["auth"]["features"]["sessions"]:
+            entity_imports.append("import { UserSession } from '../modules/auth/session.entity';")
+            entity_names.append("UserSession")
+        else:
+            entity_imports.append("import { RefreshToken } from '../modules/auth/refresh-token.entity';")
+            entity_names.append("RefreshToken")
         for feature, class_name in TOKEN_ENTITIES.items():
             if ir["auth"]["features"][feature]:
                 entity_imports.append(f"import {{ {class_name} }} from '../modules/auth/{kebab_case(class_name)}.entity';")
@@ -988,6 +1043,21 @@ def data_source_code(ir: dict) -> str:
     )
 
 
+def _credential_settings(auth: dict) -> list[str]:
+    sessions = auth["features"]["sessions"]
+    if sessions:
+        return [
+            f"  sessionTtl: Number(env('SESSION_TTL', '{sessions['ttl_seconds']}')),",
+            "  sessionSecureCookie: ['1', 'true', 'yes', 'on'].includes(",
+            "    env('SESSION_SECURE_COOKIE', env('APP_ENV', 'local') === 'production' ? 'true' : 'false').toLowerCase(),",
+            "  ),",
+        ]
+    return [
+        f"  jwtTtl: Number(env('JWT_TTL', '{auth['token_ttl_seconds']}')),",
+        f"  jwtRefreshTtl: Number(env('JWT_REFRESH_TTL', '{auth['features']['refresh_tokens']['ttl_seconds']}')),",
+    ]
+
+
 def settings_code(ir: dict, settings: dict, port: int) -> str:
     lines = [
         "import { existsSync, readFileSync } from 'fs';",
@@ -1038,11 +1108,10 @@ def settings_code(ir: dict, settings: dict, port: int) -> str:
         lines.extend(
             [
                 "  jwtSecret: env('JWT_SECRET', ''),",
-                f"  jwtTtl: Number(env('JWT_TTL', '{ir['auth']['token_ttl_seconds']}')),",
+                *_credential_settings(ir["auth"]),
                 f"  authRateLimit: Number(env('AUTH_RATE_LIMIT', '{ir['auth']['rate_limit']['attempts']}')),",
                 f"  authRateWindow: Number(env('AUTH_RATE_WINDOW', '{ir['auth']['rate_limit']['window_seconds']}')),",
                 "  bootstrapAdminEmail: env('BOOTSTRAP_ADMIN_EMAIL', ''),",
-                f"  jwtRefreshTtl: Number(env('JWT_REFRESH_TTL', '{ir['auth']['features']['refresh_tokens']['ttl_seconds']}')),",
                 "  appUrl: env('APP_URL', ''),",
                 "  mailDriver: env('MAIL_DRIVER', 'log'),",
                 "  mailHost: env('MAIL_HOST', '127.0.0.1'),",

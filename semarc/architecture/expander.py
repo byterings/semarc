@@ -28,13 +28,16 @@ class ArchitectureExpander:
             "routes": architecture.routes,
         }
 
-        if architecture.auth and architecture.auth.strategy == "JWT":
+        if architecture.auth and architecture.auth.strategy in ("JWT", "SESSION"):
+            jwt = architecture.auth.strategy == "JWT"
             expanded["auth"] = {
-                "strategy": "JWT",
+                "strategy": architecture.auth.strategy,
                 "controller": "AuthController",
-                "services": ["TokenService", "PasswordHasher"],
+                "services": ["TokenService" if jwt else "SessionStore", "PasswordHasher"],
                 "middlewares": ["AuthMiddleware"],
-                "features": ["token issuing", "token validation", "password hashing"],
+                "features": ["token issuing", "token validation", "password hashing"]
+                if jwt
+                else ["session cookies", "CSRF protection", "password hashing"],
             }
             expanded["validators"].append("Validator")
 

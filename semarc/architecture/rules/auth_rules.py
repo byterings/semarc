@@ -1,4 +1,7 @@
 AUTH_MODEL = "User"
+# Strategies that create the User model, register/login routes and access policy.
+# JWT sends a bearer token; SESSION a session cookie plus a CSRF header.
+ACCOUNT_STRATEGIES = ("JWT", "SESSION")
 AUTH_IDENTITY_FIELD = "email"
 AUTH_SECRET_FIELD = "password"
 AUTH_ROUTES = {
@@ -51,6 +54,12 @@ OAUTH_PROVIDERS = {
 }
 OAUTH_NAME_FIELD = "name"
 REFRESH_TOKEN_TABLE = "refresh_tokens"
+REFRESH_ROUTE = ("POST", "/token/refresh")
+SESSION_TABLE = "sessions"
+SESSION_TTL_SECONDS = 14 * 24 * 3600
+SESSION_COOKIE = "session"
+CSRF_COOKIE = "csrf_token"
+CSRF_HEADER = "X-CSRF-Token"
 REFRESH_TOKEN_TTL_SECONDS = 14 * 24 * 3600
 
 
@@ -58,26 +67,30 @@ def apply_auth_rules(architecture, plan: dict, graph) -> None:
     if not architecture.auth:
         return
 
-    if architecture.auth.strategy != "JWT":
+    strategy = architecture.auth.strategy
+    if strategy not in ACCOUNT_STRATEGIES:
         return
 
+    credential = "TokenService" if strategy == "JWT" else "SessionStore"
     plan["auth"] = {
-        "meaning": "token-based authentication",
-        "strategy": "JWT",
+        "meaning": "token-based authentication" if strategy == "JWT" else "cookie session authentication",
+        "strategy": strategy,
         "controller": "AuthController",
-        "services": ["TokenService", "PasswordHasher"],
+        "services": [credential, "PasswordHasher"],
         "middlewares": ["AuthMiddleware"],
         "validators": ["Validator"],
-        "features": ["token issuing", "token validation", "password hashing"],
+        "features": ["token issuing", "token validation", "password hashing"]
+        if strategy == "JWT"
+        else ["session cookies", "CSRF protection", "password hashing"],
     }
     plan["validators"].append("Validator")
 
-    for component in ["AuthController", "AuthMiddleware", "TokenService", "PasswordHasher", "Validator"]:
+    for component in ["AuthController", "AuthMiddleware", credential, "PasswordHasher", "Validator"]:
         graph.add_node(component)
 
-    graph.add_dependency("AuthController", "TokenService")
+    graph.add_dependency("AuthController", credential)
     graph.add_dependency("AuthController", "PasswordHasher")
     graph.add_dependency("AuthController", "Validator")
     graph.add_dependency("AuthController", f"{AUTH_MODEL}Repository")
-    graph.add_dependency("AuthMiddleware", "TokenService")
-    graph.add_dependency("TokenService", "Validator")
+    graph.add_dependency("AuthMiddleware", credential)
+    graph.add_dependency(credential, "Validator")

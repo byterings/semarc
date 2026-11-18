@@ -62,8 +62,13 @@ def env_values(ir: dict) -> dict[str, str]:
     }
     if ir.get("auth"):
         values["JWT_SECRET"] = DEV_JWT_SECRET
-        values["JWT_TTL"] = str(ir["auth"]["token_ttl_seconds"])
-        values["JWT_REFRESH_TTL"] = str(ir["auth"]["features"]["refresh_tokens"]["ttl_seconds"])
+        sessions = ir["auth"]["features"].get("sessions")
+        if sessions:
+            values["SESSION_TTL"] = str(sessions["ttl_seconds"])
+            values["SESSION_SECURE_COOKIE"] = ""
+        else:
+            values["JWT_TTL"] = str(ir["auth"]["token_ttl_seconds"])
+            values["JWT_REFRESH_TTL"] = str(ir["auth"]["features"]["refresh_tokens"]["ttl_seconds"])
         values["AUTH_RATE_LIMIT"] = str(ir["auth"]["rate_limit"]["attempts"])
         values["AUTH_RATE_WINDOW"] = str(ir["auth"]["rate_limit"]["window_seconds"])
         if ir["auth"].get("features", {}).get("roles"):
@@ -96,6 +101,8 @@ def env_example(ir: dict) -> str:
     ]
     if ir.get("auth"):
         lines.append("# JWT_SECRET must be at least 32 characters; replace it before deploying.")
+        if ir["auth"]["features"].get("sessions"):
+            lines.append("# JWT_SECRET also signs OAuth state. SESSION_SECURE_COOKIE: true or false (default: true when APP_ENV=production).")
         if ir["auth"].get("features", {}).get("roles"):
             lines.append("# BOOTSTRAP_ADMIN_EMAIL: the account registering with this email becomes admin.")
     if mail_enabled(ir):
@@ -258,7 +265,22 @@ def readme(
         "Settings come from environment variables or a `.env` file (see `.env.example`).",
         "`DB_CONNECTION` selects `mysql`, `pgsql` or `sqlite`.",
     ]
-    if auth:
+    sessions = (auth or {}).get("features", {}).get("sessions")
+    if sessions:
+        lines.extend(
+            [
+                "",
+                "## Authentication",
+                "",
+                f"`POST /register` creates a {auth['model']} and starts a session; `POST /login` exchanges "
+                f"`{auth['identity_field']}` and `{auth['secret_field']}` for a session; `GET /me` returns the caller.",
+                f"The session is an HttpOnly `{sessions['cookie']}` cookie (Secure when `APP_ENV=production`, "
+                f"valid for `SESSION_TTL` seconds, default {sessions['ttl_seconds']}). POST, PUT, PATCH and DELETE "
+                f"requests must send the `{sessions['csrf_cookie']}` cookie value in the `{sessions['csrf_header']}` header.",
+                "Browsers send cookies cross-origin only when `CORS_ORIGINS` lists the front-end origin.",
+            ]
+        )
+    elif auth:
         lines.extend(
             [
                 "",
@@ -324,7 +346,7 @@ def _behaviour(route: dict) -> str:
         "auth_me": "Current authenticated user",
         "auth_set_role": "Change a user's role",
         "auth_refresh": "Exchange a refresh token for new tokens",
-        "auth_logout": "Revoke a refresh token",
+        "auth_logout": "End the session" if route.get("access") == "protected" else "Revoke a refresh token",
         "auth_change_password": "Change the current user's password",
         "auth_forgot_password": "Email a password reset token",
         "auth_reset_password": "Set a new password with a reset token",

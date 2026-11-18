@@ -60,6 +60,8 @@ def test_api_scenario() -> None:
     command.upgrade(Config(str(ROOT / "alembic.ini")), "head")
     client = TestClient(app, raise_server_exceptions=False)
     variables: dict = {}
+    session = SCENARIO.get("session")  # AUTH SESSION: credentials are cookies plus a CSRF header
+    session_cookies: dict = {}
 
     for step in SCENARIO["steps"]:
         if "external" in step:
@@ -69,14 +71,23 @@ def test_api_scenario() -> None:
             continue
         path = re.sub(r"\$\{(\w+)\}", lambda match: str(variables.get(match.group(1), "")), step["path"])
         headers = dict(step.get("headers", {}))
+        credential = None
         if step.get("auth"):
-            headers["Authorization"] = f"Bearer {variables.get(step.get('auth_as', 'token'), '')}"
+            name = step.get("auth_as", "token")
+            credential = (session_cookies.get(name, ""), variables.get(name, ""))
         if "token" in step:
-            headers["Authorization"] = f"Bearer {step['token']}"
+            credential = (step["token"], step["token"])
+        if credential is not None and session is None:
+            headers["Authorization"] = f"Bearer {credential[1]}"
+        elif credential is not None:
+            headers["Cookie"] = f"{session['cookie']}={credential[0]}"
+            if step["method"] not in {"GET", "HEAD", "OPTIONS"} and step.get("csrf", True):
+                headers[session["csrf_header"]] = str(credential[1])
         kwargs = {"headers": headers}
         if "body" in step:
             kwargs["json"] = resolve(step["body"], variables)
 
+        client.cookies.clear()  # every step sends its own credentials
         response = client.request(step["method"], path, **kwargs)
         is_json = response.headers.get("content-type", "").startswith("application/json")
         payload = response.json() if is_json and response.content else None
@@ -94,5 +105,13 @@ def test_api_scenario() -> None:
             )
         for json_path in step.get("absent", []):
             assert dig(payload, json_path) is MISSING, f"{label}\n  {json_path} must not be present"
+        issued = None
+        for cookie in response.headers.get_list("set-cookie") if session else []:
+            if cookie.startswith(session["cookie"] + "="):
+                attributes = cookie.lower()
+                assert "httponly" in attributes and "samesite=lax" in attributes, f"{label}\n  insecure session cookie: {cookie}"
+                issued = cookie.split(";")[0].split("=", 1)[1]
         for name, json_path in step.get("save", {}).items():
             variables[name] = dig(payload, json_path)
+            if issued is not None and json_path.endswith("csrf_token"):
+                session_cookies[name] = issued

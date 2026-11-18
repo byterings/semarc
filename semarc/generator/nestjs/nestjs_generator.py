@@ -96,7 +96,13 @@ class NestJSGenerator:
 
     def _runtime(self, ir: dict) -> None:
         self._render("src/main.ts", "main.ts.tpl")
-        self._render("src/app.setup.ts", "app.setup.ts.tpl")
+        sessions = ((ir.get("auth") or {}).get("features") or {}).get("sessions")
+        self._render(
+            "src/app.setup.ts",
+            "app.setup.ts.tpl",
+            # cookie sessions: credentials only for listed origins, never with *
+            {"cors_credentials": "!settings.corsOrigins.includes('*')" if sessions else "false"},
+        )
         self._write("src/config/settings.ts", settings_code(ir, database_settings(ir), PORT), "nestjs settings")
         self._render("src/common/api-error.ts", "api-error.ts.tpl")
         self._render("src/common/api-exception.filter.ts", "api-exception.filter.ts.tpl")
@@ -115,9 +121,22 @@ class NestJSGenerator:
             self._render("src/common/password-hasher.ts", "password-hasher.ts.tpl")
             self._render("src/common/current-user.decorator.ts", "current-user.decorator.ts.tpl")
             self._render("src/common/rate-limit.guard.ts", "rate-limit.guard.ts.tpl")
-            self._render("src/modules/auth/token.service.ts", "token.service.ts.tpl")
-            self._render("src/modules/auth/refresh-token.entity.ts", "refresh-token.entity.ts.tpl", {"table": auth["features"]["refresh_tokens"]["table"]})
-            self._render("src/modules/auth/refresh-token.store.ts", "refresh-token.store.ts.tpl")
+            if sessions:
+                self._render("src/modules/auth/session.entity.ts", "session.entity.ts.tpl", {"table": sessions["table"]})
+                self._render(
+                    "src/modules/auth/session.store.ts",
+                    "session.store.ts.tpl",
+                    {
+                        "cookie": sessions["cookie"],
+                        "csrf_cookie": sessions["csrf_cookie"],
+                        "csrf_header": sessions["csrf_header"],
+                        "csrf_header_lower": sessions["csrf_header"].lower(),
+                    },
+                )
+            else:
+                self._render("src/modules/auth/token.service.ts", "token.service.ts.tpl")
+                self._render("src/modules/auth/refresh-token.entity.ts", "refresh-token.entity.ts.tpl", {"table": auth["features"]["refresh_tokens"]["table"]})
+                self._render("src/modules/auth/refresh-token.store.ts", "refresh-token.store.ts.tpl")
             if mail_enabled(ir):
                 self._render("src/common/mailer.ts", "mailer.ts.tpl")
                 self._render("src/modules/auth/one-time-tokens.ts", "one-time-tokens.ts.tpl")
@@ -138,7 +157,7 @@ class NestJSGenerator:
                 self._write("src/modules/auth/oauth-account.entity.ts", oauth_account_entity_code(oauth["table"]), "nestjs oauth entity")
             self._render(
                 "src/guards/auth.guard.ts",
-                "auth.guard.ts.tpl",
+                "session-auth.guard.ts.tpl" if sessions else "auth.guard.ts.tpl",
                 {"auth_model": auth["model"], "auth_folder": folder(auth["model"]), "auth_file": file_base(auth["model"])},
             )
 

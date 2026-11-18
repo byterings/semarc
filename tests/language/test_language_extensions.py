@@ -251,11 +251,14 @@ class ValidationRuleTests(unittest.TestCase):
 
 
 class AuthRuleTests(unittest.TestCase):
-    def test_session_auth_alone_is_rejected(self):
-        source = BASE.replace("AUTH JWT", "AUTH SESSION")
+    def test_session_auth_is_accepted(self):
+        validate(BASE.replace("AUTH JWT", "AUTH SESSION"))
+
+    def test_session_auth_has_no_refresh_route(self):
+        source = BASE.replace("AUTH JWT", "AUTH SESSION") + "ROUTE POST /token/refresh\n"
         with self.assertRaises(SemanticValidationError) as raised:
             validate(source)
-        self.assertIn("AUTH SESSION is not implemented", str(raised.exception))
+        self.assertIn("sessions have no refresh token", str(raised.exception))
 
     def test_credential_fields_must_be_required_strings(self):
         source = BASE.replace("    password STRING\n", "    password INTEGER\n")

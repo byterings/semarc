@@ -6,12 +6,14 @@ final class Response
 {
     /**
      * @param array<string, string> $headers
+     * @param list<string> $cookies Set-Cookie header values
      */
     public function __construct(
         public readonly int $status,
         public readonly mixed $body,
         public readonly string $contentType = 'application/json',
         public readonly array $headers = [],
+        public readonly array $cookies = [],
     ) {
     }
 
@@ -20,7 +22,15 @@ final class Response
      */
     public function withHeaders(array $headers): self
     {
-        return new self($this->status, $this->body, $this->contentType, $headers + $this->headers);
+        return new self($this->status, $this->body, $this->contentType, $headers + $this->headers, $this->cookies);
+    }
+
+    /**
+     * @param list<string> $cookies Set-Cookie header values
+     */
+    public function withCookies(array $cookies): self
+    {
+        return new self($this->status, $this->body, $this->contentType, $this->headers, [...$this->cookies, ...$cookies]);
     }
 
     public function header(string $name): ?string
@@ -85,6 +95,9 @@ final class Response
         http_response_code($this->status);
         foreach ($this->headers as $name => $value) {
             header($name . ': ' . $value);
+        }
+        foreach ($this->cookies as $cookie) {
+            header('Set-Cookie: ' . $cookie, false);
         }
         if ($this->status !== 204) {
             header('Content-Type: ' . $this->contentType);

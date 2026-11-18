@@ -6,16 +6,14 @@ final class AuthController
 {
     private {{auth_model}}Service $users;
     private {{auth_model}}Repository $repository;
-    private TokenService $tokens;
-    private RefreshTokens $refreshTokens;
+{{credential_properties}}
     private PasswordHasher $hasher;
 
     public function __construct()
     {
         $this->users = new {{auth_model}}Service();
         $this->repository = new {{auth_model}}Repository();
-        $this->tokens = new TokenService();
-        $this->refreshTokens = new RefreshTokens();
+{{credential_setup}}
         $this->hasher = new PasswordHasher();
     }
 
@@ -52,29 +50,7 @@ final class AuthController
         return ['data' => $this->session((int) $record['id'])];
     }
 
-    /**
-     * Exchanges a refresh token for new tokens; the old refresh token stops working.
-     *
-     * @return array<string, mixed>
-     */
-    public function refresh(Request $request): array
-    {
-        RateLimiter::forAuth()->hit('refresh|' . $request->ip);
-        $userId = $this->refreshTokens->rotate(self::requiredString($request->json(), 'refresh_token'));
-        if ($this->repository->findById($userId) === null) {
-            throw HttpException::unauthorized('Token user no longer exists.');
-        }
-
-        return ['data' => $this->session($userId)];
-    }
-
-    public function logout(Request $request): Response
-    {
-        $this->refreshTokens->revoke(self::requiredString($request->json(), 'refresh_token'));
-
-        return Response::noContent();
-    }
-
+{{credential_methods}}
     public function changePassword(Request $request): Response
     {
         $input = $request->json();
@@ -87,7 +63,7 @@ final class AuthController
             throw HttpException::validation(['current_password' => ['current_password is incorrect']]);
         }
         $this->repository->update($userId, ['{{secret_field}}' => $this->hasher->hash($new)]);
-        $this->refreshTokens->revokeAll($userId);
+        $this->credentials->revokeAll($userId);
 
         return Response::noContent();
     }
@@ -97,7 +73,7 @@ final class AuthController
      */
     private function session(int $userId): array
     {
-        return $this->tokens->issue($userId) + $this->refreshTokens->issue($userId);
+{{session_body}}
     }
 
     /** Applies the {{secret_field}} field rules to a new password; errors use $label as the field name. */

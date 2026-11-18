@@ -35,7 +35,7 @@ class JwtRateLimitRule:
 
     def evaluate(self, context: dict, result) -> None:
         ast = context["ast"]
-        if not ast or not ast.auth or ast.auth.strategy != "JWT":
+        if not ast or not ast.auth or ast.auth.strategy not in ("JWT", "SESSION"):
             return
         if not GENERATED_AUTH_RATE_LIMITING:
             result.add_warning(

@@ -44,7 +44,9 @@ final class Router
             return Cors::preflight($request);
         }
 
-        return Cors::apply($request, $this->handle($request));
+        Cookies::flush();
+
+        return Cors::apply($request, $this->handle($request)->withCookies(Cookies::flush()));
     }
 
     private function handle(Request $request): Response

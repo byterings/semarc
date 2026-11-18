@@ -1,6 +1,13 @@
 import re
 
 from semarc.architecture.rules.auth_rules import (
+    ACCOUNT_STRATEGIES,
+    CSRF_COOKIE,
+    CSRF_HEADER,
+    REFRESH_ROUTE,
+    SESSION_COOKIE,
+    SESSION_TABLE,
+    SESSION_TTL_SECONDS,
     AUTH_IDENTITY_FIELD,
     AUTH_MODEL,
     AUTH_ROUTES,
@@ -82,35 +89,44 @@ class ResourcePlanner:
                     ],
                 }
             )
-        return tables + [
-            {
-                "model": None,
-                "table": auth["features"]["refresh_tokens"]["table"],
-                "internal": True,
-                "fields": [
-                    {"name": "token_hash", "type": "STRING", "required": True, "unique": True},
-                    {"name": "expires_at", "type": "DATETIME", "required": True, "unique": False},
-                    {"name": "revoked_at", "type": "DATETIME", "required": False, "unique": False},
-                ],
-                "foreign_keys": [
-                    {
-                        "table": auth["features"]["refresh_tokens"]["table"],
-                        "column": "user_id",
-                        "references_table": users,
-                        "references_column": "id",
-                        "unique": False,
-                        "on_delete": "CASCADE",
-                    }
-                ],
-            }
-        ]
+        refresh = auth["features"]["refresh_tokens"]
+        if refresh:
+            tables.append(self._credential_table(refresh["table"], users, ["token_hash"]))
+        sessions = auth["features"]["sessions"]
+        if sessions:
+            tables.append(self._credential_table(sessions["table"], users, ["token_hash", "csrf_hash"]))
+        return tables
+
+    def _credential_table(self, table: str, users: str, hashes: list[str]) -> dict:
+        """Revocable, expiring credentials (refresh tokens, sessions) stored as hashes."""
+        return {
+            "model": None,
+            "table": table,
+            "internal": True,
+            "fields": [
+                *({"name": name, "type": "STRING", "required": True, "unique": name == "token_hash"} for name in hashes),
+                {"name": "expires_at", "type": "DATETIME", "required": True, "unique": False},
+                {"name": "revoked_at", "type": "DATETIME", "required": False, "unique": False},
+            ],
+            "foreign_keys": [
+                {
+                    "table": table,
+                    "column": "user_id",
+                    "references_table": users,
+                    "references_column": "id",
+                    "unique": False,
+                    "on_delete": "CASCADE",
+                }
+            ],
+        }
 
     def _auth(self, architecture) -> dict | None:
-        if architecture.auth is None or architecture.auth.strategy != "JWT":
+        if architecture.auth is None or architecture.auth.strategy not in ACCOUNT_STRATEGIES:
             return None
+        strategy = architecture.auth.strategy
         declared = any(model.name == AUTH_MODEL for model in architecture.models)
         return {
-            "strategy": "JWT",
+            "strategy": strategy,
             "model": AUTH_MODEL,
             "identity_field": AUTH_IDENTITY_FIELD,
             "secret_field": AUTH_SECRET_FIELD,
@@ -119,7 +135,20 @@ class ResourcePlanner:
             "implicit_model": not declared,
             "features": {
                 "roles": self._roles(architecture),
-                "refresh_tokens": {"table": REFRESH_TOKEN_TABLE, "ttl_seconds": REFRESH_TOKEN_TTL_SECONDS},
+                "refresh_tokens": (
+                    {"table": REFRESH_TOKEN_TABLE, "ttl_seconds": REFRESH_TOKEN_TTL_SECONDS} if strategy == "JWT" else None
+                ),
+                "sessions": (
+                    {
+                        "table": SESSION_TABLE,
+                        "ttl_seconds": SESSION_TTL_SECONDS,
+                        "cookie": SESSION_COOKIE,
+                        "csrf_cookie": CSRF_COOKIE,
+                        "csrf_header": CSRF_HEADER,
+                    }
+                    if strategy == "SESSION"
+                    else None
+                ),
                 "password_reset": (
                     {"table": "password_resets", "ttl_seconds": 3600} if self._uses(architecture, "auth.password_reset") else None
                 ),
@@ -347,6 +376,8 @@ class ResourcePlanner:
 
     def _auth_routes(self, auth: dict) -> dict:
         routes = dict(AUTH_ROUTES)
+        if auth["strategy"] != "JWT":
+            del routes[REFRESH_ROUTE]
         if auth["features"]["roles"]:
             routes[ROLE_ROUTE] = "set_role"
         if auth["features"]["password_reset"]:
@@ -433,6 +464,8 @@ class ResourcePlanner:
     def _access(self, method: str, declared: str | None, operation: dict, auth: dict | None) -> str:
         if auth is None:
             return "public"
+        if operation["kind"] == "auth_logout" and auth["strategy"] == "SESSION":
+            return "protected"
         if operation["kind"] in {
             "auth_register",
             "auth_login",

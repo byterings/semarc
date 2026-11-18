@@ -78,6 +78,18 @@ final class Request
         return $this->headers[strtolower($name)] ?? null;
     }
 
+    public function cookie(string $name): ?string
+    {
+        foreach (explode(';', (string) $this->header('cookie')) as $pair) {
+            $parts = explode('=', trim($pair), 2);
+            if (count($parts) === 2 && $parts[0] === $name) {
+                return rawurldecode($parts[1]);
+            }
+        }
+
+        return null;
+    }
+
     public function bearerToken(): ?string
     {
         $header = $this->header('authorization');

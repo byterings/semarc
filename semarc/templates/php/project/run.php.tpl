@@ -50,6 +50,10 @@ $resolve = static function (mixed $value, array $vars) use (&$resolve): mixed {
 
 $vars = [];
 $passed = 0;
+// Cookie sessions (AUTH SESSION): session cookie per saved credential variable.
+$session = $scenario['session'] ?? null;
+$sessionCookies = [];
+$unsafe = static fn (string $method): bool => !in_array($method, ['GET', 'HEAD', 'OPTIONS'], true);
 foreach ($scenario['steps'] as $step) {
     if (isset($step['external'])) {
         echo "SKIP {$step['name']} (needs an external service)" . PHP_EOL;
@@ -78,11 +82,21 @@ foreach ($scenario['steps'] as $step) {
     foreach ($step['headers'] ?? [] as $name => $value) {
         $headers[strtolower($name)] = $value;
     }
+    $credential = null;
     if (!empty($step['auth'])) {
-        $headers['authorization'] = 'Bearer ' . ($vars[$step['auth_as'] ?? 'token'] ?? '');
+        $name = $step['auth_as'] ?? 'token';
+        $credential = [(string) ($sessionCookies[$name] ?? ''), (string) ($vars[$name] ?? '')];
     }
     if (isset($step['token'])) {
-        $headers['authorization'] = 'Bearer ' . $step['token'];
+        $credential = [$step['token'], $step['token']];
+    }
+    if ($credential !== null && $session === null) {
+        $headers['authorization'] = 'Bearer ' . $credential[1];
+    } elseif ($credential !== null) {
+        $headers['cookie'] = $session['cookie'] . '=' . $credential[0];
+        if ($unsafe($step['method']) && ($step['csrf'] ?? true)) {
+            $headers[strtolower($session['csrf_header'])] = $credential[1];
+        }
     }
     $body = array_key_exists('body', $step) ? (string) json_encode($resolve($step['body'], $vars)) : '';
     if ($body === '[]') {
@@ -128,8 +142,22 @@ foreach ($scenario['steps'] as $step) {
         exit(1);
     }
 
+    $issued = null;
+    foreach ($session === null ? [] : $response->cookies as $cookie) {
+        if (str_starts_with($cookie, $session['cookie'] . '=')) {
+            $attributes = strtolower($cookie);
+            if (!str_contains($attributes, 'httponly') || !str_contains($attributes, 'samesite=lax')) {
+                fwrite(STDERR, "FAIL {$step['name']}: session cookie must be HttpOnly and SameSite=Lax: {$cookie}" . PHP_EOL);
+                exit(1);
+            }
+            $issued = rawurldecode(explode(';', substr($cookie, strlen($session['cookie']) + 1))[0]);
+        }
+    }
     foreach ($step['save'] ?? [] as $name => $jsonPath) {
         $vars[$name] = $dig($json, $jsonPath);
+        if ($issued !== null && str_ends_with($jsonPath, 'csrf_token')) {
+            $sessionCookies[$name] = $issued;
+        }
     }
     echo "PASS {$step['name']}" . PHP_EOL;
     $passed++;

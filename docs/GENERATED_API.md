@@ -86,6 +86,27 @@ declared, matching the behaviour of earlier SEMARC versions.
   reverse proxy every client shares the proxy's address, so configure the proxy to forward
   the client address or adjust the limiter.
 
+### Cookie sessions (`AUTH SESSION`)
+
+`AUTH SESSION` has the same routes, rules and modules as `AUTH JWT`, with these differences:
+
+- Register, login and OAuth sign-in start a session: the response sets an HttpOnly,
+  `SameSite=Lax` cookie `session` (and `Secure` when `APP_ENV=production` or
+  `SESSION_SECURE_COOKIE=true`) and a readable cookie `csrf_token`, and returns
+  `csrf_token` and `expires_in` instead of tokens.
+- Requests authenticate with the cookie. `POST`, `PUT`, `PATCH` and `DELETE` requests on a
+  session must also send the `csrf_token` value in the `X-CSRF-Token` header; without it they
+  get 403 `forbidden`. The front end can read the value from the `csrf_token` cookie after a
+  page reload.
+- Sessions are stored as SHA-256 hashes in the `sessions` table and expire after
+  `SESSION_TTL` seconds (default 14 days). `POST /logout` (authenticated) ends the current
+  session and clears both cookies. Changing or resetting the password ends every session of
+  the user. There is no `POST /token/refresh`.
+- Browsers send cookies cross-origin only to origins listed in `CORS_ORIGINS`; then the
+  API answers with `Access-Control-Allow-Credentials: true`. With `CORS_ORIGINS=*` cookie
+  sessions work for same-origin front ends only (for example behind one reverse proxy).
+- `JWT_SECRET` is still used to sign OAuth `state`.
+
 ### Access policy
 
 | Situation | Access |

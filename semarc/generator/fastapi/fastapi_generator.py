@@ -76,16 +76,26 @@ class FastApiGenerator:
         auth = ir.get("auth")
         if auth:
             self._write("middleware/__init__.py", '"""Request authentication dependencies."""\n', "python package")
-            self._render("services/token_service.py", "token_service.py.tpl")
+            sessions = auth["features"]["sessions"]
+            if not sessions:
+                self._render("services/token_service.py", "token_service.py.tpl")
             self._render("core/rate_limit.py", "rate_limit.py.tpl")
             if auth["features"]["password_reset"] or auth["features"]["email_verification"]:
                 self._render("core/mailer.py", "mailer.py.tpl")
                 self._write("core/one_time_tokens.py", _one_time_tokens_code(ir), "fastapi one-time tokens")
-            self._render(
-                "core/refresh_tokens.py",
-                "refresh_tokens.py.tpl",
-                {"table": auth["features"]["refresh_tokens"]["table"], "users_table": model_by_name(ir, auth["model"])["table"]},
-            )
+            users_table = model_by_name(ir, auth["model"])["table"]
+            if sessions:
+                self._render(
+                    "core/sessions.py",
+                    "sessions.py.tpl",
+                    {key: sessions[key] for key in ["table", "cookie", "csrf_cookie", "csrf_header"]} | {"users_table": users_table},
+                )
+            else:
+                self._render(
+                    "core/refresh_tokens.py",
+                    "refresh_tokens.py.tpl",
+                    {"table": auth["features"]["refresh_tokens"]["table"], "users_table": users_table},
+                )
             self._render("services/password_hasher.py", "password_hasher.py.tpl")
             oauth = auth["features"]["oauth"]
             if oauth:
@@ -101,7 +111,7 @@ class FastApiGenerator:
                 )
             self._render(
                 "middleware/auth.py",
-                "auth_dependency.py.tpl",
+                "session_dependency.py.tpl" if sessions else "auth_dependency.py.tpl",
                 {"auth_model": auth["model"], "auth_module": module_name(auth["model"]), "roles_code": _roles_code(auth)},
             )
 
@@ -217,11 +227,10 @@ class FastApiGenerator:
             lines.extend(
                 [
                     '        self.jwt_secret = env("JWT_SECRET", "")',
-                    f'        self.jwt_ttl = int(env("JWT_TTL", "{ir["auth"]["token_ttl_seconds"]}"))',
+                    *self._credential_settings(ir["auth"]),
                     f'        self.auth_rate_limit = int(env("AUTH_RATE_LIMIT", "{ir["auth"]["rate_limit"]["attempts"]}"))',
                     f'        self.auth_rate_window = int(env("AUTH_RATE_WINDOW", "{ir["auth"]["rate_limit"]["window_seconds"]}"))',
                     '        self.bootstrap_admin_email = env("BOOTSTRAP_ADMIN_EMAIL", "")',
-                    f'        self.jwt_refresh_ttl = int(env("JWT_REFRESH_TTL", "{ir["auth"]["features"]["refresh_tokens"]["ttl_seconds"]}"))',
                     '        self.app_url = env("APP_URL", "")',
                     '        self.mail_driver = env("MAIL_DRIVER", "log")',
                     '        self.mail_host = env("MAIL_HOST", "127.0.0.1")',
@@ -262,6 +271,19 @@ class FastApiGenerator:
             ]
         )
         return "\n".join(lines)
+
+    def _credential_settings(self, auth: dict) -> list[str]:
+        sessions = auth["features"]["sessions"]
+        if sessions:
+            return [
+                f'        self.session_ttl = int(env("SESSION_TTL", "{sessions["ttl_seconds"]}"))',
+                '        secure = env("SESSION_SECURE_COOKIE", "true" if self.app_env == "production" else "false")',
+                '        self.session_secure_cookie = secure.lower() in {"1", "true", "yes", "on"}',
+            ]
+        return [
+            f'        self.jwt_ttl = int(env("JWT_TTL", "{auth["token_ttl_seconds"]}"))',
+            f'        self.jwt_refresh_ttl = int(env("JWT_REFRESH_TTL", "{auth["features"]["refresh_tokens"]["ttl_seconds"]}"))',
+        ]
 
     def _render(self, relative_path: str, template: str, values: dict | None = None) -> None:
         self._write(relative_path, self.template_engine.render(template, values), template)

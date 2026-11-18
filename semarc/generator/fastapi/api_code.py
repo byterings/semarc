@@ -199,19 +199,23 @@ def auth_router_code(ir: dict) -> str:
     module = module_name(name)
     identity, secret = auth["identity_field"], auth["secret_field"]
     secret_rules = field_rules(next(item for item in model["fields"] if item["name"] == secret))
+    sessions = auth["features"]["sessions"]
+    store = credential_store(auth)
+    response_arg = "response: Response, " if sessions else ""
+    issue_args = ", response" if sessions else ""
     new_password = [f"min_length={secret_rules['min'] or 1}"]
     if secret_rules["max"]:
         new_password.append(f"max_length={secret_rules['max']}")
     return "\n".join(
         [
-            "from fastapi import APIRouter, Depends, Response",
+            "from fastapi import APIRouter, Depends, Request, Response" if sessions else "from fastapi import APIRouter, Depends, Response",
             "from pydantic import BaseModel, Field",
             "from sqlalchemy.orm import Session",
             "",
             *(["from typing import Literal", ""] if auth["features"]["roles"] else []),
             "from core.errors import ApiError",
             "from core.rate_limit import auth_rate_limit",
-            "from core.refresh_tokens import RefreshTokenStore",
+            "from core.sessions import COOKIE as SESSION_COOKIE, SessionStore" if sessions else "from core.refresh_tokens import RefreshTokenStore",
             *_mail_imports(auth),
             *_oauth_imports(auth),
             "from database import get_db",
@@ -221,7 +225,7 @@ def auth_router_code(ir: dict) -> str:
             "from schemas.base import DataResponse, InputSchema",
             f"from schemas.{module} import {name}Create, {name}Read",
             "from services.password_hasher import PasswordHasher",
-            "from services.token_service import TokenService",
+            *([] if sessions else ["from services.token_service import TokenService"]),
             f"from services.{module}_service import {name}Service",
             "",
             'router = APIRouter(tags=["Auth"])',
@@ -232,26 +236,13 @@ def auth_router_code(ir: dict) -> str:
             f"    {secret}: str = Field(min_length=1)",
             "",
             "",
-            "class TokenResult(BaseModel):",
-            "    access_token: str",
-            "    token_type: str",
-            "    expires_in: int",
-            "    refresh_token: str",
-            "    refresh_expires_in: int",
-            "",
-            "",
-            "class RefreshRequest(InputSchema):",
-            "    refresh_token: str = Field(min_length=1)",
-            "",
-            "",
+            *_credential_models(sessions),
             "class PasswordChange(InputSchema):",
             "    current_password: str = Field(min_length=1)",
             f"    new_password: str = Field({', '.join(new_password)})",
             "",
             "",
-            "def issue_session(db: Session, user_id: int) -> dict:",
-            '    """Access token plus a new refresh token."""',
-            "    return {**TokenService().issue(user_id), **RefreshTokenStore(db).issue(user_id)}",
+            *_issue_session_lines(sessions),
             "",
             "",
             "class RegisterResult(TokenResult):",
@@ -264,34 +255,21 @@ def auth_router_code(ir: dict) -> str:
             "    response_model=DataResponse[RegisterResult],",
             "    dependencies=[Depends(auth_rate_limit)],",
             ")",
-            f"def register(payload: {name}Create, db: Session = Depends(get_db)) -> dict:",
+            f"def register(payload: {name}Create, {response_arg}db: Session = Depends(get_db)) -> dict:",
             f"    user = {name}Service(db).create(payload)",
             *_bootstrap_admin_lines(auth, name),
             *(["    send_verification(db, user)"] if auth["features"]["email_verification"] else []),
-            '    result = {"user": user, **issue_session(db, user["id"])}',
+            f'    result = {{"user": user, **issue_session(db, user["id"]{issue_args})}}',
             '    return {"data": result}',
             "",
             "",
             '@router.post("/login", response_model=DataResponse[TokenResult], dependencies=[Depends(auth_rate_limit)])',
-            "def login(payload: LoginRequest, db: Session = Depends(get_db)) -> dict:",
+            f"def login(payload: LoginRequest, {response_arg}db: Session = Depends(get_db)) -> dict:",
             f'    record = {name}Repository(db).find_by("{identity}", payload.{identity})',
             f"    if record is None or not PasswordHasher().verify(payload.{secret}, record.{secret}):",
             '        raise ApiError.unauthorized("Invalid credentials.")',
-            '    return {"data": issue_session(db, record.id)}',
-            "",
-            "",
-            '@router.post("/token/refresh", response_model=DataResponse[TokenResult], dependencies=[Depends(auth_rate_limit)])',
-            "def refresh(payload: RefreshRequest, db: Session = Depends(get_db)) -> dict:",
-            "    user_id = RefreshTokenStore(db).rotate(payload.refresh_token)",
-            f"    if {name}Repository(db).get(user_id) is None:",
-            '        raise ApiError.unauthorized("Token user no longer exists.")',
-            '    return {"data": issue_session(db, user_id)}',
-            "",
-            "",
-            '@router.post("/logout", status_code=204)',
-            "def logout(payload: RefreshRequest, db: Session = Depends(get_db)) -> Response:",
-            "    RefreshTokenStore(db).revoke(payload.refresh_token)",
-            "    return Response(status_code=204)",
+            f'    return {{"data": issue_session(db, record.id{issue_args})}}',
+            *_refresh_and_logout_lines(name, sessions),
             "",
             "",
             '@router.post("/me/password", status_code=204)',
@@ -301,7 +279,7 @@ def auth_router_code(ir: dict) -> str:
             f"    if record is None or not PasswordHasher().verify(payload.current_password, record.{secret}):",
             '        raise ApiError.validation({"current_password": ["current_password is incorrect"]})',
             f'    repository.update(record, {{"{secret}": PasswordHasher().hash(payload.new_password)}})',
-            "    RefreshTokenStore(db).revoke_all(user_id)",
+            f"    {store}(db).revoke_all(user_id)",
             "    return Response(status_code=204)",
             *_mail_route_lines(auth, name, new_password),
             "",
@@ -314,6 +292,72 @@ def auth_router_code(ir: dict) -> str:
             "",
         ]
     )
+
+
+def credential_store(auth: dict) -> str:
+    return "SessionStore" if auth["features"]["sessions"] else "RefreshTokenStore"
+
+
+def _credential_models(sessions: dict | None) -> list[str]:
+    if sessions:
+        return ["class TokenResult(BaseModel):", "    csrf_token: str", "    expires_in: int", "", ""]
+    return [
+        "class TokenResult(BaseModel):",
+        "    access_token: str",
+        "    token_type: str",
+        "    expires_in: int",
+        "    refresh_token: str",
+        "    refresh_expires_in: int",
+        "",
+        "",
+        "class RefreshRequest(InputSchema):",
+        "    refresh_token: str = Field(min_length=1)",
+        "",
+        "",
+    ]
+
+
+def _issue_session_lines(sessions: dict | None) -> list[str]:
+    if sessions:
+        return [
+            "def issue_session(db: Session, user_id: int, response: Response) -> dict:",
+            '    """Starts a cookie session; returns its CSRF token."""',
+            "    return SessionStore(db).issue(user_id, response)",
+        ]
+    return [
+        "def issue_session(db: Session, user_id: int) -> dict:",
+        '    """Access token plus a new refresh token."""',
+        "    return {**TokenService().issue(user_id), **RefreshTokenStore(db).issue(user_id)}",
+    ]
+
+
+def _refresh_and_logout_lines(name: str, sessions: dict | None) -> list[str]:
+    if sessions:
+        return [
+            "",
+            "",
+            '@router.post("/logout", status_code=204)',
+            "def logout(request: Request, user_id: int = Depends(current_user_id), db: Session = Depends(get_db)) -> Response:",
+            "    response = Response(status_code=204)",
+            "    SessionStore(db).end(request.cookies.get(SESSION_COOKIE), response)",
+            "    return response",
+        ]
+    return [
+        "",
+        "",
+        '@router.post("/token/refresh", response_model=DataResponse[TokenResult], dependencies=[Depends(auth_rate_limit)])',
+        "def refresh(payload: RefreshRequest, db: Session = Depends(get_db)) -> dict:",
+        "    user_id = RefreshTokenStore(db).rotate(payload.refresh_token)",
+        f"    if {name}Repository(db).get(user_id) is None:",
+        '        raise ApiError.unauthorized("Token user no longer exists.")',
+        '    return {"data": issue_session(db, user_id)}',
+        "",
+        "",
+        '@router.post("/logout", status_code=204)',
+        "def logout(payload: RefreshRequest, db: Session = Depends(get_db)) -> Response:",
+        "    RefreshTokenStore(db).revoke(payload.refresh_token)",
+        "    return Response(status_code=204)",
+    ]
 
 
 def _oauth_imports(auth: dict) -> list[str]:
@@ -333,6 +377,7 @@ def _oauth_route_lines(auth: dict, model: dict) -> list[str]:
     identity, secret = auth["identity_field"], auth["secret_field"]
     roles = auth["features"]["roles"]
     verification = auth["features"]["email_verification"]
+    sessions = auth["features"]["sessions"]
     new_user = [
         "            data = {",
         f'                "{identity}": identity["{identity}"],',
@@ -355,14 +400,14 @@ def _oauth_route_lines(auth: dict, model: dict) -> list[str]:
             f"        elif record.{verification['field']} is None:",
             "            # Ownership of the address is proven by the provider, not by whoever set the password.",
             f'            repository.update(record, {{"{secret}": PasswordHasher().hash(token_hex(32)), "{verification["field"]}": utc_now()}})',
-            "            RefreshTokenStore(db).revoke_all(record.id)",
+            f"            {credential_store(auth)}(db).revoke_all(record.id)",
         ]
     else:
         relink = [
             "        else:",
             "            # Ownership of the address is proven by the provider, not by whoever set the password.",
             f'            repository.update(record, {{"{secret}": PasswordHasher().hash(token_hex(32))}})',
-            "            RefreshTokenStore(db).revoke_all(record.id)",
+            f"            {credential_store(auth)}(db).revoke_all(record.id)",
         ]
     lines = [
         "",
@@ -377,7 +422,7 @@ def _oauth_route_lines(auth: dict, model: dict) -> list[str]:
         "    state: str = Field(min_length=1)",
         "",
         "",
-        "def oauth_sign_in(db: Session, provider: str, payload: OAuthCallback) -> dict:",
+        f"def oauth_sign_in(db: Session, provider: str, payload: OAuthCallback{', response: Response' if sessions else ''}) -> dict:",
         '    """Finds the user linked to the provider identity, links one by verified email, or creates one."""',
         "    oauth.verify_state(provider, payload.state)",
         "    profile = oauth.fetch_identity(provider, payload.code)",
@@ -395,7 +440,7 @@ def _oauth_route_lines(auth: dict, model: dict) -> list[str]:
         '        db.add(OAuthAccount(provider=provider, provider_subject=profile["subject"], user_id=record.id))',
         "        db.commit()",
         "        user_id = record.id",
-        f'    result = {{"user": {name}Service(db).get(user_id), **issue_session(db, user_id)}}',
+        f'    result = {{"user": {name}Service(db).get(user_id), **issue_session(db, user_id{", response" if sessions else ""})}}',
         '    return {"data": result}',
     ]
     for provider in oauth["providers"]:
@@ -409,8 +454,8 @@ def _oauth_route_lines(auth: dict, model: dict) -> list[str]:
             "",
             "",
             f'@router.post("/oauth/{key}/callback", response_model=DataResponse[RegisterResult], dependencies=[Depends(auth_rate_limit)])',
-            f"def oauth_callback_{key}(payload: OAuthCallback, db: Session = Depends(get_db)) -> dict:",
-            f'    return oauth_sign_in(db, "{key}", payload)',
+            f"def oauth_callback_{key}(payload: OAuthCallback, {'response: Response, ' if sessions else ''}db: Session = Depends(get_db)) -> dict:",
+            f'    return oauth_sign_in(db, "{key}", payload{", response" if sessions else ""})',
         ]
     return lines
 
@@ -428,6 +473,7 @@ def _mail_imports(auth: dict) -> list[str]:
 
 def _mail_route_lines(auth: dict, name: str, new_password: list[str]) -> list[str]:
     identity, secret = auth["identity_field"], auth["secret_field"]
+    store = credential_store(auth)
     lines: list[str] = []
     reset = auth["features"]["password_reset"]
     if reset:
@@ -466,7 +512,7 @@ def _mail_route_lines(auth: dict, name: str, new_password: list[str]) -> list[st
             '        raise ApiError.validation({"token": ["token is invalid or expired"]})',
             f"    repository = {name}Repository(db)",
             f'    repository.update(repository.get(user_id), {{"{secret}": PasswordHasher().hash(payload.{secret})}})',
-            "    RefreshTokenStore(db).revoke_all(user_id)",
+            f"    {store}(db).revoke_all(user_id)",
             "    return Response(status_code=204)",
         ]
     verification = auth["features"]["email_verification"]
@@ -594,7 +640,12 @@ def main_code(ir: dict, routers: list[str]) -> str:
             "    CORSMiddleware,",
             "    allow_origins=settings.cors_origins,",
             '    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],',
-            '    allow_headers=["Authorization", "Content-Type"],',
+            '    allow_headers=["Authorization", "Content-Type", "X-CSRF-Token"],',
+            *(
+                ['    allow_credentials="*" not in settings.cors_origins,  # cookie sessions: listed origins only']
+                if ((ir.get("auth") or {}).get("features") or {}).get("sessions")
+                else []
+            ),
             "    max_age=600,",
             ")",
             "",

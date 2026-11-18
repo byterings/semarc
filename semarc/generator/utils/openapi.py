@@ -28,7 +28,7 @@ SCALARS = {
 ERROR_DESCRIPTIONS = {
     "400": "Malformed JSON",
     "401": "Missing or invalid bearer token",
-    "403": "The record belongs to another user",
+    "403": "Forbidden: another user's record, a missing role or a missing CSRF token",
     "404": "Record not found",
     "409": "Unique value taken or record still referenced",
     "422": "Validation failed",
@@ -52,11 +52,28 @@ class OpenApiBuilder:
             "paths": self._paths(),
             "components": {"schemas": self._schemas()},
         }
-        if ir.get("auth"):
+        sessions = self._sessions()
+        if sessions:
+            document["components"]["securitySchemes"] = {
+                "sessionCookie": {"type": "apiKey", "in": "cookie", "name": sessions["cookie"]},
+                "csrfHeader": {
+                    "type": "apiKey",
+                    "in": "header",
+                    "name": sessions["csrf_header"],
+                    "description": f"Value of the {sessions['csrf_cookie']} cookie; required on POST, PUT, PATCH and DELETE",
+                },
+            }
+        elif ir.get("auth"):
             document["components"]["securitySchemes"] = {
                 "bearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"}
             }
         return document
+
+    def _sessions(self) -> dict | None:
+        return ((self.ir.get("auth") or {}).get("features") or {}).get("sessions")
+
+    def _credential(self) -> str:
+        return "Session" if self._sessions() else "Token"
 
     def _schemas(self) -> dict:
         schemas = {
@@ -126,10 +143,19 @@ class OpenApiBuilder:
                     "new_password": {"type": "string", "format": "password"},
                 },
             }
-            schemas["Token"] = token
+            if self._sessions():
+                token = {
+                    "type": "object",
+                    "required": ["csrf_token", "expires_in"],
+                    "properties": {
+                        "csrf_token": {"type": "string", "description": "Send it in the CSRF header on POST, PUT, PATCH and DELETE"},
+                        "expires_in": {"type": "integer"},
+                    },
+                }
+            schemas[self._credential()] = token
             schemas["Registration"] = {
                 "allOf": [
-                    {"$ref": "#/components/schemas/Token"},
+                    {"$ref": f"#/components/schemas/{self._credential()}"},
                     {
                         "type": "object",
                         "required": ["user"],
@@ -244,10 +270,17 @@ class OpenApiBuilder:
             "parameters": self._parameters(route),
             "responses": {},
         }
+        if kind == "auth_logout" and self._sessions():
+            result["summary"] = "End the current session"
         if not result["parameters"]:
             del result["parameters"]
         if route["access"] == "protected":
-            result["security"] = [{"bearerAuth": []}]
+            if not self._sessions():
+                result["security"] = [{"bearerAuth": []}]
+            elif route["method"] == "GET":
+                result["security"] = [{"sessionCookie": []}]
+            else:
+                result["security"] = [{"sessionCookie": [], "csrfHeader": []}]
         if route.get("roles"):
             result["description"] = "Requires role: " + ", ".join(route["roles"]) + "."
 
@@ -266,7 +299,7 @@ class OpenApiBuilder:
             "auth_login": "Login",
             "auth_set_role": "RoleChange",
             "auth_refresh": "RefreshRequest",
-            "auth_logout": "RefreshRequest",
+            "auth_logout": None if self._sessions() else "RefreshRequest",
             "auth_change_password": "PasswordChange",
             "auth_forgot_password": "EmailRequest",
             "auth_reset_password": "PasswordReset",
@@ -288,11 +321,11 @@ class OpenApiBuilder:
             "update": ("200", self._json("Updated", self._data(record))),
             "delete": ("204", {"description": "Deleted"}),
             "auth_register": ("201", self._json("Registered", self._data({"$ref": "#/components/schemas/Registration"}))),
-            "auth_login": ("200", self._json("Token issued", self._data({"$ref": "#/components/schemas/Token"}))),
+            "auth_login": ("200", self._json("Token issued", self._data({"$ref": f"#/components/schemas/{self._credential()}"}))),
             "auth_me": ("200", self._json("Current user", self._data(record))),
             "auth_set_role": ("200", self._json("User with the new role", self._data(record))),
-            "auth_refresh": ("200", self._json("New tokens", self._data({"$ref": "#/components/schemas/Token"}))),
-            "auth_logout": ("204", {"description": "Refresh token revoked"}),
+            "auth_refresh": ("200", self._json("New tokens", self._data({"$ref": f"#/components/schemas/{self._credential()}"}))),
+            "auth_logout": ("204", {"description": "Session ended" if self._sessions() else "Refresh token revoked"}),
             "auth_change_password": ("204", {"description": "Password changed; refresh tokens revoked"}),
             "auth_forgot_password": ("202", {"description": "If the account exists, a reset email was sent"}),
             "auth_reset_password": ("204", {"description": "Password reset; refresh tokens revoked"}),
@@ -320,6 +353,8 @@ class OpenApiBuilder:
         if route["access"] == "protected" or kind in {"auth_login", "auth_refresh"}:
             errors.append("401")
         if route["operation"].get("owner_only") or route.get("roles"):
+            errors.append("403")
+        if self._sessions() and route["access"] == "protected" and route["method"] != "GET":
             errors.append("403")
         if kind == "auth_set_role":
             errors += ["404", "422"]

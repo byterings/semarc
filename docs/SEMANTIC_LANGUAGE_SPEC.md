@@ -37,7 +37,7 @@ target        := "TARGET" ("PHP" | "FASTAPI" | "NESTJS")
 profile       := "PROFILE" IDENTIFIER
 use           := "USE" MODULE_NAME
 database      := "DATABASE" ("MYSQL" | "POSTGRESQL" | "SQLITE")
-auth          := "AUTH" "JWT"
+auth          := "AUTH" ("JWT" | "SESSION")
 model         := "MODEL" MODEL_NAME NEWLINE field*
 field         := INDENT FIELD_NAME TYPE modifier*
 modifier      := "UNIQUE" | "OPTIONAL"
@@ -90,14 +90,18 @@ the `DB_CONNECTION` environment variable.
 
 ```text
 AUTH JWT
+AUTH SESSION
 ```
 
-Generates real token authentication: `POST /register`, `POST /login`, `GET /me`, bcrypt
-password hashing and HS256 tokens. The account model is `User`; it is created if missing,
-and `email` (unique) and `password` (secret) are added if not declared. A declared
-`User.email` or `User.password` must be a required `STRING`. `AUTH SESSION` is not
-implemented and is rejected; declaring two strategies raises diagnostic error `AUTH002`,
-which blocks generation.
+Both generate real account authentication: `POST /register`, `POST /login`, `GET /me`,
+`POST /logout`, `POST /me/password` and bcrypt password hashing. `AUTH JWT` issues HS256
+bearer tokens with rotating refresh tokens (`POST /token/refresh`), for mobile apps, other
+services and single-page apps that keep tokens. `AUTH SESSION` keeps server-side sessions
+behind an HttpOnly cookie and requires a CSRF header on unsafe requests, for browser front
+ends on the same site. The account model is `User`; it is created if missing, and `email`
+(unique) and `password` (secret) are added if not declared. A declared `User.email` or
+`User.password` must be a required `STRING`. Declaring two strategies raises diagnostic
+error `AUTH002`, which blocks generation.
 
 ## MODEL
 
@@ -161,7 +165,7 @@ list); anything else becomes a custom route returning 501 until implemented. `/`
 `ROLE admin editor` restricts a route to users with one of those roles (`ROLE` implies
 `PROTECTED` and cannot be combined with `PUBLIC`). Path parameters are
 snake_case and unique within a
-path. `PROTECTED` requires `AUTH JWT`. `POST /register` and `GET /me` require `AUTH JWT`;
+path. `PROTECTED` requires `AUTH`. `POST /register` and `GET /me` require `AUTH JWT` or `AUTH SESSION`;
 with it they are added automatically. See [GENERATED_API.md](GENERATED_API.md) for the
 full mapping and the default access policy.
 
@@ -200,7 +204,7 @@ and their modules. `USE` resolves stdlib modules from `semarc/stdlib/**/module.y
 `depends`, `requires` and `conflicts` rules. Resolved profiles and modules appear in the
 architecture report and the generator manifest. Unknown `USE` names are kept as metadata.
 
-Modules that change the generated API (all require `AUTH JWT`):
+Modules that change the generated API (all require `AUTH JWT` or `AUTH SESSION`):
 
 | Module | Effect |
 | --- | --- |

@@ -9,7 +9,9 @@ declare(strict_types=1);
 final class Cors
 {
     private const ALLOWED_METHODS = 'GET, POST, PUT, PATCH, DELETE, OPTIONS';
-    private const ALLOWED_HEADERS = 'Authorization, Content-Type';
+    private const ALLOWED_HEADERS = 'Authorization, Content-Type, X-CSRF-Token';
+    /** Cookie sessions need credentials; they are allowed only for listed origins, never for *. */
+    private const ALLOW_CREDENTIALS = {{allow_credentials}};
 
     public static function isPreflight(Request $request): bool
     {
@@ -42,7 +44,12 @@ final class Cors
             return $response->withHeaders(['Access-Control-Allow-Origin' => '*']);
         }
         if (in_array($origin, $allowed, true)) {
-            return $response->withHeaders(['Access-Control-Allow-Origin' => $origin, 'Vary' => 'Origin']);
+            $headers = ['Access-Control-Allow-Origin' => $origin, 'Vary' => 'Origin'];
+            if (self::ALLOW_CREDENTIALS) {
+                $headers['Access-Control-Allow-Credentials'] = 'true';
+            }
+
+            return $response->withHeaders($headers);
         }
 
         return $response;

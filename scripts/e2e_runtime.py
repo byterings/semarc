@@ -57,6 +57,8 @@ class ScenarioClient:
 
     def run(self, scenario: dict, verbose: bool = False) -> int:
         variables: dict = {}
+        session = scenario.get("session")  # AUTH SESSION: cookie per saved credential plus a CSRF header
+        session_cookies: dict = {}
         for step in scenario["steps"]:
             if "mail" in step:
                 variables[step["mail"]["save"]] = self._read_mail(step)
@@ -65,10 +67,18 @@ class ScenarioClient:
                 continue
             path = re.sub(r"\$\{(\w+)\}", lambda match: str(variables.get(match.group(1), "")), step["path"])
             headers = {"Accept": "application/json", **step.get("headers", {})}
+            credential = None
             if step.get("auth"):
-                headers["Authorization"] = f"Bearer {variables.get(step.get('auth_as', 'token'), '')}"
+                name = step.get("auth_as", "token")
+                credential = (session_cookies.get(name, ""), variables.get(name, ""))
             if "token" in step:
-                headers["Authorization"] = f"Bearer {step['token']}"
+                credential = (step["token"], step["token"])
+            if credential is not None and session is None:
+                headers["Authorization"] = f"Bearer {credential[1]}"
+            elif credential is not None:
+                headers["Cookie"] = f"{session['cookie']}={credential[0]}"
+                if step["method"] not in {"GET", "HEAD", "OPTIONS"} and step.get("csrf", True):
+                    headers[session["csrf_header"]] = str(credential[1])
             body = None
             if "body" in step:
                 body = json.dumps(self._resolve(step["body"], variables)).encode()
@@ -95,8 +105,17 @@ class ScenarioClient:
                 details = "\n".join(f"  - {problem}" for problem in problems)
                 raise ScenarioFailure(f"{step['name']} ({step['method']} {path})\n{details}\n  response: {raw[:500]}")
 
+            issued = None
+            for cookie in (response_headers.get_all("Set-Cookie") or []) if session else []:
+                if cookie.startswith(session["cookie"] + "="):
+                    attributes = cookie.lower()
+                    if "httponly" not in attributes or "samesite=lax" not in attributes:
+                        raise ScenarioFailure(f"{step['name']}: session cookie must be HttpOnly and SameSite=Lax: {cookie}")
+                    issued = cookie.split(";")[0].split("=", 1)[1]
             for name, json_path in step.get("save", {}).items():
                 variables[name] = self._dig(payload, json_path)
+                if issued is not None and json_path.endswith("csrf_token"):
+                    session_cookies[name] = issued
             if verbose:
                 print(f"    PASS {step['name']}")
         return len(scenario["steps"])

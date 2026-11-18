@@ -29,10 +29,13 @@ language; such changes are listed under **Changed**.
 - `api_scenario.json` mail steps, replayed by every runner (Mailpit in `scripts/e2e_runtime.py`).
 - Sign in with Google and GitHub (`USE auth.oauth.google`, `USE auth.oauth.github`): signed
   state, server-side code exchange, accounts linked by verified email in `oauth_accounts`.
+- `AUTH SESSION`: server-side sessions in an HttpOnly cookie with a CSRF header, the same
+  routes and modules as `AUTH JWT`, and credentialed CORS for listed origins.
 - `api_scenario.json` `env` settings and `external` steps; `scripts/oauth_mock.py` provides a
   deterministic OAuth provider for `scripts/e2e_runtime.py`.
 
 ### Changed
+- `AUTH SESSION` is no longer rejected.
 - All compiler code moved into the `semarc` package (`semarc.compiler`, `semarc.generator`,
   ...). `python3 main.py` keeps working in a checkout.
 - Generated PHP projects run on nginx + php-fpm in Docker (production `php.ini`, OPcache)
