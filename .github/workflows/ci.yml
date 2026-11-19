@@ -25,6 +25,37 @@ jobs:
       - name: Validate release
         run: python3 scripts/validate_release.py
 
+  platforms:
+    name: Compiler on ${{ matrix.os }} / Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2022]
+        python: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Unit, golden and compliance tests
+        run: python -m unittest discover -s tests
+      - name: Build and install the wheel
+        shell: bash
+        run: |
+          python -m pip install build
+          python -m build --outdir dist .
+          python -m pip install dist/*.whl
+      - name: Installed command works outside the checkout
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/smoke" && cd "$RUNNER_TEMP/smoke"
+          semarc version
+          semarc init demo --starter blog
+          semarc check demo.sem
+          semarc build demo.sem --target nestjs --output demo
+          test -f demo/package.json
+
   runtime:
     name: Runtime (${{ matrix.target }})
     needs: validate

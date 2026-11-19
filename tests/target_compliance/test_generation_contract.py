@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from architecture.contracts import (
+from semarc.architecture.contracts import (
     API_LAYER,
     AUTH_LAYER,
     BUSINESS_LAYER,
@@ -12,8 +12,8 @@ from architecture.contracts import (
     PROJECT_LAYER,
 )
 from tests.support import compile_source
-from generator.targets import TargetRegistry
-from generator.utils.inflector import pluralize, resource_path
+from semarc.generator.targets import TargetRegistry
+from semarc.generator.utils.inflector import pluralize, resource_path
 
 
 CONTRACT_SOURCE = """PROJECT ContractAPI

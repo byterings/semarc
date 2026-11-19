@@ -49,7 +49,7 @@ Profile files currently contain metadata only.
 ## Foundation Objects
 
 ```text
-architecture/profiles/
+semarc/architecture/profiles/
 ├── profile.py
 ├── registry.py
 └── loader.py
@@ -65,7 +65,7 @@ architecture/profiles/
 
 `ProfileRegistry` stores loaded profiles by name.
 
-`ProfileLoader` reads `profiles/*.profile` files.
+`ProfileLoader` reads `semarc/profiles/*.profile` files.
 
 ## Loading Flow
 

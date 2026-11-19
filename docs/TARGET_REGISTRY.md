@@ -16,7 +16,7 @@ loading exist yet.
 Each built-in target has a manifest:
 
 ```text
-generator/<target>/project_template/target.yaml
+semarc/generator/<target>/project_template/target.yaml
 ```
 
 Example:
@@ -98,7 +98,7 @@ Target Generator
 
 To add a future target:
 
-1. Create `generator/<target>/project_template/target.yaml`.
+1. Create `semarc/generator/<target>/project_template/target.yaml`.
 2. Declare target capabilities.
 3. Implement the target generator.
 4. Register the generator class in `TargetGeneratorFactory`.

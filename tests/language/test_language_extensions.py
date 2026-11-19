@@ -1,10 +1,10 @@
 import tempfile
 import unittest
 
-from lexer.lexer import Lexer
-from parser.parser import Parser, ParserError
+from semarc.lexer.lexer import Lexer
+from semarc.parser.parser import Parser, ParserError
 from tests.support import compile_source
-from validator.validator import SemanticValidationError, SemanticValidator
+from semarc.validator.validator import SemanticValidationError, SemanticValidator
 
 
 BASE = """PROJECT Demo
@@ -143,6 +143,41 @@ class RouteSyntaxTests(unittest.TestCase):
             self.assertIn("reserved for a future SEMARC version", str(raised.exception))
 
 
+class RoleSyntaxTests(unittest.TestCase):
+    ROLES = BASE.replace("AUTH JWT\n", "AUTH JWT\n\nUSE auth.roles\n")
+
+    def test_role_routes_are_parsed(self):
+        ast = parse(self.ROLES + "ROUTE DELETE /posts/{id} ROLE admin editor\nROUTE POST /posts PROTECTED ROLE editor\n")
+        self.assertEqual([(route.access, route.roles) for route in ast.routes], [(None, ["admin", "editor"]), ("PROTECTED", ["editor"])])
+
+    def test_role_requires_a_name(self):
+        with self.assertRaises(ParserError):
+            parse(self.ROLES + "ROUTE DELETE /posts/{id} ROLE\n")
+
+    def test_role_requires_roles_module(self):
+        with self.assertRaises(SemanticValidationError) as raised:
+            validate(BASE + "ROUTE DELETE /posts/{id} ROLE admin\n")
+        self.assertIn("requires USE auth.roles", str(raised.exception))
+
+    def test_public_role_route_is_rejected(self):
+        with self.assertRaises(SemanticValidationError) as raised:
+            validate(self.ROLES + "ROUTE GET /posts PUBLIC ROLE admin\n")
+        self.assertIn("cannot be PUBLIC and require a ROLE", str(raised.exception))
+
+    def test_roles_module_requires_jwt(self):
+        with self.assertRaises(SemanticValidationError) as raised:
+            validate("PROJECT Demo\nUSE auth.roles\nMODEL Post\n    title STRING\n")
+        self.assertIn("USE auth.roles requires AUTH JWT", str(raised.exception))
+
+    def test_role_field_is_managed(self):
+        with self.assertRaises(SemanticValidationError) as raised:
+            validate(self.ROLES.replace("    name STRING\n", "    name STRING\n    role STRING\n", 1))
+        self.assertIn("User.role is managed by USE auth.roles", str(raised.exception))
+
+    def test_relation_to_auth_created_user(self):
+        validate("PROJECT Demo\nAUTH JWT\nMODEL Note\n    text TEXT\nRELATION User HAS_MANY Note\n")
+
+
 class ValidationRuleTests(unittest.TestCase):
     def test_min_and_max_take_numeric_parameters(self):
         ast = parse(BASE + "VALIDATE password REQUIRED MIN 8 MAX 64\n")
@@ -216,11 +251,14 @@ class ValidationRuleTests(unittest.TestCase):
 
 
 class AuthRuleTests(unittest.TestCase):
-    def test_session_auth_alone_is_rejected(self):
-        source = BASE.replace("AUTH JWT", "AUTH SESSION")
+    def test_session_auth_is_accepted(self):
+        validate(BASE.replace("AUTH JWT", "AUTH SESSION"))
+
+    def test_session_auth_has_no_refresh_route(self):
+        source = BASE.replace("AUTH JWT", "AUTH SESSION") + "ROUTE POST /token/refresh\n"
         with self.assertRaises(SemanticValidationError) as raised:
             validate(source)
-        self.assertIn("AUTH SESSION is not implemented", str(raised.exception))
+        self.assertIn("sessions have no refresh token", str(raised.exception))
 
     def test_credential_fields_must_be_required_strings(self):
         source = BASE.replace("    password STRING\n", "    password INTEGER\n")
@@ -230,6 +268,15 @@ class AuthRuleTests(unittest.TestCase):
 
     def test_user_without_password_is_completed_by_auth(self):
         validate("PROJECT Demo\nAUTH JWT\nMODEL User\n    email STRING\n")
+
+
+class DiagnosticRuleTests(unittest.TestCase):
+    def test_relationship_recommendation_needs_relationships(self):
+        source = "PROJECT Demo\n\nDATABASE SQLITE\n\nMODEL Item\n    name STRING\n"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            context = compile_source(source, tmpdir, "php", generate=False)
+        codes = [item["code"] for item in context.architecture_report["recommendations"]]
+        self.assertNotIn("REL002", codes)
 
 
 class ExampleCompatibilityTests(unittest.TestCase):
@@ -255,3 +302,65 @@ class ExampleCompatibilityTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+FIELDS = """PROJECT Demo
+
+MODEL Product
+    name STRING INDEX
+    price DECIMAL
+    status STRING DEFAULT draft
+    stock INTEGER DEFAULT 0
+    featured BOOLEAN DEFAULT false
+
+VALIDATE status IN draft published
+"""
+
+
+class FieldOptionTests(unittest.TestCase):
+    def plan(self, source: str) -> dict:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            return compile_source(source, tmpdir, "php", generate=False).ir
+
+    def rejected(self, source: str) -> str:
+        with self.assertRaises((SemanticValidationError, ParserError)) as raised:
+            self.plan(source)
+        return str(raised.exception)
+
+    def test_defaults_index_and_choices_reach_the_ir(self):
+        product = next(model for model in self.plan(FIELDS)["models"] if model["name"] == "Product")
+        fields = {item["name"]: item for item in product["fields"]}
+        self.assertEqual((fields["status"]["default"], fields["stock"]["default"], fields["featured"]["default"]), ("draft", 0, False))
+        self.assertTrue(fields["name"]["index"])
+        self.assertEqual(fields["price"]["type"], "DECIMAL")
+        self.assertEqual(fields["status"]["rules"]["in"], ["draft", "published"])
+
+    def test_decimal_default_is_normalised(self):
+        product = self.plan("PROJECT Demo\nMODEL Item\n    price DECIMAL DEFAULT 5\n")["models"][0]
+        self.assertEqual(product["fields"][0]["default"], "5.00")
+
+    def test_default_requires_a_value(self):
+        self.assertIn("DEFAULT requires a value", self.rejected("PROJECT Demo\nMODEL Item\n    status STRING DEFAULT\n"))
+
+    def test_default_must_fit_the_type(self):
+        self.assertIn("must be an integer", self.rejected("PROJECT Demo\nMODEL Item\n    stock INTEGER DEFAULT many\n"))
+        self.assertIn("2 decimals", self.rejected("PROJECT Demo\nMODEL Item\n    price DECIMAL DEFAULT 1.234\n"))
+        self.assertIn("true or false", self.rejected("PROJECT Demo\nMODEL Item\n    on BOOLEAN DEFAULT yes\n"))
+
+    def test_default_must_be_an_allowed_value(self):
+        source = FIELDS.replace("DEFAULT draft", "DEFAULT archived")
+        self.assertIn("is not one of the IN values", self.rejected(source))
+
+    def test_default_conflicts(self):
+        self.assertIn("DEFAULT cannot be combined with UNIQUE", self.rejected("PROJECT Demo\nMODEL Item\n    code STRING UNIQUE DEFAULT x\n"))
+        self.assertIn("DATETIME", self.rejected("PROJECT Demo\nMODEL Item\n    at DATETIME DEFAULT now\n"))
+
+    def test_index_conflicts(self):
+        self.assertIn("already creates an index", self.rejected("PROJECT Demo\nMODEL Item\n    code STRING UNIQUE INDEX\n"))
+        self.assertIn("INDEX is not supported on TEXT", self.rejected("PROJECT Demo\nMODEL Item\n    body TEXT INDEX\n"))
+
+    def test_in_rules(self):
+        self.assertIn("IN requires the allowed values", self.rejected("PROJECT Demo\nMODEL Item\n    s STRING\nVALIDATE s IN\n"))
+        self.assertIn("STRING or INTEGER", self.rejected("PROJECT Demo\nMODEL Item\n    on BOOLEAN\nVALIDATE on IN true\n"))
+        self.assertIn("must be an integer", self.rejected("PROJECT Demo\nMODEL Item\n    n INTEGER\nVALIDATE n IN 1 two\n"))
+        self.assertIn("Duplicate value in IN", self.rejected("PROJECT Demo\nMODEL Item\n    s STRING\nVALIDATE s IN a a\n"))

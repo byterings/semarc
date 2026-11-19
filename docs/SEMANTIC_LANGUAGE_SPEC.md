@@ -37,20 +37,23 @@ target        := "TARGET" ("PHP" | "FASTAPI" | "NESTJS")
 profile       := "PROFILE" IDENTIFIER
 use           := "USE" MODULE_NAME
 database      := "DATABASE" ("MYSQL" | "POSTGRESQL" | "SQLITE")
-auth          := "AUTH" "JWT"
+auth          := "AUTH" ("JWT" | "SESSION")
 model         := "MODEL" MODEL_NAME NEWLINE field*
 field         := INDENT FIELD_NAME TYPE modifier*
-modifier      := "UNIQUE" | "OPTIONAL"
+modifier      := "UNIQUE" | "OPTIONAL" | "INDEX" | "DEFAULT" VALUE
 relation      := "RELATION" MODEL_NAME RELATION_TYPE MODEL_NAME
-route         := "ROUTE" HTTP_METHOD PATH access?
+route         := "ROUTE" HTTP_METHOD PATH access? role?
 access        := "PUBLIC" | "PROTECTED"
+role          := "ROLE" ROLE_NAME+          (requires USE auth.roles)
 validate      := "VALIDATE" (FIELD_NAME | MODEL_NAME "." FIELD_NAME) rule+
-rule          := "REQUIRED" | "EMAIL" | "MIN" INTEGER? | "MAX" INTEGER
+rule          := "REQUIRED" | "EMAIL" | "MIN" INTEGER? | "MAX" INTEGER | "IN" VALUE+   (IN comes last)
 
-TYPE          := "STRING" | "TEXT" | "INTEGER" | "FLOAT" | "BOOLEAN" | "DATE" | "DATETIME"
+TYPE          := "STRING" | "TEXT" | "INTEGER" | "FLOAT" | "DECIMAL" | "BOOLEAN" | "DATE" | "DATETIME"
+VALUE         := one token without spaces, read as the field type (draft, 0, 9.99, true, 2026-01-31)
 RELATION_TYPE := "HAS_MANY" | "HAS_ONE" | "BELONGS_TO"
 HTTP_METHOD   := "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
 MODEL_NAME    := PascalCase identifier
+ROLE_NAME     := snake_case identifier
 FIELD_NAME    := snake_case identifier
 PATH          := "/" segment ("/" segment)*
 segment       := [A-Za-z0-9][A-Za-z0-9_-]* | "{" snake_case "}"
@@ -88,22 +91,28 @@ the `DB_CONNECTION` environment variable.
 
 ```text
 AUTH JWT
+AUTH SESSION
 ```
 
-Generates real token authentication: `POST /register`, `POST /login`, `GET /me`, bcrypt
-password hashing and HS256 tokens. The account model is `User`; it is created if missing,
-and `email` (unique) and `password` (secret) are added if not declared. A declared
-`User.email` or `User.password` must be a required `STRING`. `AUTH SESSION` is not
-implemented and is rejected; declaring two strategies raises diagnostic error `AUTH002`,
-which blocks generation.
+Both generate real account authentication: `POST /register`, `POST /login`, `GET /me`,
+`POST /logout`, `POST /me/password` and bcrypt password hashing. `AUTH JWT` issues HS256
+bearer tokens with rotating refresh tokens (`POST /token/refresh`), for mobile apps, other
+services and single-page apps that keep tokens. `AUTH SESSION` keeps server-side sessions
+behind an HttpOnly cookie and requires a CSRF header on unsafe requests, for browser front
+ends on the same site. The account model is `User`; it is created if missing, and `email`
+(unique) and `password` (secret) are added if not declared. A declared `User.email` or
+`User.password` must be a required `STRING`. Declaring two strategies raises diagnostic
+error `AUTH002`, which blocks generation.
 
 ## MODEL
 
 ```text
-MODEL User
-    name STRING
-    email STRING UNIQUE
-    bio TEXT OPTIONAL
+MODEL Product
+    name STRING INDEX
+    sku STRING UNIQUE
+    price DECIMAL
+    status STRING DEFAULT draft
+    notes TEXT OPTIONAL
 ```
 
 | Type | Stored as | JSON |
@@ -112,6 +121,7 @@ MODEL User
 | `TEXT` | TEXT | string |
 | `INTEGER` | INTEGER | integer |
 | `FLOAT` | DOUBLE / REAL | number |
+| `DECIMAL` | DECIMAL(12,2) / NUMERIC(12,2) | string with two decimals, `"19.90"`; input may be a number or a string, up to 10 digits before and 2 after the point |
 | `BOOLEAN` | BOOLEAN | `true` / `false` |
 | `DATE` | DATE | `"2026-01-31"` |
 | `DATETIME` | DATETIME / TIMESTAMP (UTC) | `"2026-01-31T09:30:00Z"`; offsets such as `+05:30` are converted to UTC, values without an offset are UTC |
@@ -120,6 +130,11 @@ Modifiers:
 
 - `UNIQUE`: duplicates are rejected with 409 and enforced by a unique constraint.
 - `OPTIONAL`: the field may be omitted or `null`. Fields are required otherwise.
+- `INDEX`: adds a database index for fast filtering and sorting (not on `TEXT`, and not with
+  `UNIQUE`, which already creates one).
+- `DEFAULT value`: the field may be left out on create and gets `value`. `null` is still
+  rejected unless the field is also `OPTIONAL`. Not available on `DATETIME`, `UNIQUE` fields
+  or the auth credentials; the value must fit the type and any `IN` rule.
 
 Rules: model names are PascalCase, field names snake_case, field names are unique per
 model, and `id`, `created_at` and `updated_at` are generated automatically and cannot be
@@ -155,9 +170,11 @@ ROUTE DELETE /posts/{id} PUBLIC
 
 The route shape decides the operation (list, create, read, replace, update, delete, nested
 list); anything else becomes a custom route returning 501 until implemented. `/`,
-`/health`, `/routes`, `/openapi.json` and `/docs` are reserved. Path parameters are
+`/health`, `/routes`, `/openapi.json` and `/docs` are reserved. With `USE auth.roles`,
+`ROLE admin editor` restricts a route to users with one of those roles (`ROLE` implies
+`PROTECTED` and cannot be combined with `PUBLIC`). Path parameters are
 snake_case and unique within a
-path. `PROTECTED` requires `AUTH JWT`. `POST /register` and `GET /me` require `AUTH JWT`;
+path. `PROTECTED` requires `AUTH`. `POST /register` and `GET /me` require `AUTH JWT` or `AUTH SESSION`;
 with it they are added automatically. See [GENERATED_API.md](GENERATED_API.md) for the
 full mapping and the default access policy.
 
@@ -176,6 +193,7 @@ VALIDATE rating MIN 0 MAX 5
 | `EMAIL` | the value must be an email address (text fields only) |
 | `MIN n` | minimum length for text, minimum value for numbers |
 | `MAX n` | maximum length for text, maximum value for numbers |
+| `IN a b c` | the value must be one of the listed values (`STRING` and `INTEGER` fields; written last) |
 
 An unscoped field name applies to every model that declares that field (and to the auth
 credentials). `Model.field` applies to one model. `MIN` without a number means `MIN 6`, for
@@ -191,10 +209,23 @@ PROFILE ECOMMERCE
 USE payment.razorpay
 ```
 
-`PROFILE` composes profile metadata from `profiles/*.profile`, including inherited profiles
-and their modules. `USE` resolves stdlib modules from `stdlib/**/module.yaml`, including their
+`PROFILE` composes profile metadata from `semarc/profiles/*.profile`, including inherited profiles
+and their modules. `USE` resolves stdlib modules from `semarc/stdlib/**/module.yaml`, including their
 `depends`, `requires` and `conflicts` rules. Resolved profiles and modules appear in the
 architecture report and the generator manifest. Unknown `USE` names are kept as metadata.
+
+Modules that change the generated API (the `auth.*` modules require `AUTH JWT` or `AUTH SESSION`;
+`cache.redis` has an effect only with them):
+
+| Module | Effect |
+| --- | --- |
+| `auth.roles` | `role` field, `ROUTE ... ROLE`, `PUT /users/{id}/role` |
+| `auth.password_reset` | `POST /password/forgot`, `POST /password/reset`, email sending |
+| `auth.email_verification` | `email_verified_at` field, verification email on registration, `POST /email/verify`, `POST /email/resend` |
+| `auth.oauth.google`, `auth.oauth.github` | sign-in with the provider: `GET /oauth/<provider>`, `POST /oauth/<provider>/callback` |
+| `cache.redis` | rate limit counters in Redis, shared by every process; Redis in `docker-compose.yml` |
+
+See [GENERATED_API.md](GENERATED_API.md) for their behaviour.
 
 ## Complete Example
 

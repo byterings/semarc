@@ -1,0 +1,5 @@
+name: auth.email_verification
+version: 1.0
+description: Email address verification for AUTH JWT (POST /email/verify, POST /email/resend)
+depends:
+* notification.email

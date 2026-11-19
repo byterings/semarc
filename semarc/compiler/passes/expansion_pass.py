@@ -1,0 +1,28 @@
+from semarc.architecture.expander import ArchitectureExpander
+from semarc.architecture.resource_planner import ResourcePlanner
+from semarc.architecture.rules_engine import ArchitectureRuleEngine
+from semarc.architecture.strategy_engine import StrategyEngine
+
+
+class ExpansionPass:
+    def run(self, context) -> None:
+        context.compiler_passes.append("ExpansionPass")
+        context.target_profile = StrategyEngine().select(context.ast, context.target_override)
+        context.resource_plan = ResourcePlanner().plan(
+            context.ast,
+            context.relationship_plan.get("foreign_keys", []),
+        )
+        context.architecture_plan, context.dependency_graph = ArchitectureRuleEngine().apply(
+            context.ast,
+            context.resource_plan,
+        )
+        if context.target_override:
+            context.architecture_plan["target"] = context.target_profile["target"]
+        context.expanded_architecture = ArchitectureExpander().expand(
+            context.ast,
+            context.architecture_plan,
+            context.target_profile,
+        )
+        context.expanded_architecture["relationship_plan"] = context.relationship_plan
+        context.expanded_architecture["migration_plan"] = context.migration_plan
+        context.expanded_architecture["resource_plan"] = context.resource_plan

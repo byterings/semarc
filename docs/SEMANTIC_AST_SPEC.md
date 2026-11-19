@@ -254,7 +254,7 @@ VALIDATE Post.title REQUIRED MAX 120
 
 ## AST Construction
 
-`ast/ast_builder.py` centralizes node construction. The parser delegates node creation to the builder so parser code remains grammar-focused.
+`semarc/ast/ast_builder.py` centralizes node construction. The parser delegates node creation to the builder so parser code remains grammar-focused.
 
 ## Debug Representation
 

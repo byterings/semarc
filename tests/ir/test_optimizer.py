@@ -1,7 +1,7 @@
 import tempfile
 import unittest
 
-from architecture.optimizer import ArchitectureOptimizer
+from semarc.architecture.optimizer import ArchitectureOptimizer
 from tests.support import compile_source
 
 

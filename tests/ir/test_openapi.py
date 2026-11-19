@@ -1,7 +1,7 @@
 import tempfile
 import unittest
 
-from generator.utils.openapi import OpenApiBuilder
+from semarc.generator.utils.openapi import OpenApiBuilder
 from tests.ir.test_resource_plan import BLOG
 from tests.support import compile_source
 

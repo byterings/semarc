@@ -1,0 +1,5 @@
+name: auth.password_reset
+version: 1.0
+description: Password reset by email for AUTH JWT (POST /password/forgot, POST /password/reset)
+depends:
+* notification.email

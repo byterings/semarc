@@ -12,7 +12,7 @@ already in the IR.
 
 ## Shared Utilities
 
-`generator/utils/` holds target-neutral helpers used by every generator:
+`semarc/generator/utils/` holds target-neutral helpers used by every generator:
 
 | Module | Responsibility |
 | --- | --- |
@@ -22,12 +22,12 @@ already in the IR.
 | `project_runtime.py` | `.env.example`, `docker-compose.yml`, README shared by all targets |
 | `template_engine.py` | `{{placeholder}}` rendering; fails on unresolved placeholders |
 
-`generator/output_directory.py` prepares the output directory and
-`generator/project_files.py` writes `generator_manifest.json`.
+`semarc/generator/output_directory.py` prepares the output directory and
+`semarc/generator/project_files.py` writes `generator_manifest.json`.
 
 ## PHP Generator
 
-Entry point: `generator/php_generator.py`.
+Entry point: `semarc/generator/php_generator.py`.
 
 | Module | Output |
 | --- | --- |
@@ -40,11 +40,11 @@ Entry point: `generator/php_generator.py`.
 | `php/migration_generator.py` | `migrations/NNN_create_<table>_table.php` |
 | `php/project_generator.py` | bootstrap, `public/`, `config/`, `bin/migrate.php`, `tests/`, Docker, README |
 
-Templates: `templates/php/core/`, `templates/php/auth/`, `templates/php/project/`.
+Templates: `semarc/templates/php/core/`, `semarc/templates/php/auth/`, `semarc/templates/php/project/`.
 
 ## FastAPI Generator
 
-Entry point: `generator/fastapi/fastapi_generator.py`.
+Entry point: `semarc/generator/fastapi/fastapi_generator.py`.
 
 | Module | Output |
 | --- | --- |
@@ -52,13 +52,13 @@ Entry point: `generator/fastapi/fastapi_generator.py`.
 | `fastapi/api_code.py` | `routers/<model>.py`, `routers/auth.py`, `routers/custom.py`, `main.py` |
 | `fastapi/migration_code.py` | `migrations/versions/NNNN_create_<table>_table.py` (Alembic) |
 
-Templates in `templates/fastapi/` cover settings-independent runtime files: error handlers,
+Templates in `semarc/templates/fastapi/` cover settings-independent runtime files: error handlers,
 database session, schema and repository/service bases, token service, password hasher,
 auth dependency, Alembic configuration, `migrate.py`, the pytest runner and the Dockerfile.
 
 ## NestJS Generator
 
-Entry point: `generator/nestjs/nestjs_generator.py`.
+Entry point: `semarc/generator/nestjs/nestjs_generator.py`.
 
 | Module | Output |
 | --- | --- |
@@ -66,14 +66,14 @@ Entry point: `generator/nestjs/nestjs_generator.py`.
 | `nestjs/api_code.py` | controllers, auth module, custom module, `app.module.ts`, `app.controller.ts`, data source, migrations, settings |
 | `nestjs/typescript.py` | TypeScript naming and import helpers (aliases framework symbols that collide with model names) |
 
-Templates in `templates/nestjs/` hold the shared runtime: error type and filter, validation
+Templates in `semarc/templates/nestjs/` hold the shared runtime: error type and filter, validation
 pipe, id pipe, resource repository and service bases, column type mapping, token service,
 password hasher, guard, current-user decorator, `main.ts`, the Jest runner, tsconfig files
 and the Dockerfile.
 
 ## Target Registration
 
-Targets are described by `generator/<target>/project_template/target.yaml` and registered
+Targets are described by `semarc/generator/<target>/project_template/target.yaml` and registered
 by `TargetRegistry.builtins()`. `TargetGeneratorFactory` maps the registry entry to the
 generator class.
 

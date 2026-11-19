@@ -38,7 +38,12 @@ config/app.php, config/database.php
 tests/run.php           replays tests/api_scenario.json in-process on SQLite
 ```
 
-Run: `php bin/migrate.php && php -S 127.0.0.1:8000 -t public public/index.php`.
+Run locally: `php bin/migrate.php && php -S 127.0.0.1:8000 -t public public/index.php`.
+
+In Docker the app runs on **php-fpm** (production `php.ini`, OPcache, `clear_env = no` so the
+container environment reaches PHP) and a pinned `nginx:1.28-alpine` service in front of it
+serves HTTP on port 8000 and forwards every request to `public/index.php`
+(`docker/nginx.conf`).
 Tests: `php tests/run.php` (needs `pdo_sqlite`). PHP 8.1+ with `pdo_mysql`, `pdo_pgsql` or
 `pdo_sqlite`; no Composer packages are required.
 
@@ -85,8 +90,8 @@ Build: `npm run build && npm start`. Node.js 22+.
 | FastAPI | FastAPI 0.163, SQLAlchemy 2.1, Alembic 1.20, Pydantic 2.14, PyJWT 2.15, bcrypt 5, pytest 9 |
 | NestJS | NestJS 11.2, TypeORM 0.3.31, @nestjs/jwt 11, class-validator 0.14, TypeScript 5.9, Jest 30 |
 
-Versions are pinned exactly in `generator/fastapi/fastapi_generator.py` and
-`generator/nestjs/nestjs_generator.py` so that generated projects are reproducible.
+Versions are pinned exactly in `semarc/generator/fastapi/fastapi_generator.py` and
+`semarc/generator/nestjs/nestjs_generator.py` so that generated projects are reproducible.
 
 ## Boundary
 

@@ -1,9 +1,9 @@
 """Compile a semantic architecture file: python3 main.py app.sem [--target T] [--output DIR] [--force] [--debug].
 
-Equivalent to `semarc build`. See compiler/cli.py for every command.
+Equivalent to `semarc build`. See semarc/compiler/cli.py for every command.
 """
-from compiler.cli import legacy_main
-from compiler.pipeline import compile_semantic_file
+from semarc.compiler.cli import legacy_main
+from semarc.compiler.pipeline import compile_semantic_file
 
 __all__ = ["compile_semantic_file"]
 

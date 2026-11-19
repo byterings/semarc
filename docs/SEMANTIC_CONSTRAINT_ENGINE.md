@@ -169,7 +169,7 @@ Architecture Score: 91
 
 Future constraint rules should:
 
-- live under `architecture/constraints/rules/`
+- live under `semarc/architecture/constraints/rules/`
 - emit structured diagnostics only
 - remain target-independent unless explicitly checking target profile metadata
 - avoid code generation

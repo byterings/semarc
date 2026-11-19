@@ -1,14 +1,15 @@
 import json
+import os
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-from compiler.passes.generation_pass import GenerationBlockedError
-from generator.output_directory import OutputDirectory, OutputDirectoryError
+from semarc.compiler.passes.generation_pass import GenerationBlockedError
+from semarc.generator.output_directory import OutputDirectory, OutputDirectoryError
 from tests.support import ROOT, compile_source
-from validator.validator import SemanticValidationError
+from semarc.validator.validator import SemanticValidationError
 
 
 SOURCE = """PROJECT CliDemo
@@ -91,21 +92,23 @@ class OutputDirectoryTests(unittest.TestCase):
 
 
 class SemarcCommandTests(unittest.TestCase):
-    def run_cli(self, *arguments: str) -> subprocess.CompletedProcess:
+    def run_cli(self, *arguments: str, cwd: str | None = None) -> subprocess.CompletedProcess:
         return subprocess.run(
-            [sys.executable, str(ROOT / "semarc_cli.py"), *arguments],
+            [sys.executable, "-m", "semarc", *arguments],
+            cwd=cwd,
+            env={**os.environ, "PYTHONPATH": str(ROOT)},
             capture_output=True,
             text=True,
             check=False,
         )
 
     def test_version_matches_compiler_and_package_metadata(self):
-        from compiler.version import SEMARC_VERSION
+        from semarc.compiler.version import SEMARC_VERSION
 
         result = self.run_cli("version")
         self.assertEqual(result.stdout.strip(), f"semarc {SEMARC_VERSION}")
         pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
-        self.assertIn(f'version = "{SEMARC_VERSION}"', pyproject)
+        self.assertIn('version = { attr = "semarc.compiler.version.SEMARC_VERSION" }', pyproject)
 
     def test_targets_lists_every_generator(self):
         result = self.run_cli("targets")
@@ -115,13 +118,7 @@ class SemarcCommandTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             source = Path(tmpdir) / "app.sem"
             source.write_text(SOURCE + "\nAUTH JWT\nROUTE PATCH /posts/{id}\n", encoding="utf-8")
-            result = subprocess.run(
-                [sys.executable, str(ROOT / "semarc_cli.py"), "check", str(source)],
-                cwd=tmpdir,
-                capture_output=True,
-                text=True,
-                check=False,
-            )
+            result = self.run_cli("check", str(source), cwd=tmpdir)
             self.assertEqual(result.returncode, 0, result.stdout)
             self.assertIn("Project CliDemo", result.stdout)
             self.assertIn("PATCH  /posts/{id}", result.stdout)
@@ -134,6 +131,26 @@ class SemarcCommandTests(unittest.TestCase):
             result = self.run_cli("check", str(source))
             self.assertEqual(result.returncode, 1)
             self.assertIn("error AUTH002", result.stdout)
+
+    def test_init_writes_starters_that_compile_for_every_target(self):
+        from tests.support import GeneratorValidationSuite, compile_file
+
+        for starter in ["blank", "blog", "shop"]:
+            with self.subTest(starter=starter), tempfile.TemporaryDirectory() as tmpdir:
+                result = self.run_cli("init", f"my-{starter}", "--starter", starter, "--database", "postgresql", cwd=tmpdir)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                spec = Path(tmpdir) / f"my-{starter}.sem"
+                self.assertIn(f"PROJECT My{starter.title()}", spec.read_text(encoding="utf-8"))
+                for target in ["php", "fastapi", "nestjs"]:
+                    context = compile_file(spec, Path(tmpdir) / target, target)
+                    GeneratorValidationSuite().validate(context, target)
+
+    def test_init_refuses_to_overwrite(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self.assertEqual(self.run_cli("init", "app", cwd=tmpdir).returncode, 0)
+            second = self.run_cli("init", "app", cwd=tmpdir)
+            self.assertEqual(second.returncode, 1)
+            self.assertIn("already exists", second.stdout)
 
     def test_build_generates_like_main(self):
         with tempfile.TemporaryDirectory() as tmpdir:

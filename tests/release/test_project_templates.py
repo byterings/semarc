@@ -3,8 +3,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from compiler.version import SEMARC_VERSION
-from generator.targets import TargetLoader, TargetRegistry
+from semarc.compiler.version import SEMARC_VERSION
+from semarc.generator.targets import TargetLoader, TargetRegistry
 from tests.support import GeneratorValidationSuite, ROOT, compile_source
 
 
@@ -33,7 +33,7 @@ class ProjectTemplateFoundationTests(unittest.TestCase):
     def test_target_loader_reads_project_template_metadata(self):
         for target in ["php", "fastapi", "nestjs"]:
             with self.subTest(target=target):
-                metadata = TargetLoader().load(ROOT / "generator" / target / "project_template" / "target.yaml")
+                metadata = TargetLoader().load(ROOT / "semarc" / "generator" / target / "project_template" / "target.yaml")
 
                 self.assertEqual(metadata.name, target)
                 self.assertTrue(metadata.language)

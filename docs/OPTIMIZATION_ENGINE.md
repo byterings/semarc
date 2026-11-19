@@ -1,6 +1,6 @@
 # Optimization Engine
 
-`OptimizationPass` delegates to `ArchitectureOptimizer` (`architecture/optimizer.py`),
+`OptimizationPass` delegates to `ArchitectureOptimizer` (`semarc/architecture/optimizer.py`),
 which cleans the Architecture IR deterministically before generation.
 
 ## Current Behaviour

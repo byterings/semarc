@@ -1,0 +1,26 @@
+PROJECT Catalog
+
+DATABASE SQLITE
+
+MODEL Product
+    name STRING INDEX
+    sku STRING UNIQUE
+    price DECIMAL
+    discount DECIMAL OPTIONAL
+    status STRING DEFAULT draft
+    stock INTEGER DEFAULT 0
+    rating INTEGER OPTIONAL
+    featured BOOLEAN DEFAULT false
+    released DATE DEFAULT 2026-01-01
+
+VALIDATE Product.status IN draft published archived
+VALIDATE Product.rating IN 1 2 3 4 5
+VALIDATE Product.price MIN 0 MAX 100000
+VALIDATE Product.stock MIN 0
+
+ROUTE GET /products
+ROUTE POST /products
+ROUTE GET /products/{id}
+ROUTE PATCH /products/{id}
+ROUTE PUT /products/{id}
+ROUTE DELETE /products/{id}

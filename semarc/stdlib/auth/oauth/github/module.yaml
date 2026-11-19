@@ -1,0 +1,3 @@
+name: auth.oauth.github
+version: 1.0
+description: Sign in with GitHub for AUTH JWT (GET /oauth/github, POST /oauth/github/callback)

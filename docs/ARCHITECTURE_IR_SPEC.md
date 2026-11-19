@@ -86,7 +86,7 @@ created it.
 - `origin` is `declared` or `auth` (created by `AUTH JWT`).
 - `rules` merge `OPTIONAL` and every applicable `VALIDATE`. Generators add the 255
   character `STRING` limit and the 72 character secret limit
-  (`generator/utils/resource_views.py`).
+  (`semarc/generator/utils/resource_views.py`).
 - `references` are this model's foreign key columns; `owner` marks a reference to the auth
   model, which protected creates fill from the token.
 - `dependents` are tables whose rows reference this model; deletes are refused while they exist.
@@ -153,7 +153,7 @@ Duplicate components are removed. The same source always produces the same IR.
 
 ## Contract Validation
 
-`compiler/contracts.py` validates required keys, model and route shapes, repository metadata
-and target leakage before generation. `architecture/contracts/` then builds the
+`semarc/compiler/contracts.py` validates required keys, model and route shapes, repository metadata
+and target leakage before generation. `semarc/architecture/contracts/` then builds the
 framework-neutral generation contract from the IR and validates target capabilities and the
 generated artifacts.

@@ -16,7 +16,7 @@ or `python3 main.py app.sem --target nestjs`.
 
 NestJS 11, TypeORM 0.3 (`mysql2`, `pg`, `better-sqlite3`), class-validator, @nestjs/jwt,
 bcryptjs, TypeScript 5.9, Jest 30 with ts-jest and supertest. Versions are pinned in
-`generator/nestjs/nestjs_generator.py`.
+`semarc/generator/nestjs/nestjs_generator.py`.
 
 ## Per-Model Output
 

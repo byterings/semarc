@@ -1,0 +1,21 @@
+name: Feature request
+description: Propose a language construct, a target capability or a generated behaviour.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What can you not express or generate today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed specification syntax or behaviour
+      description: SEMARC prefers stdlib modules (`USE ...`) and modifiers over new top-level keywords.
+      render: text
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

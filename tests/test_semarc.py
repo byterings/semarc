@@ -4,12 +4,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from architecture.analysis import ArchitectureAnalyzer
-from architecture.packages import PackageLoader
-from architecture.profiles import Profile, ProfileCompositionError, ProfileCompositionResolver
-from architecture.relationship_engine import RelationshipEngine
-from architecture.profiles import ProfileLoader, ProfileLoadingError, ProfileRegistry
-from architecture.stdlib import (
+from semarc.architecture.analysis import ArchitectureAnalyzer
+from semarc.architecture.packages import PackageLoader
+from semarc.architecture.profiles import Profile, ProfileCompositionError, ProfileCompositionResolver
+from semarc.architecture.relationship_engine import RelationshipEngine
+from semarc.architecture.profiles import ProfileLoader, ProfileLoadingError, ProfileRegistry
+from semarc.architecture.stdlib import (
     DuplicateModuleError,
     ModuleDefinition,
     ModuleConstraintError,
@@ -20,27 +20,27 @@ from architecture.stdlib import (
     StdlibLoader,
     StdlibLoadingError,
 )
-from architecture.dependency_graph import DependencyGraph, DependencyGraphError
-from compiler.context import CompilerContext
-from compiler.contracts import ContractValidator
-from compiler.passes.architecture_analysis_pass import ArchitectureAnalysisPass
-from compiler.passes.constraint_pass import ConstraintPass
-from compiler.passes.contract_pass import ContractPass
-from compiler.passes.diagnostic_report_pass import DiagnosticReportPass
-from compiler.passes.expansion_pass import ExpansionPass
-from compiler.passes.generation_pass import GenerationPass
-from compiler.passes.ir_pass import IRPass
-from compiler.passes.lexing_pass import LexingPass
-from compiler.passes.module_constraint_pass import ModuleConstraintPass
-from compiler.passes.optimization_pass import OptimizationPass
-from compiler.passes.parsing_pass import ParsingPass
-from compiler.passes.profile_pass import ProfilePass
-from compiler.passes.relationship_pass import RelationshipPass
-from compiler.passes.stdlib_pass import StdlibPass
-from compiler.passes.validation_pass import ValidationPass
-from lexer.lexer import Lexer
-from parser.parser import Parser
-from validator.validator import SemanticValidationError
+from semarc.architecture.dependency_graph import DependencyGraph, DependencyGraphError
+from semarc.compiler.context import CompilerContext
+from semarc.compiler.contracts import ContractValidator
+from semarc.compiler.passes.architecture_analysis_pass import ArchitectureAnalysisPass
+from semarc.compiler.passes.constraint_pass import ConstraintPass
+from semarc.compiler.passes.contract_pass import ContractPass
+from semarc.compiler.passes.diagnostic_report_pass import DiagnosticReportPass
+from semarc.compiler.passes.expansion_pass import ExpansionPass
+from semarc.compiler.passes.generation_pass import GenerationPass
+from semarc.compiler.passes.ir_pass import IRPass
+from semarc.compiler.passes.lexing_pass import LexingPass
+from semarc.compiler.passes.module_constraint_pass import ModuleConstraintPass
+from semarc.compiler.passes.optimization_pass import OptimizationPass
+from semarc.compiler.passes.parsing_pass import ParsingPass
+from semarc.compiler.passes.profile_pass import ProfilePass
+from semarc.compiler.passes.relationship_pass import RelationshipPass
+from semarc.compiler.passes.stdlib_pass import StdlibPass
+from semarc.compiler.passes.validation_pass import ValidationPass
+from semarc.lexer.lexer import Lexer
+from semarc.parser.parser import Parser
+from semarc.validator.validator import SemanticValidationError
 
 
 BLOG_SOURCE = """PROJECT BlogAPI
@@ -332,7 +332,7 @@ ROUTE GET /users
         warning_codes = [warning["code"] for warning in context.architecture_report["warnings"]]
 
         self.assertNotIn("AUTH001", warning_codes)
-        self.assertEqual(context.ir["auth"]["rate_limit"], {"attempts": 10, "window_seconds": 60})
+        self.assertEqual(context.ir["auth"]["rate_limit"], {"attempts": 10, "window_seconds": 60, "store": "local"})
 
     def test_conflicting_auth_strategies_generate_diagnostic_error(self):
         source = """PROJECT AuthConflict
@@ -451,7 +451,7 @@ ROUTE POST /login
             )
 
     def test_profile_metadata_loads_safely(self):
-        registry = ProfileLoader(Path(__file__).resolve().parents[1] / "profiles").load_all()
+        registry = ProfileLoader(Path(__file__).resolve().parents[1] / "semarc" / "profiles").load_all()
         ecommerce = registry.get("Ecommerce")
 
         self.assertIsNotNone(ecommerce)
@@ -473,14 +473,14 @@ ROUTE POST /login
             self.assertIn("SEM8003", str(error.exception))
 
     def test_profile_composition_resolves_simple_modules(self):
-        registry = ProfileLoader(Path(__file__).resolve().parents[1] / "profiles").load_all()
+        registry = ProfileLoader(Path(__file__).resolve().parents[1] / "semarc" / "profiles").load_all()
         profiles, modules = ProfileCompositionResolver(registry).resolve(["ECOMMERCE"])
 
         self.assertEqual([profile.name for profile in profiles], ["Ecommerce"])
         self.assertEqual(modules, ["auth.jwt", "payment.razorpay", "cache.redis"])
 
     def test_profile_composition_resolves_inherited_modules(self):
-        registry = ProfileLoader(Path(__file__).resolve().parents[1] / "profiles").load_all()
+        registry = ProfileLoader(Path(__file__).resolve().parents[1] / "semarc" / "profiles").load_all()
         profiles, modules = ProfileCompositionResolver(registry).resolve(["COMPANY_ECOMMERCE"])
 
         self.assertEqual(
@@ -494,11 +494,11 @@ ROUTE POST /login
 
     def test_profile_composition_eliminates_duplicate_modules(self):
         registry = ProfileRegistry()
-        registry.register(ProfileLoader(Path(__file__).resolve().parents[1] / "profiles").load_all().get("Ecommerce"))
-        registry.register(ProfileLoader(Path(__file__).resolve().parents[1] / "profiles").load_all().get("CompanyStandard"))
+        registry.register(ProfileLoader(Path(__file__).resolve().parents[1] / "semarc" / "profiles").load_all().get("Ecommerce"))
+        registry.register(ProfileLoader(Path(__file__).resolve().parents[1] / "semarc" / "profiles").load_all().get("CompanyStandard"))
         registry.register(
-            ProfileLoader(Path(__file__).resolve().parents[1] / "profiles").load(
-                Path(__file__).resolve().parents[1] / "profiles" / "company_ecommerce.profile"
+            ProfileLoader(Path(__file__).resolve().parents[1] / "semarc" / "profiles").load(
+                Path(__file__).resolve().parents[1] / "semarc" / "profiles" / "company_ecommerce.profile"
             )
         )
         _, modules = ProfileCompositionResolver(registry).resolve(["ECOMMERCE", "COMPANY_STANDARD"])
@@ -506,7 +506,7 @@ ROUTE POST /login
         self.assertEqual(modules, ["auth.jwt", "payment.razorpay", "cache.redis"])
 
     def test_profile_composition_detects_unknown_profile(self):
-        registry = ProfileLoader(Path(__file__).resolve().parents[1] / "profiles").load_all()
+        registry = ProfileLoader(Path(__file__).resolve().parents[1] / "semarc" / "profiles").load_all()
 
         with self.assertRaises(ProfileCompositionError) as error:
             ProfileCompositionResolver(registry).resolve(["UNKNOWN_PROFILE"])
@@ -515,11 +515,11 @@ ROUTE POST /login
 
     def test_profile_composition_detects_circular_inheritance(self):
         registry = ProfileRegistry()
-        circular_a = ProfileLoader(Path(__file__).resolve().parents[1] / "profiles").load(
-            Path(__file__).resolve().parents[1] / "profiles" / "blog.profile"
+        circular_a = ProfileLoader(Path(__file__).resolve().parents[1] / "semarc" / "profiles").load(
+            Path(__file__).resolve().parents[1] / "semarc" / "profiles" / "blog.profile"
         )
-        circular_b = ProfileLoader(Path(__file__).resolve().parents[1] / "profiles").load(
-            Path(__file__).resolve().parents[1] / "profiles" / "crm.profile"
+        circular_b = ProfileLoader(Path(__file__).resolve().parents[1] / "semarc" / "profiles").load(
+            Path(__file__).resolve().parents[1] / "semarc" / "profiles" / "crm.profile"
         )
         circular_a = type(circular_a)(
             name="A",
@@ -546,7 +546,7 @@ ROUTE POST /login
         self.assertIn("SEM8002", str(error.exception))
 
     def test_package_metadata_loads_safely(self):
-        registry = PackageLoader(Path(__file__).resolve().parents[1] / "stdlib").load_all()
+        registry = PackageLoader(Path(__file__).resolve().parents[1] / "semarc" / "stdlib").load_all()
         payment = registry.get("payment")
 
         self.assertIsNotNone(payment)
@@ -554,7 +554,7 @@ ROUTE POST /login
         self.assertIn("notification", payment.dependencies)
 
     def test_stdlib_discovers_modules_recursively(self):
-        modules = StdlibLoader(Path(__file__).resolve().parents[1] / "stdlib").load_all()
+        modules = StdlibLoader(Path(__file__).resolve().parents[1] / "semarc" / "stdlib").load_all()
         module_names = {module.name for module in modules}
 
         self.assertIn("auth.jwt", module_names)
@@ -1349,7 +1349,7 @@ ROUTE POST /users
         files = {}
         for path in sorted(output_dir.rglob("*")):
             if path.is_file() and path.suffix in suffixes:
-                files[str(path.relative_to(output_dir))] = path.read_text(encoding="utf-8")
+                files[path.relative_to(output_dir).as_posix()] = path.read_text(encoding="utf-8")
         return files
 
 

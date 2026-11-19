@@ -1,0 +1,41 @@
+PROJECT {{project}}
+
+TARGET {{target}}
+
+DATABASE {{database}}
+
+AUTH JWT
+
+MODEL User
+    name STRING
+    email STRING UNIQUE
+    password STRING
+
+MODEL Product
+    name STRING
+    sku STRING UNIQUE
+    price_cents INTEGER
+    active BOOLEAN OPTIONAL
+
+MODEL Order
+    status STRING
+    total_cents INTEGER
+    placed_on DATE
+
+RELATION User HAS_MANY Order
+RELATION Product HAS_MANY Order
+
+VALIDATE email REQUIRED EMAIL
+VALIDATE password REQUIRED MIN 8
+VALIDATE sku REQUIRED MAX 64
+VALIDATE price_cents MIN 0
+VALIDATE total_cents MIN 0
+
+ROUTE GET /products
+ROUTE GET /products/{id}
+ROUTE POST /products
+ROUTE PATCH /products/{id}
+ROUTE GET /orders PROTECTED
+ROUTE GET /orders/{id} PROTECTED
+ROUTE POST /orders
+ROUTE GET /users/{id}/orders PROTECTED
