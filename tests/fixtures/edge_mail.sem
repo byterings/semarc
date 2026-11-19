@@ -1,0 +1,19 @@
+PROJECT Accounts
+
+DATABASE SQLITE
+
+AUTH JWT
+
+USE auth.password_reset
+USE auth.email_verification
+
+MODEL Note
+    text TEXT
+
+RELATION User HAS_MANY Note
+
+VALIDATE email REQUIRED EMAIL
+VALIDATE password REQUIRED MIN 8
+
+ROUTE GET /notes
+ROUTE POST /notes

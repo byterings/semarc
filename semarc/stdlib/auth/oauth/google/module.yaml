@@ -1,0 +1,3 @@
+name: auth.oauth.google
+version: 1.0
+description: Sign in with Google for AUTH JWT (GET /oauth/google, POST /oauth/google/callback)

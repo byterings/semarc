@@ -15,8 +15,7 @@ SEMARC currently targets:
 - validation
 - relationships
 - migrations
-- PHP output
-- FastAPI output
+- runnable PHP, FastAPI and NestJS APIs with persistence, authentication and tests
 
 ## Long-Term Direction
 

@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "semarc"
+dynamic = ["version"]
+description = "Semantic Architecture Compiler: compiles declarative architecture specifications into runnable backend projects."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+dependencies = []
+keywords = ["compiler", "code-generation", "backend", "api", "fastapi", "nestjs", "php", "architecture"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Code Generators",
+    "Topic :: Software Development :: Compilers",
+]
+
+[project.urls]
+Homepage = "https://github.com/byterings/semarc"
+Documentation = "https://github.com/byterings/semarc/tree/master/docs"
+Changelog = "https://github.com/byterings/semarc/blob/master/CHANGELOG.md"
+Issues = "https://github.com/byterings/semarc/issues"
+
+[project.scripts]
+semarc = "semarc.compiler.cli:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "semarc.compiler.version.SEMARC_VERSION" }
+
+[tool.setuptools.packages.find]
+include = ["semarc*"]
+
+[tool.setuptools.package-data]
+semarc = [
+    "ast/*.py",
+    "templates/**/*",
+    "stdlib/**/*",
+    "profiles/*",
+    "starters/*",
+    "generator/*/project_template/*.yaml",
+]

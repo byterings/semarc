@@ -1,21 +1,22 @@
 # Target Registry
 
-SEMARC v0.13.0 introduces a target registry foundation for current and future backend targets.
-
-The registry is metadata-driven. Targets are described by local manifests and registered before generation. The compiler currently generates only the implemented targets:
+SEMARC v0.13.0 introduced a metadata-driven target registry. Targets are described by local
+manifests and registered before generation. The implemented targets are:
 
 - PHP
 - FastAPI
 - NestJS
 
-No framework downloads, marketplace, version resolution, or remote target loading are implemented in v0.13.0.
+Targets without a manifest and generator (for example Laravel or Node) are rejected during
+validation. No framework downloads, marketplace, version resolution or remote target
+loading exist yet.
 
 ## Target Manifest
 
 Each built-in target has a manifest:
 
 ```text
-generator/<target>/project_template/target.yaml
+semarc/generator/<target>/project_template/target.yaml
 ```
 
 Example:
@@ -97,11 +98,12 @@ Target Generator
 
 To add a future target:
 
-1. Create `generator/<target>/project_template/target.yaml`.
+1. Create `semarc/generator/<target>/project_template/target.yaml`.
 2. Declare target capabilities.
 3. Implement the target generator.
 4. Register the generator class in `TargetGeneratorFactory`.
 5. Add target compliance tests.
 6. Ensure generated output satisfies the Generation Contract.
+7. Ship a runner for `api_scenario.json` and pass `scripts/e2e_runtime.py` on every database.
 
 New targets must not require parser, AST, or semantic language changes.

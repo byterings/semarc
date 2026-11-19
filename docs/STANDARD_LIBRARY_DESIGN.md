@@ -2,7 +2,9 @@
 
 SEMARC can eventually support a semantic standard library of reusable architecture modules.
 
-The standard library currently contains metadata placeholders only. This document defines the design direction.
+The standard library resolves `USE` modules with dependencies, requirements and conflicts
+(see `STDLIB_MODULE_SYSTEM.md`). Modules do not generate code yet; this document describes
+that direction.
 
 ## Goal
 

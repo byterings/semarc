@@ -23,51 +23,40 @@ FASTAPI
 
 ## Target Selection
 
-Semantic source may declare:
-
 ```text
 TARGET PHP
 TARGET FASTAPI
+TARGET NESTJS
 ```
 
-CLI may override:
-
-```bash
-python3 main.py examples/blog_api.sem --target fastapi
-```
-
-If no target is selected, SEMARC defaults to PHP.
+The CLI can override the source: `python3 main.py app.sem --target fastapi`. Without a
+target SEMARC uses PHP. Any other name (including `LARAVEL` and `NODE`) is rejected with
+the list of available targets, both in source and on the command line.
 
 ## Profile Shape
-
-Example:
 
 ```json
 {
   "target": "FASTAPI",
   "generator": "fastapi",
   "framework": "fastapi",
-  "auth_strategy": "lightweight_custom_token",
-  "repository_strategy": "in_memory_prototype"
+  "auth_strategy": "jwt_hs256",
+  "repository_strategy": "sqlalchemy"
 }
 ```
 
 ## Current Profiles
 
-```text
-PHP
-FASTAPI
-LARAVEL
-NODE
-```
-
-Only PHP and FastAPI have implemented generators. Laravel and Node are placeholder strategy profiles.
+| Target | Generator | Auth | Persistence |
+| --- | --- | --- | --- |
+| `PHP` | php | `jwt_hs256` | `pdo` |
+| `FASTAPI` | fastapi | `jwt_hs256` | `sqlalchemy` |
+| `NESTJS` | nestjs | `jwt_hs256` | `typeorm` |
 
 ## Strategy Engine
 
-`architecture/strategy_engine.py` selects target profile.
-
-The strategy engine does not generate code. It selects implementation strategy metadata used later by generation.
+`semarc/architecture/strategy_engine.py` selects the target profile. It records implementation
+strategy metadata; it does not generate code and never falls back to another target.
 
 ## Same IR, Different Output
 
@@ -75,18 +64,17 @@ The strategy engine does not generate code. It selects implementation strategy m
 Architecture IR
     |
     +-- PHP Generator
-    |
     +-- FastAPI Generator
+    +-- NestJS Generator
 ```
-
-The IR remains shared and language-independent.
 
 ## Extension Rules
 
 To add a target:
 
-1. Add target profile.
-2. Add generator entry point.
-3. Add target templates.
-4. Map existing IR components.
-5. Keep architecture rules unchanged unless semantics require new components.
+1. Add the profile to `StrategyEngine.TARGET_PROFILES` and the name to
+   `SemanticValidator.SUPPORTED_TARGETS`.
+2. Add `semarc/generator/<target>/project_template/target.yaml` and the generator class.
+3. Register it in `TargetGeneratorFactory`.
+4. Map the IR without adding architecture rules; reuse `semarc/generator/utils/`.
+5. Ship a runner for `api_scenario.json` and pass `scripts/e2e_runtime.py`.

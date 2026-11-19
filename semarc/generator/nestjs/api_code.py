@@ -1,0 +1,1132 @@
+"""Renders NestJS controllers, auth module, app module and TypeORM wiring from IR."""
+from semarc.compiler.version import SEMARC_VERSION
+from semarc.generator.nestjs.typescript import Imports, file_base, folder, route_path, service_property, ts_string
+from semarc.generator.utils.inflector import kebab_case, pascal_case
+from semarc.generator.utils.resource_views import all_route_labels, field_rules, model_by_name, roles_feature, routes_for_model
+
+HTTP_DECORATORS = {"GET": "Get", "POST": "Post", "PUT": "Put", "PATCH": "Patch", "DELETE": "Delete"}
+MIGRATION_EPOCH = 1700000000000
+
+
+def controller_code(ir: dict, model: dict, reserved: set[str]) -> str | None:
+    routes = [route for route in routes_for_model(ir, model["name"]) if route["operation"]["kind"] != "custom"]
+    if not routes:
+        return None
+    name = model["name"]
+    service = service_property(name)
+    imports = Imports(reserved)
+    controller = imports.use("@nestjs/common", "Controller")
+    imports.use(f"./{folder(name)}.service", f"{name}Service")
+
+    methods = []
+    used: set[str] = set()
+    for route in routes:
+        methods.append(_controller_method(ir, route, name, service, imports, used))
+
+    lines = [f"@{controller}()", f"export class {name}Controller {{", f"  constructor(private readonly {service}: {name}Service) {{}}", ""]
+    lines.append("\n\n".join(methods))
+    lines.extend(["}", ""])
+    return "\n".join(imports.render() + [""] + lines)
+
+
+def _controller_method(ir: dict, route: dict, name: str, service: str, imports: Imports, used: set[str]) -> str:
+    operation = route["operation"]
+    kind = operation["kind"]
+    decorator = imports.use("@nestjs/common", HTTP_DECORATORS[route["method"]])
+    decorators = [f"  @{decorator}({ts_string(route_path(route['path']))})"]
+    if kind == "create":
+        decorators.append(f"  @{imports.use('@nestjs/common', 'HttpCode')}(201)")
+    if kind == "delete":
+        decorators.append(f"  @{imports.use('@nestjs/common', 'HttpCode')}(204)")
+    protected = route["access"] == "protected"
+    if protected:
+        decorators.append(f"  @{imports.use('@nestjs/common', 'UseGuards')}(AuthGuard)")
+        imports.use("../../guards/auth.guard", "AuthGuard")
+    if route.get("roles"):
+        decorators.append(f"  @Roles({', '.join(ts_string(role) for role in route['roles'])})")
+        imports.use("../../guards/auth.guard", "Roles")
+
+    parameters = []
+    parameter = operation.get("parameter")
+    if parameter:
+        param = imports.use("@nestjs/common", "Param")
+        imports.use("../../common/id.pipe", "IdPipe")
+        parameters.append(f"@{param}({ts_string(parameter)}, IdPipe) id: number")
+    if kind in {"create", "replace"}:
+        imports.use(f"./dto/create-{file_base(name)}.dto", f"Create{name}Dto")
+        parameters.append(f"@{imports.use('@nestjs/common', 'Body')}() dto: Create{name}Dto")
+    if kind == "update":
+        imports.use(f"./dto/update-{file_base(name)}.dto", f"Update{name}Dto")
+        parameters.append(f"@{imports.use('@nestjs/common', 'Body')}() dto: Update{name}Dto")
+    if kind in {"list", "list_related"}:
+        query = imports.use("@nestjs/common", "Query")
+        imports.use("../../common/resource.service", "pageParams")
+        parameters.append(f"@{query}() query: Record<string, string>")
+    owner = "undefined"
+    manage = ""
+    if protected and kind in {"create", "replace", "update", "delete"}:
+        imports.use("../../common/current-user.decorator", "CurrentUserId")
+        parameters.append("@CurrentUserId() userId?: number")
+        owner = "userId"
+        roles = roles_feature(ir)
+        if roles and operation.get("owner_only"):
+            imports.use("../../common/current-user.decorator", "CurrentUserRole")
+            parameters.append("@CurrentUserRole() role?: string")
+            manage = f", role === {ts_string(roles['admin'])}"
+
+    if kind == "list_related":
+        method = f"listBy{pascal_case(operation['parent_model'])}"
+    else:
+        method = {"list": "list", "read": "read", "create": "create", "replace": "replace", "update": "update", "delete": "remove"}[kind]
+    method = _unique(method, used)
+
+    body = {
+        "list": f"    return this.{service}.list(...pageParams(query.limit, query.offset), query);",
+        "read": f"    return {{ data: await this.{service}.get(id) }};",
+        "create": f"    return {{ data: await this.{service}.create(dto, {owner}) }};",
+        "replace": f"    return {{ data: await this.{service}.update(id, dto, false, {owner}{manage}) }};",
+        "update": f"    return {{ data: await this.{service}.update(id, dto, true, {owner}{manage}) }};",
+        "delete": f"    await this.{service}.delete(id, {owner}{manage});",
+        "list_related": (
+            f"    return this.{service}.listForParent("
+            f"{ts_string(model_by_name(ir, operation['parent_model'])['table']) if kind == 'list_related' else ''}, "
+            f"{ts_string(operation.get('parent_model', ''))}, {ts_string(operation.get('foreign_key', ''))}, "
+            "id, ...pageParams(query.limit, query.offset), query);"
+        ),
+    }[kind]
+    asynchronous = "" if kind == "list" else "async "
+    return "\n".join(decorators + [f"  {asynchronous}{method}({', '.join(parameters)}) {{", body, "  }"])
+
+
+def _unique(name: str, used: set[str]) -> str:
+    candidate, index = name, 2
+    while candidate in used:
+        candidate = f"{name}{index}"
+        index += 1
+    used.add(candidate)
+    return candidate
+
+
+def custom_code(ir: dict, reserved: set[str]) -> tuple[str, str] | None:
+    routes = [route for route in ir["routes"] if route["operation"]["kind"] == "custom"]
+    if not routes:
+        return None
+    imports = Imports(reserved)
+    controller = imports.use("@nestjs/common", "Controller")
+    imports.use("../../common/api-error", "ApiError")
+    methods = []
+    used: set[str] = set()
+    for route in routes:
+        decorators = [f"  @{imports.use('@nestjs/common', HTTP_DECORATORS[route['method']])}({ts_string(route_path(route['path']))})"]
+        if route["access"] == "protected":
+            decorators.append(f"  @{imports.use('@nestjs/common', 'UseGuards')}(AuthGuard)")
+            imports.use("../../guards/auth.guard", "AuthGuard")
+        if route.get("roles"):
+            decorators.append(f"  @Roles({', '.join(ts_string(role) for role in route['roles'])})")
+            imports.use("../../guards/auth.guard", "Roles")
+        segments = [pascal_case(segment.strip("{}").replace("-", "_")) for segment in route["path"].strip("/").split("/") if segment]
+        method = _unique(route["method"].lower() + "".join(segments), used)
+        message = (
+            f"{route['method']} {route['path']} is declared in the semantic source but has no generated behaviour. "
+            "Implement it in src/modules/custom/custom.controller.ts."
+        )
+        methods.append("\n".join(decorators + [f"  {method}(): never {{", f"    throw ApiError.notImplemented({ts_string(message)});", "  }"]))
+
+    controller_source = "\n".join(
+        imports.render() + ["", f"@{controller}()", "export class CustomController {", "\n\n".join(methods), "}", ""]
+    )
+    module_imports = Imports(reserved)
+    module = module_imports.use("@nestjs/common", "Module")
+    module_imports.use("./custom.controller", "CustomController")
+    module_source = "\n".join(
+        module_imports.render() + ["", f"@{module}({{", "  controllers: [CustomController],", "})", "export class CustomModule {}", ""]
+    )
+    return controller_source, module_source
+
+
+def auth_code(ir: dict, reserved: set[str]) -> dict[str, str]:
+    auth = ir["auth"]
+    name = model_by_name(ir, auth["model"])["name"]
+    identity, secret = auth["identity_field"], auth["secret_field"]
+    model_folder, model_file = folder(name), file_base(name)
+
+    imports = Imports(reserved)
+    controller = imports.use("@nestjs/common", "Controller")
+    body = imports.use("@nestjs/common", "Body")
+    get = imports.use("@nestjs/common", "Get")
+    post = imports.use("@nestjs/common", "Post")
+    http_code = imports.use("@nestjs/common", "HttpCode")
+    use_guards = imports.use("@nestjs/common", "UseGuards")
+    imports.use("../../common/api-error", "ApiError")
+    imports.use("../../common/current-user.decorator", "CurrentUserId")
+    imports.use("../../common/password-hasher", "PasswordHasher")
+    imports.use("../../common/rate-limit.guard", "AuthRateLimitGuard")
+    imports.use("../../guards/auth.guard", "AuthGuard")
+    imports.use(f"../{model_folder}/{model_folder}.repository", f"{name}Repository")
+    imports.use(f"../{model_folder}/{model_folder}.service", f"{name}Service")
+    imports.use(f"../{model_folder}/{model_file}.entity", name)
+    imports.use(f"../{model_folder}/dto/create-{model_file}.dto", f"Create{name}Dto")
+    imports.use("./dto/login.dto", "LoginDto")
+    sessions = auth["features"]["sessions"]
+    if sessions:
+        imports.use("./session.store", "SessionStore")
+        imports.use("express", "Response")
+        imports.use("@nestjs/common", "Res")
+        response_param = ", @Res({ passthrough: true }) response: Response"
+        response_arg = ", response"
+    else:
+        imports.use("./token.service", "TokenService")
+        imports.use("./refresh-token.store", "RefreshTokenStore")
+        imports.use("./dto/session.dto", "RefreshDto")
+        response_param = response_arg = ""
+    imports.use("./dto/session.dto", "PasswordChangeDto")
+    if auth["features"]["roles"]:
+        imports.use("../../config/settings", "settings")
+    credential_lines = _refresh_and_logout_lines(imports, sessions, post, http_code, use_guards, body)
+    role_lines = _role_route_lines(auth, name, imports)
+    mail_lines = _mail_controller_lines(auth, name, imports)
+    oauth_lines = _oauth_controller_lines(ir, imports)
+    mail_enabled_ = bool(mail_lines or oauth_lines)
+    controller_source = "\n".join(
+        imports.render()
+        + [
+            "",
+            f"@{controller}()",
+            "export class AuthController {",
+            "  constructor(",
+            f"    private readonly users: {name}Service,",
+            f"    private readonly repository: {name}Repository,",
+            *(
+                ["    private readonly credentials: SessionStore,"]
+                if sessions
+                else ["    private readonly tokens: TokenService,", "    private readonly credentials: RefreshTokenStore,"]
+            ),
+            "    private readonly hasher: PasswordHasher,",
+            *(["    private readonly dataSource: DataSource,"] if mail_enabled_ else []),
+            "  ) {}",
+            "",
+            f"  @{post}('register')",
+            f"  @{http_code}(201)",
+            f"  @{use_guards}(AuthRateLimitGuard)",
+            f"  async register(@{body}() dto: Create{name}Dto{response_param}) {{",
+            "    let user = await this.users.create(dto);",
+            *_bootstrap_admin_lines(auth),
+            *(["    await this.sendVerification(user);"] if auth["features"]["email_verification"] else []),
+            f"    return {{ data: {{ user, ...(await this.session(user.id as number{response_arg})) }} }};",
+            "  }",
+            "",
+            f"  @{post}('login')",
+            f"  @{http_code}(200)",
+            f"  @{use_guards}(AuthRateLimitGuard)",
+            f"  async login(@{body}() dto: LoginDto{response_param}) {{",
+            f"    const record = await this.repository.findBy({ts_string(identity)}, dto.{identity});",
+            f"    if (!record || !(await this.hasher.verify(dto.{secret}, record.{secret}))) {{",
+            "      throw ApiError.unauthorized('Invalid credentials.');",
+            "    }",
+            f"    return {{ data: await this.session(record.id{response_arg}) }};",
+            "  }",
+            *credential_lines,
+            "",
+            f"  @{post}('me/password')",
+            f"  @{http_code}(204)",
+            f"  @{use_guards}(AuthGuard)",
+            f"  async changePassword(@CurrentUserId() userId: number, @{body}() dto: PasswordChangeDto) {{",
+            "    const record = await this.repository.findById(userId);",
+            f"    if (!record || !(await this.hasher.verify(dto.current_password, record.{secret}))) {{",
+            "      throw ApiError.validation({ current_password: ['current_password is incorrect'] });",
+            "    }",
+            f"    await this.repository.update(record, {{ {secret}: await this.hasher.hash(dto.new_password) }} as Partial<{name}>);",
+            "    await this.credentials.revokeAll(userId);",
+            "  }",
+            "",
+            *(
+                [
+                    "  private async session(userId: number, response: Response) {",
+                    "    return this.credentials.issue(userId, response);",
+                    "  }",
+                ]
+                if sessions
+                else [
+                    "  private async session(userId: number) {",
+                    "    return { ...(await this.tokens.issue(userId)), ...(await this.credentials.issue(userId)) };",
+                    "  }",
+                ]
+            ),
+            "",
+            f"  @{get}('me')",
+            f"  @{use_guards}(AuthGuard)",
+            "  async me(@CurrentUserId() userId: number) {",
+            "    return { data: await this.users.get(userId) };",
+            "  }",
+            *role_lines,
+            *mail_lines,
+            *oauth_lines,
+            "}",
+            "",
+        ]
+    )
+
+    module_imports = Imports(reserved)
+    global_ = module_imports.use("@nestjs/common", "Global")
+    module = module_imports.use("@nestjs/common", "Module")
+    if not sessions:
+        module_imports.use("@nestjs/jwt", "JwtModule")
+    module_imports.use("../../guards/auth.guard", "AuthGuard")
+    module_imports.use(f"../{model_folder}/{model_folder}.module", f"{name}Module")
+    module_imports.use("./auth.controller", "AuthController")
+    credential_providers = ["SessionStore"] if sessions else ["TokenService", "RefreshTokenStore"]
+    if sessions:
+        module_imports.use("./session.store", "SessionStore")
+    else:
+        module_imports.use("./token.service", "TokenService")
+        module_imports.use("./refresh-token.store", "RefreshTokenStore")
+    module_source = "\n".join(
+        module_imports.render()
+        + [
+            "",
+            f"@{global_}()",
+            f"@{module}({{",
+            f"  imports: [{'' if sessions else 'JwtModule.register({}), '}{name}Module],",
+            "  controllers: [AuthController],",
+            f"  providers: [{', '.join(credential_providers)}, AuthGuard],",
+            f"  exports: [{credential_providers[0]}, AuthGuard],",
+            "})",
+            "export class AuthModule {}",
+            "",
+        ]
+    )
+
+    dto_imports = Imports(reserved)
+    is_string = dto_imports.use("class-validator", "IsString")
+    min_length = dto_imports.use("class-validator", "MinLength")
+    dto_source = "\n".join(
+        dto_imports.render()
+        + [
+            "",
+            "export class LoginDto {",
+            f"  @{is_string}()",
+            f"  @{min_length}(1)",
+            f"  {identity}!: string;",
+            "",
+            f"  @{is_string}()",
+            f"  @{min_length}(1)",
+            f"  {secret}!: string;",
+            "}",
+            "",
+        ]
+    )
+    return {
+        "src/modules/auth/auth.controller.ts": controller_source,
+        "src/modules/auth/auth.module.ts": module_source,
+        "src/modules/auth/dto/login.dto.ts": dto_source,
+        "src/modules/auth/dto/session.dto.ts": _session_dto(model_by_name(ir, auth["model"]), secret),
+        **(
+            {"src/modules/auth/dto/mail.dto.ts": _mail_dto(auth, _new_password_decorators(model_by_name(ir, auth["model"]), secret))}
+            if auth["features"]["password_reset"] or auth["features"]["email_verification"]
+            else {}
+        ),
+        **({"src/modules/auth/dto/role-change.dto.ts": role_change_dto(auth["features"]["roles"])} if auth["features"]["roles"] else {}),
+        **({"src/modules/auth/dto/oauth-callback.dto.ts": OAUTH_CALLBACK_DTO} if auth["features"]["oauth"] else {}),
+    }
+
+
+OAUTH_CALLBACK_DTO = "\n".join(
+    [
+        "import { IsString, MinLength } from 'class-validator';",
+        "",
+        "export class OAuthCallbackDto {",
+        "  @IsString()",
+        "  @MinLength(1)",
+        "  code!: string;",
+        "",
+        "  @IsString()",
+        "  @MinLength(1)",
+        "  state!: string;",
+        "}",
+        "",
+    ]
+)
+OAUTH_PROVIDER_KEYS = ["authorize_url", "token_url", "profile_url", "emails_url", "scopes", "subject_field", "email_field", "verified_field", "name_field"]
+
+
+def oauth_providers_code(oauth: dict) -> str:
+    """Provider endpoints and profile fields from the IR as a TypeScript literal."""
+    lines = ["{"]
+    for provider in oauth["providers"]:
+        lines.append(f"  {provider['name']}: {{")
+        for key in OAUTH_PROVIDER_KEYS:
+            value = provider[key]
+            if value is None:
+                literal = "null"
+            elif isinstance(value, list):
+                literal = "[" + ", ".join(ts_string(item) for item in value) + "]"
+            else:
+                literal = ts_string(value)
+            lines.append(f"    {key}: {literal},")
+        lines.append("  },")
+    lines.append("}")
+    return "\n".join(lines)
+
+
+def oauth_account_entity_code(table: str) -> str:
+    return "\n".join(
+        [
+            "import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';",
+            "import { columnType } from '../../database/column-types';",
+            "",
+            "/** Links a provider identity (provider:subject) to a user. */",
+            f"@Entity({{ name: {ts_string(table)} }})",
+            "export class OAuthAccount {",
+            "  @PrimaryGeneratedColumn({ type: 'integer' })",
+            "  id!: number;",
+            "",
+            "  @Column({ type: columnType('STRING'), length: 255 })",
+            "  provider!: string;",
+            "",
+            "  @Column({ type: columnType('STRING'), length: 255, unique: true })",
+            "  provider_subject!: string;",
+            "",
+            "  @Index()",
+            "  @Column({ type: columnType('INTEGER') })",
+            "  user_id!: number;",
+            "",
+            "  @Column({ type: columnType('DATETIME') })",
+            "  created_at!: Date;",
+            "",
+            "  @Column({ type: columnType('DATETIME') })",
+            "  updated_at!: Date;",
+            "}",
+            "",
+        ]
+    )
+
+
+def _refresh_and_logout_lines(imports: Imports, sessions: dict | None, post: str, http_code: str, use_guards: str, body: str) -> list[str]:
+    if sessions:
+        imports.use("@nestjs/common", "Req")
+        imports.use("express", "Request")
+        imports.use("./session.store", "SESSION_COOKIE")
+        imports.use("./session.store", "readCookie")
+        return [
+            "",
+            f"  @{post}('logout')",
+            f"  @{http_code}(204)",
+            f"  @{use_guards}(AuthGuard)",
+            "  async logout(@Req() request: Request, @Res({ passthrough: true }) response: Response) {",
+            "    await this.credentials.end(readCookie(request, SESSION_COOKIE), response);",
+            "  }",
+        ]
+    return [
+        "",
+        f"  @{post}('token/refresh')",
+        f"  @{http_code}(200)",
+        f"  @{use_guards}(AuthRateLimitGuard)",
+        f"  async refresh(@{body}() dto: RefreshDto) {{",
+        "    const userId = await this.credentials.rotate(dto.refresh_token);",
+        "    if (!(await this.repository.findById(userId))) {",
+        "      throw ApiError.unauthorized('Token user no longer exists.');",
+        "    }",
+        "    return { data: await this.session(userId) };",
+        "  }",
+        "",
+        f"  @{post}('logout')",
+        f"  @{http_code}(204)",
+        f"  async logout(@{body}() dto: RefreshDto) {{",
+        "    await this.credentials.revoke(dto.refresh_token);",
+        "  }",
+    ]
+
+
+COMMON_DECORATORS = ["Body", "Get", "HttpCode", "Param", "Post", "Put", "UseGuards"]
+
+
+def _with_decorators(lines: list[str], imports: Imports) -> list[str]:
+    """Imports the @nestjs/common decorators the lines use, under their alias when a model shadows the name."""
+    result = []
+    for line in lines:
+        for name in COMMON_DECORATORS:
+            if f"@{name}(" in line:
+                line = line.replace(f"@{name}(", f"@{imports.use('@nestjs/common', name)}(")
+        result.append(line)
+    return result
+
+
+def _oauth_controller_lines(ir: dict, imports: Imports) -> list[str]:
+    auth = ir["auth"]
+    oauth = auth["features"]["oauth"]
+    if not oauth:
+        return []
+    model = model_by_name(ir, auth["model"])
+    name = model["name"]
+    identity, secret = auth["identity_field"], auth["secret_field"]
+    roles = auth["features"]["roles"]
+    verification = auth["features"]["email_verification"]
+    sessions = auth["features"]["sessions"]
+    response_param = ", @Res({ passthrough: true }) response: Response" if sessions else ""
+    response_arg = ", response" if sessions else ""
+    imports.use("crypto", "randomBytes")
+    imports.use("typeorm", "DataSource")
+    imports.use("../../database/column-types", "nowUtc")
+    imports.use("./oauth", "OAuth")
+    imports.use("./oauth-account.entity", "OAuthAccount")
+    imports.use("./dto/oauth-callback.dto", "OAuthCallbackDto")
+    random_secret = "await this.hasher.hash(randomBytes(32).toString('hex'))"
+    new_user = [
+        f"        const data: Record<string, unknown> = {{ {identity}: identity.email, {secret}: {random_secret} }};",
+    ]
+    if oauth["name_field"]:
+        limit = field_rules(next(item for item in model["fields"] if item["name"] == oauth["name_field"]))["max"] or 255
+        new_user.append(f"        data.{oauth['name_field']} = identity.name.slice(0, {limit});")
+    if roles:
+        imports.use("../../config/settings", "settings")
+        new_user += [
+            "        const bootstrap = settings.bootstrapAdminEmail.toLowerCase();",
+            f"        data.role = bootstrap && identity.email.toLowerCase() === bootstrap ? {ts_string(roles['admin'])} : {ts_string(roles['default'])};",
+        ]
+    if verification:
+        new_user.append(f"        data.{verification['field']} = nowUtc();")
+        relink = [
+            f"      }} else if (record.{verification['field']} === null) {{",
+            "        // Ownership of the address is proven by the provider, not by whoever set the password.",
+            f"        await this.repository.update(record, {{ {secret}: {random_secret}, {verification['field']}: nowUtc() }} as Partial<{name}>);",
+        ]
+    else:
+        relink = [
+            "      } else {",
+            "        // Ownership of the address is proven by the provider, not by whoever set the password.",
+            f"        await this.repository.update(record, {{ {secret}: {random_secret} }} as Partial<{name}>);",
+        ]
+    lines: list[str] = []
+    for provider in oauth["providers"]:
+        key = provider["name"]
+        method = key[:1].upper() + key[1:]
+        lines += [
+            "",
+            f"  @Get('oauth/{key}')",
+            f"  oauthStart{method}() {{",
+            f"    return {{ data: OAuth.start({ts_string(key)}) }};",
+            "  }",
+            "",
+            f"  @Post('oauth/{key}/callback')",
+            "  @HttpCode(200)",
+            "  @UseGuards(AuthRateLimitGuard)",
+            f"  async oauthCallback{method}(@Body() dto: OAuthCallbackDto{response_param}) {{",
+            f"    return this.oauthSignIn({ts_string(key)}, dto{response_arg});",
+            "  }",
+        ]
+    lines += [
+        "",
+        "  /** Finds the user linked to the provider identity, links one by verified email, or creates one. */",
+        f"  private async oauthSignIn(provider: string, dto: OAuthCallbackDto{', response: Response' if sessions else ''}) {{",
+        "    OAuth.verifyState(provider, dto.state);",
+        "    const identity = await OAuth.fetchIdentity(provider, dto.code);",
+        "    const accounts = this.dataSource.getRepository(OAuthAccount);",
+        "    const account = await accounts.findOneBy({ provider_subject: identity.subject });",
+        "    let userId: number;",
+        "    if (account) {",
+        "      userId = account.user_id;",
+        "    } else {",
+        f"      let record = await this.repository.findBy({ts_string(identity)}, identity.email);",
+        "      if (!record) {",
+        *new_user,
+        f"        record = await this.repository.create(data as Partial<{name}>);",
+        *relink,
+        "        await this.credentials.revokeAll(record.id);",
+        "      }",
+        "      const now = nowUtc();",
+        "      await accounts.insert({ provider, provider_subject: identity.subject, user_id: record.id, created_at: now, updated_at: now });",
+        "      userId = record.id;",
+        "    }",
+        f"    return {{ data: {{ user: await this.users.get(userId), ...(await this.session(userId{response_arg})) }} }};",
+        "  }",
+    ]
+    return _with_decorators(lines, imports)
+
+
+TOKEN_ENTITIES = {"password_reset": "PasswordReset", "email_verification": "EmailVerification"}
+
+
+def token_entity_code(class_name: str, table: str) -> str:
+    return "\n".join(
+        [
+            "import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';",
+            "import { columnType } from '../../database/column-types';",
+            "",
+            f"@Entity({{ name: {ts_string(table)} }})",
+            f"export class {class_name} {{",
+            "  @PrimaryGeneratedColumn({ type: 'integer' })",
+            "  id!: number;",
+            "",
+            "  @Column({ type: columnType('STRING'), length: 255, unique: true })",
+            "  token_hash!: string;",
+            "",
+            "  @Column({ type: columnType('DATETIME') })",
+            "  expires_at!: Date;",
+            "",
+            "  @Column({ type: columnType('DATETIME'), nullable: true })",
+            "  used_at!: Date | null;",
+            "",
+            "  @Index()",
+            "  @Column({ type: columnType('INTEGER') })",
+            "  user_id!: number;",
+            "",
+            "  @Column({ type: columnType('DATETIME') })",
+            "  created_at!: Date;",
+            "",
+            "  @Column({ type: columnType('DATETIME') })",
+            "  updated_at!: Date;",
+            "}",
+            "",
+        ]
+    )
+
+
+def _mail_dto(auth: dict, new_password: list[str]) -> str:
+    identity, secret = auth["identity_field"], auth["secret_field"]
+    return "\n".join(
+        [
+            "import { IsString, MaxLength, MinLength } from 'class-validator';",
+            "",
+            "export class ForgotPasswordDto {",
+            "  @IsString()",
+            "  @MinLength(1)",
+            f"  {identity}!: string;",
+            "}",
+            "",
+            "export class ResetPasswordDto {",
+            "  @IsString()",
+            "  @MinLength(1)",
+            "  token!: string;",
+            "",
+            "  @IsString()",
+            *new_password,
+            f"  {secret}!: string;",
+            "}",
+            "",
+            "export class TokenDto {",
+            "  @IsString()",
+            "  @MinLength(1)",
+            "  token!: string;",
+            "}",
+            "",
+        ]
+    )
+
+
+def _mail_controller_lines(auth: dict, name: str, imports: Imports) -> list[str]:
+    features = auth["features"]
+    if not (features["password_reset"] or features["email_verification"]):
+        return []
+    identity, secret = auth["identity_field"], auth["secret_field"]
+    imports.use("../../common/mailer", "Mailer")
+    imports.use("./one-time-tokens", "OneTimeTokens")
+    lines: list[str] = []
+    reset = features["password_reset"]
+    if reset:
+        imports.use("./password-reset.entity", "PasswordReset")
+        imports.use("./dto/mail.dto", "ForgotPasswordDto")
+        imports.use("./dto/mail.dto", "ResetPasswordDto")
+        lines += [
+            "",
+            "  @Post('password/forgot')",
+            "  @HttpCode(202)",
+            "  @UseGuards(AuthRateLimitGuard)",
+            "  async forgotPassword(@Body() dto: ForgotPasswordDto) {",
+            f"    const record = await this.repository.findBy({ts_string(identity)}, dto.{identity});",
+            "    if (record) {",
+            f"      const token = await new OneTimeTokens(this.dataSource, PasswordReset).issue(record.id, {reset['ttl_seconds']});",
+            "      const body = Mailer.body(",
+            "        'Use this token to reset your password.',",
+            "        token,",
+            "        'reset-password',",
+            f"        'The token expires in {reset['ttl_seconds'] // 60} minutes. If you did not ask for a reset, ignore this email.',",
+            "      );",
+            f"      await Mailer.send(dto.{identity}, 'Reset your password', body);",
+            "    }",
+            "    return { data: { message: 'If the account exists, a reset email has been sent.' } };",
+            "  }",
+            "",
+            "  @Post('password/reset')",
+            "  @HttpCode(204)",
+            "  async resetPassword(@Body() dto: ResetPasswordDto) {",
+            "    const userId = await new OneTimeTokens(this.dataSource, PasswordReset).consume(dto.token);",
+            "    const record = userId === undefined ? null : await this.repository.findById(userId);",
+            "    if (!record) {",
+            "      throw ApiError.validation({ token: ['token is invalid or expired'] });",
+            "    }",
+            f"    await this.repository.update(record, {{ {secret}: await this.hasher.hash(dto.{secret}) }} as Partial<{name}>);",
+            "    await this.credentials.revokeAll(record.id);",
+            "  }",
+        ]
+    verification = features["email_verification"]
+    if verification:
+        field = verification["field"]
+        imports.use("./email-verification.entity", "EmailVerification")
+        imports.use("./dto/mail.dto", "TokenDto")
+        lines += [
+            "",
+            "  @Post('email/verify')",
+            "  @HttpCode(200)",
+            "  async verifyEmail(@Body() dto: TokenDto) {",
+            "    const userId = await new OneTimeTokens(this.dataSource, EmailVerification).consume(dto.token);",
+            "    const record = userId === undefined ? null : await this.repository.findById(userId);",
+            "    if (!record) {",
+            "      throw ApiError.validation({ token: ['token is invalid or expired'] });",
+            "    }",
+            f"    await this.repository.update(record, {{ {field}: nowUtc() }} as Partial<{name}>);",
+            "    return { data: await this.users.get(record.id) };",
+            "  }",
+            "",
+            "  @Post('email/resend')",
+            "  @HttpCode(202)",
+            "  @UseGuards(AuthGuard)",
+            "  async resendVerification(@CurrentUserId() userId: number) {",
+            "    const user = await this.users.get(userId);",
+            f"    if (user.{field} === null) {{",
+            "      await this.sendVerification(user);",
+            "    }",
+            "    return { data: { message: 'A verification email is sent when the address is not verified yet.' } };",
+            "  }",
+            "",
+            "  private async sendVerification(user: Record<string, unknown>) {",
+            f"    const token = await new OneTimeTokens(this.dataSource, EmailVerification).issue(user.id as number, {verification['ttl_seconds']});",
+            "    const body = Mailer.body(",
+            "      'Use this token to confirm your email address.',",
+            "      token,",
+            "      'verify-email',",
+            f"      'The token expires in {verification['ttl_seconds'] // 3600} hours.',",
+            "    );",
+            f"    await Mailer.send(String(user.{identity}), 'Verify your email address', body);",
+            "  }",
+        ]
+        imports.use("../../database/column-types", "nowUtc")
+    imports.use("typeorm", "DataSource")
+    return _with_decorators(lines, imports)
+
+
+def _new_password_decorators(model: dict, secret: str) -> list[str]:
+    rules = field_rules(next(item for item in model["fields"] if item["name"] == secret))
+    decorators = [f"  @MinLength({rules['min'] or 1})"]
+    if rules["max"]:
+        decorators.append(f"  @MaxLength({rules['max']})")
+    return decorators
+
+
+def _session_dto(model: dict, secret: str) -> str:
+    new_password = _new_password_decorators(model, secret)
+    return "\n".join(
+        [
+            "import { IsString, MaxLength, MinLength } from 'class-validator';",
+            "",
+            "export class RefreshDto {",
+            "  @IsString()",
+            "  @MinLength(1)",
+            "  refresh_token!: string;",
+            "}",
+            "",
+            "export class PasswordChangeDto {",
+            "  @IsString()",
+            "  @MinLength(1)",
+            "  current_password!: string;",
+            "",
+            "  @IsString()",
+            *new_password,
+            "  new_password!: string;",
+            "}",
+            "",
+        ]
+    )
+
+
+def _bootstrap_admin_lines(auth: dict) -> list[str]:
+    roles = auth["features"]["roles"]
+    if not roles:
+        return []
+    identity = auth["identity_field"]
+    return [
+        f"    const bootstrap = settings.bootstrapAdminEmail.toLowerCase();",
+        f"    if (bootstrap && String(user.{identity}).toLowerCase() === bootstrap) {{",
+        f"      user = await this.users.setRole(user.id as number, {ts_string(roles['admin'])});",
+        "    }",
+    ]
+
+
+def _role_route_lines(auth: dict, name: str, imports: Imports) -> list[str]:
+    roles = auth["features"]["roles"]
+    if not roles:
+        return []
+    imports.use("../../common/id.pipe", "IdPipe")
+    imports.use("../../guards/auth.guard", "Roles")
+    imports.use("./dto/role-change.dto", "RoleChangeDto")
+    return _with_decorators([
+        "",
+        "  @Put('users/:id/role')",
+        "  @UseGuards(AuthGuard)",
+        f"  @Roles({ts_string(roles['admin'])})",
+        "  async setRole(@Param('id', IdPipe) id: number, @Body() dto: RoleChangeDto) {",
+        "    return { data: await this.users.setRole(id, dto.role) };",
+        "  }",
+    ], imports)
+
+
+def role_change_dto(roles: dict) -> str:
+    choices = ", ".join(ts_string(role) for role in roles["names"])
+    return "\n".join(
+        [
+            "import { IsIn } from 'class-validator';",
+            "",
+            f"export const ROLES = [{choices}];",
+            "",
+            "export class RoleChangeDto {",
+            "  @IsIn(ROLES, { message: `role must be one of: ${ROLES.join(', ')}` })",
+            "  role!: string;",
+            "}",
+            "",
+        ]
+    )
+
+
+def app_module_code(ir: dict, modules: list[tuple[str, str]], reserved: set[str]) -> str:
+    imports = Imports(reserved)
+    module = imports.use("@nestjs/common", "Module")
+    typeorm = imports.use("@nestjs/typeorm", "TypeOrmModule")
+    imports.use("./app.controller", "AppController")
+    imports.use("./database/data-source", "dataSourceOptions")
+    for class_name, path in modules:
+        imports.use(path, class_name)
+    return "\n".join(
+        imports.render()
+        + [
+            "",
+            f"@{module}({{",
+            "  imports: [",
+            f"    {typeorm}.forRoot({{ ...dataSourceOptions(), migrationsRun: true, retryAttempts: 30, retryDelay: 2000 }}),",
+            *[f"    {class_name}," for class_name, _ in modules],
+            "  ],",
+            "  controllers: [AppController],",
+            "})",
+            "export class AppModule {}",
+            "",
+        ]
+    )
+
+
+def app_controller_code(ir: dict, reserved: set[str]) -> str:
+    project = {
+        "project": ir["project"],
+        "target": "NESTJS",
+        "semarc_version": SEMARC_VERSION,
+        "models": [model["name"] for model in ir["models"]],
+        "routes": all_route_labels(ir),
+    }
+
+    def array(values: list[str]) -> str:
+        return "[" + ", ".join(ts_string(value) for value in values) + "]"
+
+    return "\n".join(
+        [
+            "import { Controller, Get, Header, Res } from '@nestjs/common';",
+            "import { Response } from 'express';",
+            "import { DataSource } from 'typeorm';",
+            "import { DOCS_HTML, OPENAPI_DOCUMENT } from './openapi';",
+            "",
+            "const PROJECT = {",
+            f"  project: {ts_string(project['project'])},",
+            f"  target: {ts_string(project['target'])},",
+            f"  semarcVersion: {ts_string(project['semarc_version'])},",
+            f"  models: {array(project['models'])},",
+            f"  routes: {array(project['routes'])},",
+            "};",
+            "",
+            "const escape = (value: string): string =>",
+            "  value.replace(/[&<>\"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[char] as string);",
+            "",
+            "@Controller()",
+            "export class AppController {",
+            "  constructor(private readonly dataSource: DataSource) {}",
+            "",
+            "  @Get()",
+            "  @Header('Content-Type', 'text/html; charset=utf-8')",
+            "  home(): string {",
+            "    const list = (items: string[]) => items.map((item) => `<li>${escape(item)}</li>`).join('');",
+            "    return (",
+            "      `<!doctype html><html><head><meta charset=\"utf-8\"><title>${escape(PROJECT.project)}</title></head><body>` +",
+            "      '<h1>SEMARC Generated Project</h1>' +",
+            "      `<p><strong>Project:</strong> ${escape(PROJECT.project)}</p>` +",
+            "      `<p><strong>Target:</strong> ${PROJECT.target}</p>` +",
+            "      `<p><strong>SEMARC Version:</strong> ${PROJECT.semarcVersion}</p>` +",
+            "      `<h2>Models</h2><ul>${list(PROJECT.models)}</ul><h2>Routes</h2><ul>${list(PROJECT.routes)}</ul>` +",
+            "      '<p><strong>Status:</strong> Running</p></body></html>'",
+            "    );",
+            "  }",
+            "",
+            "  @Get('health')",
+            "  async health(@Res({ passthrough: true }) response: Response) {",
+            "    let database = 'ok';",
+            "    try {",
+            "      await this.dataSource.query('SELECT 1');",
+            "    } catch {",
+            "      database = 'unavailable';",
+            "      response.status(503);",
+            "    }",
+            "    return { status: database === 'ok' ? 'ok' : 'degraded', project: PROJECT.project, database };",
+            "  }",
+            "",
+            "  @Get('routes')",
+            "  routes() {",
+            "    return { routes: PROJECT.routes };",
+            "  }",
+            "",
+            "  @Get('openapi.json')",
+            "  openapi() {",
+            "    return OPENAPI_DOCUMENT;",
+            "  }",
+            "",
+            "  @Get('docs')",
+            "  @Header('Content-Type', 'text/html; charset=utf-8')",
+            "  docs(): string {",
+            "    return DOCS_HTML;",
+            "  }",
+            "}",
+            "",
+        ]
+    )
+
+
+def migration_class(table: dict) -> tuple[str, str]:
+    timestamp = MIGRATION_EPOCH + table["sequence"] * 1000
+    class_name = f"Create{pascal_case(table['table'])}Table{timestamp}"
+    return class_name, f"{timestamp}-create-{table['table'].replace('_', '-')}-table"
+
+
+def migration_code(table: dict) -> str:
+    class_name, _ = migration_class(table)
+    columns = ["        { name: 'id', type: 'integer', isPrimary: true, isGenerated: true, generationStrategy: 'increment' },"]
+    for column in table["fields"]:
+        options = [f"name: {ts_string(column['name'])}", f"type: columnType('{column['type']}') as string"]
+        if column["type"] == "STRING":
+            options.append("length: '255'")
+        if column["type"] == "DECIMAL":
+            options.extend(["precision: 12", "scale: 2"])
+        options.append(f"isNullable: {'false' if column['required'] else 'true'}")
+        if column["unique"]:
+            options.append("isUnique: true")
+        columns.append(f"        {{ {', '.join(options)} }},")
+    for foreign_key in table["foreign_keys"]:
+        options = [f"name: {ts_string(foreign_key['column'])}", "type: 'integer'", "isNullable: false"]
+        if foreign_key.get("unique"):
+            options.append("isUnique: true")
+        columns.append(f"        {{ {', '.join(options)} }},")
+    columns.extend(
+        [
+            "        { name: 'created_at', type: columnType('DATETIME') as string, isNullable: false },",
+            "        { name: 'updated_at', type: columnType('DATETIME') as string, isNullable: false },",
+        ]
+    )
+    foreign_keys = [
+        f"        {{ columnNames: [{ts_string(foreign_key['column'])}], referencedTableName: {ts_string(foreign_key['references_table'])}, referencedColumnNames: ['id']"
+        + (", onDelete: 'CASCADE'" if foreign_key.get("on_delete") == "CASCADE" else "")
+        + " },"
+        for foreign_key in table["foreign_keys"]
+    ]
+    indices = [
+        f"        {{ columnNames: [{ts_string(column['name'])}] }},"
+        for column in table["fields"]
+        if column.get("index")
+    ] + [
+        f"        {{ columnNames: [{ts_string(foreign_key['column'])}] }},"
+        for foreign_key in table["foreign_keys"]
+        if not foreign_key.get("unique")
+    ]
+    table_lines = ["      new Table({", f"        name: {ts_string(table['table'])},", "        columns: ["]
+    table_lines.extend("  " + column for column in columns)
+    table_lines.append("        ],")
+    if foreign_keys:
+        table_lines.append("        foreignKeys: [")
+        table_lines.extend("  " + entry for entry in foreign_keys)
+        table_lines.append("        ],")
+    if indices:
+        table_lines.append("        indices: [")
+        table_lines.extend("  " + entry for entry in indices)
+        table_lines.append("        ],")
+    table_lines.append("      }),")
+    return "\n".join(
+        [
+            "import { MigrationInterface, QueryRunner, Table } from 'typeorm';",
+            "import { columnType } from '../column-types';",
+            "",
+            f"export class {class_name} implements MigrationInterface {{",
+            f"  name = {ts_string(class_name)};",
+            "",
+            "  async up(queryRunner: QueryRunner): Promise<void> {",
+            "    await queryRunner.createTable(",
+            *table_lines,
+            "    );",
+            "  }",
+            "",
+            "  async down(queryRunner: QueryRunner): Promise<void> {",
+            f"    await queryRunner.dropTable({ts_string(table['table'])});",
+            "  }",
+            "}",
+            "",
+        ]
+    )
+
+
+def data_source_code(ir: dict) -> str:
+    entity_imports = [
+        f"import {{ {model['name']} }} from '../modules/{folder(model['name'])}/{file_base(model['name'])}.entity';"
+        for model in ir["models"]
+    ]
+    entity_names = [model["name"] for model in ir["models"]]
+    if ir.get("auth"):
+        if ir["auth"]["features"]["sessions"]:
+            entity_imports.append("import { UserSession } from '../modules/auth/session.entity';")
+            entity_names.append("UserSession")
+        else:
+            entity_imports.append("import { RefreshToken } from '../modules/auth/refresh-token.entity';")
+            entity_names.append("RefreshToken")
+        for feature, class_name in TOKEN_ENTITIES.items():
+            if ir["auth"]["features"][feature]:
+                entity_imports.append(f"import {{ {class_name} }} from '../modules/auth/{kebab_case(class_name)}.entity';")
+                entity_names.append(class_name)
+        if ir["auth"]["features"]["oauth"]:
+            entity_imports.append("import { OAuthAccount } from '../modules/auth/oauth-account.entity';")
+            entity_names.append("OAuthAccount")
+    migrations = [migration_class(table) for table in ir["migrations"]["tables"]]
+    migration_imports = [f"import {{ {class_name} }} from './migrations/{file}';" for class_name, file in migrations]
+    return "\n".join(
+        [
+            "import { mkdirSync } from 'fs';",
+            "import { dirname } from 'path';",
+            "import { DataSource, DataSourceOptions } from 'typeorm';",
+            "import { settings, sqlitePath } from '../config/settings';",
+            *entity_imports,
+            *migration_imports,
+            "",
+            f"export const ENTITIES = [{', '.join(entity_names)}];",
+            f"export const MIGRATIONS = [{', '.join(class_name for class_name, _ in migrations)}];",
+            "",
+            "export function dataSourceOptions(): DataSourceOptions {",
+            "  const common = { entities: ENTITIES, migrations: MIGRATIONS, synchronize: false };",
+            "  switch (settings.dbConnection) {",
+            "    case 'sqlite': {",
+            "      const database = sqlitePath(settings.dbDatabase);",
+            "      if (database !== ':memory:') {",
+            "        mkdirSync(dirname(database), { recursive: true });",
+            "      }",
+            "      return { type: 'better-sqlite3', database, ...common };",
+            "    }",
+            "    case 'mysql':",
+            "      return {",
+            "        type: 'mysql',",
+            "        host: settings.dbHost,",
+            "        port: settings.dbPort,",
+            "        username: settings.dbUsername,",
+            "        password: settings.dbPassword,",
+            "        database: settings.dbDatabase,",
+            "        timezone: 'Z',",
+            "        charset: 'utf8mb4',",
+            "        ...common,",
+            "      };",
+            "    case 'pgsql':",
+            "      return {",
+            "        type: 'postgres',",
+            "        host: settings.dbHost,",
+            "        port: settings.dbPort,",
+            "        username: settings.dbUsername,",
+            "        password: settings.dbPassword,",
+            "        database: settings.dbDatabase,",
+            "        ...common,",
+            "      };",
+            "  }",
+            "  throw new Error(`Unsupported DB_CONNECTION: ${settings.dbConnection} (use mysql, pgsql or sqlite)`);",
+            "}",
+            "",
+            "export default new DataSource(dataSourceOptions());",
+            "",
+        ]
+    )
+
+
+def _credential_settings(auth: dict) -> list[str]:
+    sessions = auth["features"]["sessions"]
+    if sessions:
+        return [
+            f"  sessionTtl: Number(env('SESSION_TTL', '{sessions['ttl_seconds']}')),",
+            "  sessionSecureCookie: ['1', 'true', 'yes', 'on'].includes(",
+            "    env('SESSION_SECURE_COOKIE', env('APP_ENV', 'local') === 'production' ? 'true' : 'false').toLowerCase(),",
+            "  ),",
+        ]
+    return [
+        f"  jwtTtl: Number(env('JWT_TTL', '{auth['token_ttl_seconds']}')),",
+        f"  jwtRefreshTtl: Number(env('JWT_REFRESH_TTL', '{auth['features']['refresh_tokens']['ttl_seconds']}')),",
+    ]
+
+
+def settings_code(ir: dict, settings: dict, port: int) -> str:
+    lines = [
+        "import { existsSync, readFileSync } from 'fs';",
+        "import { isAbsolute, join } from 'path';",
+        "",
+        "const ROOT = join(__dirname, '..', '..');",
+        "",
+        "function loadEnvFile(path: string): void {",
+        "  if (!existsSync(path)) {",
+        "    return;",
+        "  }",
+        "  for (const rawLine of readFileSync(path, 'utf8').split(/\\r?\\n/)) {",
+        "    const line = rawLine.trim();",
+        "    if (!line || line.startsWith('#') || !line.includes('=')) {",
+        "      continue;",
+        "    }",
+        "    const index = line.indexOf('=');",
+        "    const key = line.slice(0, index).trim();",
+        "    if (process.env[key] === undefined) {",
+        "      process.env[key] = line.slice(index + 1).trim().replace(/^['\"]|['\"]$/g, '');",
+        "    }",
+        "  }",
+        "}",
+        "",
+        "loadEnvFile(join(ROOT, '.env'));",
+        "",
+        "function env(key: string, fallback = ''): string {",
+        "  const value = process.env[key];",
+        "  return value === undefined || value === '' ? fallback : value;",
+        "}",
+        "",
+        "export function sqlitePath(path: string): string {",
+        "  return path === ':memory:' || isAbsolute(path) ? path : join(ROOT, path);",
+        "}",
+        "",
+        "export const settings = {",
+        f"  appName: env('APP_NAME', {ts_string(ir['project'])}),",
+        f"  port: Number(env('PORT', '{port}')),",
+        f"  dbConnection: env('DB_CONNECTION', {ts_string(settings['connection'])}),",
+        "  dbHost: env('DB_HOST', '127.0.0.1'),",
+        f"  dbPort: Number(env('DB_PORT', {ts_string(settings['port'] or '3306')})),",
+        f"  dbDatabase: env('DB_DATABASE', {ts_string(settings['database'])}),",
+        f"  dbUsername: env('DB_USERNAME', {ts_string(settings['username'])}),",
+        "  dbPassword: env('DB_PASSWORD', ''),",
+        "  corsOrigins: env('CORS_ORIGINS', '*').split(',').map((origin) => origin.trim()).filter(Boolean),",
+    ]
+    if ir.get("auth"):
+        lines.extend(
+            [
+                "  jwtSecret: env('JWT_SECRET', ''),",
+                *_credential_settings(ir["auth"]),
+                f"  authRateLimit: Number(env('AUTH_RATE_LIMIT', '{ir['auth']['rate_limit']['attempts']}')),",
+                f"  authRateWindow: Number(env('AUTH_RATE_WINDOW', '{ir['auth']['rate_limit']['window_seconds']}')),",
+                "  bootstrapAdminEmail: env('BOOTSTRAP_ADMIN_EMAIL', ''),",
+                "  appUrl: env('APP_URL', ''),",
+                "  mailDriver: env('MAIL_DRIVER', 'log'),",
+                "  mailHost: env('MAIL_HOST', '127.0.0.1'),",
+                "  mailPort: Number(env('MAIL_PORT', '1025')),",
+                "  mailUsername: env('MAIL_USERNAME', ''),",
+                "  mailPassword: env('MAIL_PASSWORD', ''),",
+                "  mailEncryption: env('MAIL_ENCRYPTION', 'none'),",
+                "  mailFrom: env('MAIL_FROM', 'no-reply@localhost'),",
+            ]
+        )
+    lines.extend(["};", ""])
+    return "\n".join(lines)

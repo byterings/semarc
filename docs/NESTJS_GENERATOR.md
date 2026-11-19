@@ -1,282 +1,73 @@
 # NestJS Generator
 
-The NestJS generator was introduced in SEMARC v0.10.0.
-
-It demonstrates that the same semantic architecture can be compiled into a third backend target without changing the semantic language, AST, module system, profile system, Architecture IR, or architecture intelligence layer.
-
-The generator consumes Architecture IR and maps it to a minimal NestJS TypeScript project structure.
+The NestJS generator was introduced in v0.10.0 as structural scaffolding and became a
+runnable target in v0.14.0. It consumes the same Architecture IR as the PHP and FastAPI
+generators and produces the same API behaviour (see `GENERATED_API.md`).
 
 ## Target Selection
 
-Use:
-
 ```text
 TARGET NESTJS
 ```
 
-or override the target from the CLI:
+or `python3 main.py app.sem --target nestjs`.
 
-```bash
-python3 main.py examples/blog_api.sem --target nestjs
-```
+## Stack
 
-Target names are case-insensitive through the existing target selection path.
+NestJS 11, TypeORM 0.3 (`mysql2`, `pg`, `better-sqlite3`), class-validator, @nestjs/jwt,
+bcryptjs, TypeScript 5.9, Jest 30 with ts-jest and supertest. Versions are pinned in
+`semarc/generator/nestjs/nestjs_generator.py`.
 
-## Example Semantic Source
+## Per-Model Output
 
-```text
-PROJECT Shop
+For `MODEL Post` the generator writes `src/modules/posts/`:
 
-TARGET NESTJS
+| File | Content |
+| --- | --- |
+| `post.entity.ts` | TypeORM entity; column types follow `DB_CONNECTION` via `columnType()` |
+| `dto/create-post.dto.ts` | class-validator rules for create and replace |
+| `dto/update-post.dto.ts` | the same rules, every field optional, required fields not nullable |
+| `posts.repository.ts` | `PostRepository extends ResourceRepository<Post>` |
+| `posts.service.ts` | `PostService extends ResourceService<Post>` with output fields, references, dependents and unique columns |
+| `posts.controller.ts` | one handler per declared route, full paths in the route decorators |
+| `posts.module.ts` | wires TypeORM feature, repository, service and controller |
 
-DATABASE MYSQL
+A model without routes (for example the auth-created `User`) gets no controller.
 
-AUTH JWT
+## Application Wiring
 
-MODEL User
-    email STRING
-    name STRING
+- `app.module.ts` configures TypeORM from `data-source.ts` with `migrationsRun: true` and
+  connection retries, then imports the custom, auth and model modules.
+- `app.setup.ts` installs the global exception filter and the strict validation pipe; the
+  server and the tests share it.
+- `app.controller.ts` serves `/`, `/health` (runs `SELECT 1`) and `/routes`.
 
-ROUTE GET /users
-ROUTE POST /users
-ROUTE POST /login
-```
+## Authentication
 
-No new grammar is required for NestJS generation.
+`src/modules/auth/` provides `POST /register`, `POST /login` and `GET /me`. `TokenService`
+signs HS256 tokens with `@nestjs/jwt`; `AuthGuard` verifies the bearer token, checks that
+the user still exists and stores the id for `@CurrentUserId()`. The auth module is global so
+feature modules can use the guard.
 
-Services are generated from semantic models in the current compiler. v0.10.0 does not add a new `SERVICE` parser branch.
+## Validation and Errors
 
-## Generated Structure
+The validation pipe uses `whitelist: true` (unknown fields are stripped) and no implicit
+conversion (strict types). Failures become 422 with field details. Ids are parsed by
+`IdPipe` (invalid ids are 404). The global filter renders every error in the shared
+envelope, maps malformed JSON to 400 and database unique violations to 409.
 
-Generated files are written to `output/src/`.
+## Migrations
 
-Example:
+`src/database/migrations/<timestamp>-create-<table>-table.ts` uses TypeORM's `Table` API, so
+the same migration runs on MySQL, PostgreSQL and SQLite. Timestamps are deterministic
+(`1700000000000 + sequence * 1000`). `npm run migration:run` applies them manually.
 
-```text
-output/
-└── src/
-    ├── app.module.ts
-    ├── guards/
-    │   └── auth.guard.ts
-    └── modules/
-        ├── auth/
-        │   ├── auth.controller.ts
-        │   ├── auth.module.ts
-        │   └── auth.service.ts
-        └── users/
-            ├── user.model.ts
-            ├── users.controller.ts
-            ├── users.module.ts
-            └── users.service.ts
-```
+## Tests
 
-The folder layout follows common NestJS conventions:
+`test/api.e2e-spec.ts` boots the application with an in-memory SQLite database
+(`test/setup-env.ts`) and replays `test/api_scenario.json` step by step.
 
-- `src/app.module.ts` registers generated modules.
-- `src/modules/<resource>/` contains resource modules.
-- `src/guards/` contains placeholder auth guard scaffolding.
+## Name Collisions
 
-## Model Generation
-
-Each semantic `MODEL` becomes a TypeScript model class.
-
-Example:
-
-```text
-MODEL User
-    email STRING
-    active BOOLEAN
-```
-
-Generated:
-
-```typescript
-export class User {
-    email!: string;
-    active!: boolean;
-}
-```
-
-Type mapping is intentionally small:
-
-```text
-STRING  -> string
-TEXT    -> string
-INTEGER -> number
-FLOAT   -> number
-BOOLEAN -> boolean
-```
-
-## Service Generation
-
-Each model receives a minimal NestJS service skeleton.
-
-Example:
-
-```typescript
-import { Injectable } from '@nestjs/common';
-import { User } from './user.model';
-
-@Injectable()
-export class UserService {
-    findAll(): User[] {
-        return [];
-    }
-
-    create(payload: Partial<User>): User {
-        return payload as User;
-    }
-}
-```
-
-The service is structural only. It does not implement persistence, business logic, caching, or validation behavior.
-
-## Controller Generation
-
-Routes are mapped to resource controllers when the first route segment matches a model name.
-
-Example:
-
-```text
-MODEL User
-    email STRING
-
-ROUTE GET /users
-ROUTE POST /users
-```
-
-Generated:
-
-```typescript
-import { Controller, Get, Post } from '@nestjs/common';
-import { UserService } from './users.service';
-
-@Controller('users')
-export class UserController {
-    constructor(private readonly userService: UserService) {}
-
-    @Get()
-    findAll() {
-        return this.userService.findAll();
-    }
-
-    @Post()
-    createUser() {
-        return this.userService.findAll();
-    }
-}
-```
-
-Current route mapping is deliberately simple:
-
-- `GET /users` maps to `@Get()`.
-- `POST /users` maps to `@Post()`.
-- nested route suffixes are passed into the decorator path.
-
-## Authentication Scaffold
-
-When semantic auth exists, or a `/login` route exists, the NestJS generator creates placeholder auth files:
-
-```text
-src/
-├── guards/
-│   └── auth.guard.ts
-└── modules/
-    └── auth/
-        ├── auth.controller.ts
-        ├── auth.module.ts
-        └── auth.service.ts
-```
-
-The generated guard is intentionally permissive:
-
-```typescript
-import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
-
-@Injectable()
-export class AuthGuard implements CanActivate {
-    canActivate(context: ExecutionContext): boolean {
-        return true;
-    }
-}
-```
-
-This is scaffold only. Real authentication is outside v0.10.0 scope.
-
-## App Module
-
-`app.module.ts` imports and registers generated modules.
-
-Example:
-
-```typescript
-import { Module } from '@nestjs/common';
-import { UserModule } from './modules/users/users.module';
-import { AuthModule } from './modules/auth/auth.module';
-
-@Module({
-    imports: [
-        UserModule,
-        AuthModule,
-    ],
-})
-export class AppModule {}
-```
-
-Module registration order is deterministic and follows the Architecture IR model order, with auth scaffolding appended when present.
-
-## Generator Boundary
-
-The NestJS generator only maps:
-
-```text
-Architecture IR -> NestJS TypeScript files
-```
-
-It does not:
-
-- parse semantic source
-- modify semantic AST
-- modify profiles
-- modify stdlib modules
-- run architecture intelligence
-- change dependency resolution
-- change module constraints
-
-## Current Limitations
-
-The v0.10.0 NestJS generator is structural.
-
-It does not implement:
-
-- real authentication
-- database integration
-- ORM entities
-- dependency injection customization
-- Swagger
-- GraphQL
-- WebSockets
-- microservices
-- NestJS plugins
-- advanced decorators
-- runtime behavior
-
-These are intentionally excluded so v0.10.0 can focus on target portability.
-
-## Verification
-
-The generator is covered by tests for:
-
-- target selection
-- project structure
-- model files
-- service files
-- controller files
-- auth scaffold files
-- app module registration
-- multi-model projects
-- profile-based projects
-- dependency-based projects
-- PHP and FastAPI backward compatibility
-
-The test suite does not require `npm install`.
+A model named like a framework symbol (`Post`, `Index`, `Column`, ...) is supported: generated
+imports alias the framework symbol (`Post as PostDecorator`).

@@ -113,7 +113,7 @@ TARGET FASTAPI
 
 ### ProfileNode
 
-Future profile metadata selection.
+Profile selection.
 
 Fields:
 
@@ -125,11 +125,11 @@ Example:
 PROFILE Ecommerce
 ```
 
-Current behavior: preserved as metadata only.
+Profiles are composed by `ProfilePass` (with inheritance) and their modules are resolved.
 
 ### PackageNode
 
-Future package metadata selection from `USE`.
+Stdlib module selection from `USE`.
 
 Fields:
 
@@ -141,7 +141,7 @@ Example:
 USE payment.razorpay
 ```
 
-Current behavior: preserved as metadata only.
+Known modules are resolved with their dependencies and constraints; unknown names stay metadata.
 
 ### DatabaseNode
 
@@ -195,6 +195,13 @@ Fields:
 
 - `name`
 - `field_type`
+- `modifiers`: `UNIQUE` and/or `OPTIONAL`
+
+Example:
+
+```text
+    email STRING UNIQUE
+```
 
 ### RelationNode
 
@@ -219,12 +226,13 @@ Semantic HTTP endpoint.
 Fields:
 
 - `method`
-- `path`
+- `path`, which may contain `{param}` segments
+- `access`: `PUBLIC`, `PROTECTED` or `None` (default policy)
 
 Example:
 
 ```text
-ROUTE POST /login
+ROUTE DELETE /posts/{id} PUBLIC
 ```
 
 ### ValidationNode
@@ -234,17 +242,19 @@ Input validation intent.
 Fields:
 
 - `field_name`
-- `rules`
+- `rules`: `REQUIRED`, `EMAIL`, `MIN`, `MAX`
+- `model_name`: set for `Model.field` targets, otherwise `None`
+- `parameters`: numeric values, for example `{"MIN": 8, "MAX": 64}`
 
 Example:
 
 ```text
-VALIDATE email REQUIRED EMAIL
+VALIDATE Post.title REQUIRED MAX 120
 ```
 
 ## AST Construction
 
-`ast/ast_builder.py` centralizes node construction. The parser delegates node creation to the builder so parser code remains grammar-focused.
+`semarc/ast/ast_builder.py` centralizes node construction. The parser delegates node creation to the builder so parser code remains grammar-focused.
 
 ## Debug Representation
 

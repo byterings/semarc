@@ -1,49 +1,46 @@
 <?php
 
-require_once __DIR__ . '/controllers/AuthController.php';
-require_once __DIR__ . '/controllers/UserController.php';
+declare(strict_types=1);
 
-$method = $_SERVER['REQUEST_METHOD'];
-$path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+$router = new Router();
 
-if ($method === 'GET' && $path === '/') {
-    header('Content-Type: text/html; charset=utf-8');
-    $project = ['project' => 'GoldenAPI', 'target' => 'PHP', 'semarc_version' => 'v0.13.0', 'models' => ['User'], 'routes' => ['GET /', 'GET /health', 'GET /routes', 'POST /login', 'GET /users'], 'profiles' => [], 'modules' => [], 'status' => 'Running'];
-    echo '<h1>SEMARC Generated Project</h1>';
-    echo '<p><strong>Project:</strong> ' . htmlspecialchars($project['project']) . '</p>';
-    echo '<p><strong>Target:</strong> ' . htmlspecialchars($project['target']) . '</p>';
-    echo '<p><strong>SEMARC Version:</strong> ' . htmlspecialchars($project['semarc_version']) . '</p>';
-    echo '<h2>Models</h2><ul>';
-    foreach ($project['models'] as $item) { echo '<li>' . htmlspecialchars($item) . '</li>'; }
-    echo '</ul><h2>Routes</h2><ul>';
-    foreach ($project['routes'] as $item) { echo '<li>' . htmlspecialchars($item) . '</li>'; }
-    echo '</ul><p><strong>Status:</strong> ' . htmlspecialchars($project['status']) . '</p>';
-    exit;
-}
+$router->useAuthenticator(static function (Request $request): void {
+    (new AuthMiddleware())->authenticate($request);
+});
 
-if ($method === 'GET' && $path === '/health') {
-    header('Content-Type: application/json');
-    echo json_encode(['status' => 'ok', 'project' => 'GoldenAPI']);
-    exit;
-}
+$project = [
+    'project' => 'GoldenAPI',
+    'target' => 'PHP',
+    'semarc_version' => '0.14.0',
+    'models' => ['User'],
+    'routes' => ['GET /', 'GET /health', 'GET /routes', 'GET /openapi.json', 'GET /docs', 'POST /login', 'GET /users', 'POST /register', 'GET /me', 'POST /token/refresh', 'POST /logout', 'POST /me/password'],
+];
 
-if ($method === 'GET' && $path === '/routes') {
-    header('Content-Type: application/json');
-    echo json_encode(['routes' => ['GET /', 'GET /health', 'GET /routes', 'POST /login', 'GET /users']]);
-    exit;
-}
+$router->add('GET', '/', static fn (): Response => Response::html(HomePage::render($project)));
+$router->add('GET', '/health', static function () use ($project): Response {
+    try {
+        Database::connection()->query('SELECT 1');
+        $database = 'ok';
+    } catch (Throwable $exception) {
+        error_log((string) $exception);
+        $database = 'unavailable';
+    }
 
-if ($method === 'POST' && $path === '/login') {
-    $controller = new AuthController();
-    $controller->login();
-    exit;
-}
+    return Response::json(
+        ['status' => $database === 'ok' ? 'ok' : 'degraded', 'project' => $project['project'], 'database' => $database],
+        $database === 'ok' ? 200 : 503,
+    );
+});
+$router->add('GET', '/routes', static fn (): array => ['routes' => $router->routes()]);
+$router->add('GET', '/openapi.json', static fn (): Response => Response::file((string) file_get_contents(__DIR__ . '/openapi.json'), 'application/json; charset=utf-8'));
+$router->add('GET', '/docs', static fn (): Response => Response::file((string) file_get_contents(__DIR__ . '/docs.html'), 'text/html; charset=utf-8'));
 
-if ($method === 'GET' && $path === '/users') {
-    $controller = new UserController();
-    $controller->index();
-    exit;
-}
+$router->add('POST', '/login', static fn (Request $request): array => (new AuthController())->login($request));
+$router->add('GET', '/users', static fn (Request $request): array => (new UserController())->list($request), true);
+$router->add('POST', '/register', static fn (Request $request): Response => (new AuthController())->register($request));
+$router->add('GET', '/me', static fn (Request $request): array => (new AuthController())->me($request), true);
+$router->add('POST', '/token/refresh', static fn (Request $request): array => (new AuthController())->refresh($request));
+$router->add('POST', '/logout', static fn (Request $request): Response => (new AuthController())->logout($request));
+$router->add('POST', '/me/password', static fn (Request $request): Response => (new AuthController())->changePassword($request), true);
 
-http_response_code(404);
-echo json_encode(['error' => 'Route not found']);
+return $router;

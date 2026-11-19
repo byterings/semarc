@@ -64,6 +64,10 @@ DiagnosticReportPass
 
 `ConstraintPass` evaluates source-level architecture decisions. `DiagnosticReportPass` refreshes diagnostics after IR and dependency graph metadata exist, then writes the JSON report.
 
+The full pass order is listed in `COMPILER_PASSES.md`. Warnings and recommendations never
+stop compilation; diagnostic **errors** (for example `AUTH002`) block `GenerationPass`
+before any file is written.
+
 ## Diagnostic Model
 
 Diagnostics are structured records:
@@ -88,7 +92,8 @@ Supported diagnostic classes:
 
 Authentication rules:
 
-- `AUTH001`: warns when JWT authentication is used without rate limiting.
+- `AUTH001`: JWT authentication needs rate limiting. Since v0.14.0 every target generates it
+  for `/register` and `/login`, so the rule is satisfied and emits no warning.
 - `AUTH002`: errors when multiple authentication strategies are declared.
 
 Database rules:
@@ -164,7 +169,7 @@ Architecture Score: 91
 
 Future constraint rules should:
 
-- live under `architecture/constraints/rules/`
+- live under `semarc/architecture/constraints/rules/`
 - emit structured diagnostics only
 - remain target-independent unless explicitly checking target profile metadata
 - avoid code generation

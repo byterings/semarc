@@ -3,6 +3,7 @@ PROJECT CRM
 TARGET PHP
 
 PROFILE CRM
+
 USE audit.standard
 
 DATABASE MYSQL
@@ -12,20 +13,29 @@ AUTH JWT
 MODEL Lead
     name STRING
     email STRING
-    source STRING
+    source STRING OPTIONAL
 
 MODEL Customer
     name STRING
-    email STRING
+    email STRING UNIQUE
     company STRING
 
 MODEL Activity
     title STRING
-    notes TEXT
+    notes TEXT OPTIONAL
 
 RELATION Customer HAS_MANY Activity
 
 VALIDATE email REQUIRED EMAIL
+VALIDATE Customer.company REQUIRED
 
-ROUTE GET /customers
-ROUTE GET /leads
+ROUTE GET /customers PROTECTED
+ROUTE GET /customers/{id} PROTECTED
+ROUTE POST /customers
+ROUTE PATCH /customers/{id}
+ROUTE DELETE /customers/{id}
+ROUTE GET /customers/{id}/activities PROTECTED
+ROUTE POST /activities
+ROUTE GET /leads PROTECTED
+ROUTE POST /leads
+ROUTE GET /reports/pipeline PROTECTED

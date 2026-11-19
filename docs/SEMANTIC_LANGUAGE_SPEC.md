@@ -1,186 +1,146 @@
 # Semantic Language Specification
 
-The SEMARC semantic language is a strict declarative architecture language. It describes what backend architecture should exist, not how code should execute line by line.
+The SEMARC semantic language is a strict declarative architecture language. It describes
+what backend architecture should exist, not how code should execute.
 
 ## Design Properties
 
-The language is:
-
-- declarative
-- semantic
-- architecture-oriented
-- deterministic
-- whitespace-light, with indentation only used for model fields
-
-The language is not:
-
-- procedural programming
-- natural language
-- prompt syntax
-- framework syntax
-
-## Supported Keywords
-
-```text
-PROJECT
-TARGET
-PROFILE
-USE
-DATABASE
-AUTH
-MODEL
-SERVICE
-CONFIG
-RELATION
-ROUTE
-VALIDATE
-```
+The language is declarative, deterministic and line based. Indentation is used only for
+model fields. It is not procedural code, natural language, prompt syntax or framework syntax.
 
 ## Lexical Rules
 
-Source is processed line by line.
+- Source is processed line by line; blank lines are ignored.
+- Command keywords are uppercase and case sensitive (`MODEL Profile` declares a model named
+  `Profile`; `PROFILE` is the command).
+- Field types, relation types, field modifiers, route access and validation rules are uppercase.
+- Paths start with `/`. Integers are written as digits.
 
-Blank lines are ignored.
+## Commands
 
-Keywords are uppercase.
+```text
+PROJECT   TARGET   PROFILE   USE   DATABASE   AUTH
+MODEL     RELATION ROUTE     VALIDATE
+```
 
-Model fields are indented under a `MODEL` declaration.
+`SERVICE` and `CONFIG` are reserved for future versions and are rejected with an explicit error.
 
-## Grammar Sketch
+## Grammar
 
 ```text
 program       := statement*
-statement     := project | target | profile | use | database | auth | model | relation | route | validate
+statement     := project | target | profile | use | database | auth
+               | model | relation | route | validate
 
 project       := "PROJECT" IDENTIFIER
-target        := "TARGET" IDENTIFIER
+target        := "TARGET" ("PHP" | "FASTAPI" | "NESTJS")
 profile       := "PROFILE" IDENTIFIER
-use           := "USE" IDENTIFIER
-database      := "DATABASE" IDENTIFIER
-auth          := "AUTH" IDENTIFIER
-model         := "MODEL" IDENTIFIER field*
-field         := INDENT IDENTIFIER TYPE
-relation      := "RELATION" IDENTIFIER RELATION_TYPE IDENTIFIER
-route         := "ROUTE" HTTP_METHOD PATH
-validate      := "VALIDATE" IDENTIFIER VALIDATION_RULE+
+use           := "USE" MODULE_NAME
+database      := "DATABASE" ("MYSQL" | "POSTGRESQL" | "SQLITE")
+auth          := "AUTH" ("JWT" | "SESSION")
+model         := "MODEL" MODEL_NAME NEWLINE field*
+field         := INDENT FIELD_NAME TYPE modifier*
+modifier      := "UNIQUE" | "OPTIONAL" | "INDEX" | "DEFAULT" VALUE
+relation      := "RELATION" MODEL_NAME RELATION_TYPE MODEL_NAME
+route         := "ROUTE" HTTP_METHOD PATH access? role?
+access        := "PUBLIC" | "PROTECTED"
+role          := "ROLE" ROLE_NAME+          (requires USE auth.roles)
+validate      := "VALIDATE" (FIELD_NAME | MODEL_NAME "." FIELD_NAME) rule+
+rule          := "REQUIRED" | "EMAIL" | "MIN" INTEGER? | "MAX" INTEGER | "IN" VALUE+   (IN comes last)
+
+TYPE          := "STRING" | "TEXT" | "INTEGER" | "FLOAT" | "DECIMAL" | "BOOLEAN" | "DATE" | "DATETIME"
+VALUE         := one token without spaces, read as the field type (draft, 0, 9.99, true, 2026-01-31)
+RELATION_TYPE := "HAS_MANY" | "HAS_ONE" | "BELONGS_TO"
+HTTP_METHOD   := "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
+MODEL_NAME    := PascalCase identifier
+ROLE_NAME     := snake_case identifier
+FIELD_NAME    := snake_case identifier
+PATH          := "/" segment ("/" segment)*
+segment       := [A-Za-z0-9][A-Za-z0-9_-]* | "{" snake_case "}"
 ```
 
 ## PROJECT
-
-Declares project identity.
 
 ```text
 PROJECT BlogAPI
 ```
 
-Semantic meaning: creates the root project identity used by architecture planning and target generators.
-
-Constraints:
-
-- exactly one project declaration is expected
-- project name must be an identifier
+Exactly one project declaration is required. It names the generated project.
 
 ## TARGET
 
-Selects target profile.
-
 ```text
-TARGET PHP
 TARGET FASTAPI
 ```
 
-Semantic meaning: selects generator and implementation strategy.
-
-If omitted, SEMARC defaults to PHP.
-
-## PROFILE
-
-Future profile selection hook.
-
-```text
-PROFILE Ecommerce
-```
-
-Semantic meaning: records profile intent for future profile passes. In the
-current compiler, this metadata is preserved but does not change generation.
-
-## USE
-
-Future package selection hook.
-
-```text
-USE payment.razorpay
-```
-
-Semantic meaning: records package intent for future package passes. In the
-current compiler, this metadata is preserved but does not change generation.
+Selects the generator: `PHP` (default), `FASTAPI` or `NESTJS`. The CLI `--target` option
+overrides it. Other names are rejected.
 
 ## DATABASE
 
-Declares database architecture intent.
-
 ```text
-DATABASE MYSQL
+DATABASE POSTGRESQL
 ```
 
-Semantic meaning: backend requires database configuration and migration planning.
-
-Current supported value:
-
-```text
-MYSQL
-```
+`MYSQL`, `POSTGRESQL` or `SQLITE`. It sets the default connection of the generated project
+and the database service in `docker-compose.yml`. Without a declaration the project uses
+SQLite (and diagnostic `DB001` warns). Generated projects can still switch databases with
+the `DB_CONNECTION` environment variable.
 
 ## AUTH
 
-Declares authentication architecture.
-
 ```text
 AUTH JWT
+AUTH SESSION
 ```
 
-Semantic meaning: token-based authentication is required.
-
-Current supported value:
-
-```text
-JWT
-```
-
-Architecture expansion may produce:
-
-- auth controller/router
-- token service
-- password hasher
-- auth middleware
-- validator
+Both generate real account authentication: `POST /register`, `POST /login`, `GET /me`,
+`POST /logout`, `POST /me/password` and bcrypt password hashing. `AUTH JWT` issues HS256
+bearer tokens with rotating refresh tokens (`POST /token/refresh`), for mobile apps, other
+services and single-page apps that keep tokens. `AUTH SESSION` keeps server-side sessions
+behind an HttpOnly cookie and requires a CSRF header on unsafe requests, for browser front
+ends on the same site. The account model is `User`; it is created if missing, and `email`
+(unique) and `password` (secret) are added if not declared. A declared `User.email` or
+`User.password` must be a required `STRING`. Declaring two strategies raises diagnostic
+error `AUTH002`, which blocks generation.
 
 ## MODEL
 
-Declares semantic data model.
-
 ```text
-MODEL User
-    name STRING
-    email STRING
-    password STRING
+MODEL Product
+    name STRING INDEX
+    sku STRING UNIQUE
+    price DECIMAL
+    status STRING DEFAULT draft
+    notes TEXT OPTIONAL
 ```
 
-Supported field types:
+| Type | Stored as | JSON |
+| --- | --- | --- |
+| `STRING` | VARCHAR(255) | string, at most 255 characters |
+| `TEXT` | TEXT | string |
+| `INTEGER` | INTEGER | integer |
+| `FLOAT` | DOUBLE / REAL | number |
+| `DECIMAL` | DECIMAL(12,2) / NUMERIC(12,2) | string with two decimals, `"19.90"`; input may be a number or a string, up to 10 digits before and 2 after the point |
+| `BOOLEAN` | BOOLEAN | `true` / `false` |
+| `DATE` | DATE | `"2026-01-31"` |
+| `DATETIME` | DATETIME / TIMESTAMP (UTC) | `"2026-01-31T09:30:00Z"`; offsets such as `+05:30` are converted to UTC, values without an offset are UTC |
 
-```text
-STRING
-TEXT
-INTEGER
-BOOLEAN
-FLOAT
-```
+Modifiers:
 
-Semantic meaning: model, repository, schema, migration table, and target-specific model files may be generated.
+- `UNIQUE`: duplicates are rejected with 409 and enforced by a unique constraint.
+- `OPTIONAL`: the field may be omitted or `null`. Fields are required otherwise.
+- `INDEX`: adds a database index for fast filtering and sorting (not on `TEXT`, and not with
+  `UNIQUE`, which already creates one).
+- `DEFAULT value`: the field may be left out on create and gets `value`. `null` is still
+  rejected unless the field is also `OPTIONAL`. Not available on `DATETIME`, `UNIQUE` fields
+  or the auth credentials; the value must fit the type and any `IN` rule.
+
+Rules: model names are PascalCase, field names snake_case, field names are unique per
+model, and `id`, `created_at` and `updated_at` are generated automatically and cannot be
+declared.
 
 ## RELATION
-
-Declares semantic relationship between models.
 
 ```text
 RELATION User HAS_MANY Post
@@ -188,62 +148,91 @@ RELATION Post BELONGS_TO User
 RELATION User HAS_ONE Profile
 ```
 
-Supported relationship types:
+Each relation creates one foreign key column on the child (`posts.user_id`) that is required
+and references the parent. `HAS_ONE` makes the column unique. Declaring both directions of
+the same relationship produces a single column. A child must not declare a field with the
+foreign key's name. Relationships must not form ownership cycles.
 
-```text
-HAS_MANY
-BELONGS_TO
-HAS_ONE
-```
-
-Semantic meaning: relationship engine generates foreign keys, repository dependencies, migration metadata, and ORM relationship metadata.
+Foreign keys drive migration order, reference checks (422 for a missing parent), delete
+protection (409 while children exist), nested list routes and ownership: a model that
+references `User` is owned by that user, who alone may change it on protected routes (see
+[GENERATED_API.md](GENERATED_API.md)).
 
 ## ROUTE
 
-Declares HTTP endpoint.
-
 ```text
-ROUTE POST /login
-ROUTE GET /users
+ROUTE GET /posts
+ROUTE GET /posts/{id}
+ROUTE PATCH /posts/{id}
+ROUTE GET /users/{id}/posts PROTECTED
+ROUTE DELETE /posts/{id} PUBLIC
 ```
 
-Supported methods:
-
-```text
-GET
-POST
-PUT
-PATCH
-DELETE
-```
-
-Semantic meaning: route generation and route-to-handler mapping.
+The route shape decides the operation (list, create, read, replace, update, delete, nested
+list); anything else becomes a custom route returning 501 until implemented. `/`,
+`/health`, `/routes`, `/openapi.json` and `/docs` are reserved. With `USE auth.roles`,
+`ROLE admin editor` restricts a route to users with one of those roles (`ROLE` implies
+`PROTECTED` and cannot be combined with `PUBLIC`). Path parameters are
+snake_case and unique within a
+path. `PROTECTED` requires `AUTH`. `POST /register` and `GET /me` require `AUTH JWT` or `AUTH SESSION`;
+with it they are added automatically. See [GENERATED_API.md](GENERATED_API.md) for the
+full mapping and the default access policy.
 
 ## VALIDATE
 
-Declares input validation intent.
-
 ```text
 VALIDATE email REQUIRED EMAIL
-VALIDATE password REQUIRED MIN
+VALIDATE password REQUIRED MIN 8
+VALIDATE Post.title REQUIRED MAX 120
+VALIDATE rating MIN 0 MAX 5
 ```
 
-Supported rules:
+| Rule | Meaning |
+| --- | --- |
+| `REQUIRED` | the value must be present and, for text, not blank |
+| `EMAIL` | the value must be an email address (text fields only) |
+| `MIN n` | minimum length for text, minimum value for numbers |
+| `MAX n` | maximum length for text, maximum value for numbers |
+| `IN a b c` | the value must be one of the listed values (`STRING` and `INTEGER` fields; written last) |
+
+An unscoped field name applies to every model that declares that field (and to the auth
+credentials). `Model.field` applies to one model. `MIN` without a number means `MIN 6`, for
+compatibility with earlier versions. The validator rejects unknown fields, rules that do not
+fit the field type, `MIN` greater than `MAX`, `MAX` above 255 on `STRING` (use `TEXT`),
+`MAX` above 72 on the password, `REQUIRED` on an `OPTIONAL` field, and duplicate
+validations for the same field.
+
+## PROFILE and USE
 
 ```text
-REQUIRED
-EMAIL
-MIN
+PROFILE ECOMMERCE
+USE payment.razorpay
 ```
 
-Semantic meaning: target generator emits validation helpers and request validation logic.
+`PROFILE` composes profile metadata from `semarc/profiles/*.profile`, including inherited profiles
+and their modules. `USE` resolves stdlib modules from `semarc/stdlib/**/module.yaml`, including their
+`depends`, `requires` and `conflicts` rules. Resolved profiles and modules appear in the
+architecture report and the generator manifest. Unknown `USE` names are kept as metadata.
+
+Modules that change the generated API (the `auth.*` modules require `AUTH JWT` or `AUTH SESSION`;
+`cache.redis` has an effect only with them):
+
+| Module | Effect |
+| --- | --- |
+| `auth.roles` | `role` field, `ROUTE ... ROLE`, `PUT /users/{id}/role` |
+| `auth.password_reset` | `POST /password/forgot`, `POST /password/reset`, email sending |
+| `auth.email_verification` | `email_verified_at` field, verification email on registration, `POST /email/verify`, `POST /email/resend` |
+| `auth.oauth.google`, `auth.oauth.github` | sign-in with the provider: `GET /oauth/<provider>`, `POST /oauth/<provider>/callback` |
+| `cache.redis` | rate limit counters in Redis, shared by every process; Redis in `docker-compose.yml` |
+
+See [GENERATED_API.md](GENERATED_API.md) for their behaviour.
 
 ## Complete Example
 
 ```text
 PROJECT BlogAPI
 
-TARGET FASTAPI
+TARGET NESTJS
 
 DATABASE MYSQL
 
@@ -251,32 +240,35 @@ AUTH JWT
 
 MODEL User
     name STRING
-    email STRING
+    email STRING UNIQUE
+    password STRING
 
 MODEL Post
     title STRING
-    content STRING
+    body TEXT
+    published BOOLEAN OPTIONAL
 
 RELATION User HAS_MANY Post
 
-ROUTE POST /login
+VALIDATE email REQUIRED EMAIL
+VALIDATE password REQUIRED MIN 8
+VALIDATE Post.title REQUIRED MAX 120
+
 ROUTE GET /posts
+ROUTE GET /posts/{id}
+ROUTE POST /posts
+ROUTE PATCH /posts/{id}
+ROUTE DELETE /posts/{id}
+ROUTE GET /users/{id}/posts
 ```
 
-## Constraints
+## Not Supported
 
-SEMARC intentionally rejects free-form instructions.
-
-Invalid:
+Free-form instructions are rejected:
 
 ```text
 Create a blog API with users and posts
 ```
 
-Valid:
-
-```text
-MODEL User
-MODEL Post
-RELATION User HAS_MANY Post
-```
+Not yet expressible: many-to-many relations without an explicit join model, and roles and
+permissions.

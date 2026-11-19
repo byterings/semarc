@@ -5,8 +5,9 @@ SEMARC profiles are planned metadata bundles for architecture standards.
 Profiles should let projects opt into reusable conventions without expanding the
 core semantic language.
 
-Current status: foundation only. Profile metadata can be loaded, but profiles do
-not change compiler behavior or generated output.
+Current status: profiles are loaded and composed (v0.8.0), including inheritance and
+cycle detection, and their modules are resolved through the stdlib. Profiles do not change
+generated code directly; they influence module selection, diagnostics and the manifest.
 
 ## Purpose
 
@@ -48,7 +49,7 @@ Profile files currently contain metadata only.
 ## Foundation Objects
 
 ```text
-architecture/profiles/
+semarc/architecture/profiles/
 ├── profile.py
 ├── registry.py
 └── loader.py
@@ -64,7 +65,7 @@ architecture/profiles/
 
 `ProfileRegistry` stores loaded profiles by name.
 
-`ProfileLoader` reads `profiles/*.profile` files.
+`ProfileLoader` reads `semarc/profiles/*.profile` files.
 
 ## Loading Flow
 

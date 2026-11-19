@@ -1,0 +1,19 @@
+PROJECT {{project}}
+
+TARGET {{target}}
+
+DATABASE {{database}}
+
+AUTH JWT
+
+MODEL Item
+    name STRING
+    description TEXT OPTIONAL
+
+VALIDATE Item.name REQUIRED MAX 120
+
+ROUTE GET /items
+ROUTE GET /items/{id}
+ROUTE POST /items
+ROUTE PATCH /items/{id}
+ROUTE DELETE /items/{id}

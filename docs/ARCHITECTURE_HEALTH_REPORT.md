@@ -2,6 +2,12 @@
 
 This report records the stabilization audit for SEMARC's compiler architecture.
 
+> Status update (v0.14.0): the remaining risks below were addressed. Repositories persist to
+> real databases, migrations are ordered topologically by foreign keys, route semantics moved
+> into the architecture layer (`resource_planner.py`), output cleanup moved into
+> `semarc/generator/output_directory.py`, and target snapshots plus runtime scenarios cover all
+> three targets. The original audit is kept below for history.
+
 ## Scope
 
 This pass focused on:
@@ -43,7 +49,7 @@ PHP now maps `component/action` to class/method syntax inside the PHP generator 
 
 ### Contract Validation Added
 
-Added `compiler/contracts.py` and `compiler/passes/contract_pass.py`.
+Added `semarc/compiler/contracts.py` and `semarc/compiler/passes/contract_pass.py`.
 
 Contracts now validate:
 
@@ -75,10 +81,10 @@ Validation now detects:
 
 Removed inactive files:
 
-- `compiler/passes/parse_pass.py`
-- `templates/fastapi/routes.tpl`
-- `templates/fastapi/validator.tpl`
-- `templates/php/controller.tpl`
+- `semarc/compiler/passes/parse_pass.py`
+- `semarc/templates/fastapi/routes.tpl`
+- `semarc/templates/fastapi/validator.tpl`
+- `semarc/templates/php/controller.tpl`
 
 This reduces pass/template confusion and makes active paths clearer.
 
@@ -119,7 +125,7 @@ IR no longer contains PHP-specific route handler terms. Target profile metadata 
 
 Status: acceptable.
 
-Generators still perform target mapping and template rendering. Relationship inference and migration planning remain in architecture/compiler layers.
+Generators still perform target mapping and template rendering. Relationship inference and migration planning remain in the architecture and compiler layers.
 
 Remaining risk: some target mappers still contain small naming conventions and route mapping assumptions. These are target mapping concerns, but they should stay under review.
 

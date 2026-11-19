@@ -1,0 +1,27 @@
+PROJECT Newsroom
+
+DATABASE SQLITE
+
+AUTH JWT
+
+USE auth.roles
+
+MODEL Article
+    title STRING
+    body TEXT
+
+MODEL Section
+    name STRING UNIQUE
+
+RELATION User HAS_MANY Article
+
+VALIDATE password REQUIRED MIN 8
+
+ROUTE GET /articles
+ROUTE POST /articles
+ROUTE PATCH /articles/{id}
+ROUTE DELETE /articles/{id}
+ROUTE POST /sections ROLE admin editor
+ROUTE DELETE /sections/{id} ROLE admin
+ROUTE GET /users
+ROUTE GET /reports/summary ROLE admin

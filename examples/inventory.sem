@@ -3,6 +3,7 @@ PROJECT Inventory
 TARGET PHP
 
 PROFILE INVENTORY
+
 USE cache.redis
 
 DATABASE MYSQL
@@ -11,7 +12,7 @@ AUTH JWT
 
 MODEL Product
     name STRING
-    sku STRING
+    sku STRING UNIQUE
 
 MODEL Warehouse
     name STRING
@@ -24,5 +25,14 @@ MODEL Stock
 RELATION Product HAS_MANY Stock
 RELATION Warehouse HAS_MANY Stock
 
-ROUTE GET /inventory
+VALIDATE quantity MIN 0
+
+ROUTE GET /products
+ROUTE POST /products
+ROUTE GET /warehouses
+ROUTE POST /warehouses
+ROUTE GET /warehouses/{id}/stock
 ROUTE GET /stock
+ROUTE POST /stock
+ROUTE PATCH /stock/{id}
+ROUTE GET /inventory

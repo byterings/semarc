@@ -3,22 +3,22 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from compiler.context import CompilerContext
-from compiler.passes.architecture_analysis_pass import ArchitectureAnalysisPass
-from compiler.passes.constraint_pass import ConstraintPass
-from compiler.passes.contract_pass import ContractPass
-from compiler.passes.diagnostic_report_pass import DiagnosticReportPass
-from compiler.passes.expansion_pass import ExpansionPass
-from compiler.passes.generation_pass import GenerationPass
-from compiler.passes.ir_pass import IRPass
-from compiler.passes.lexing_pass import LexingPass
-from compiler.passes.module_constraint_pass import ModuleConstraintPass
-from compiler.passes.optimization_pass import OptimizationPass
-from compiler.passes.parsing_pass import ParsingPass
-from compiler.passes.profile_pass import ProfilePass
-from compiler.passes.relationship_pass import RelationshipPass
-from compiler.passes.stdlib_pass import StdlibPass
-from compiler.passes.validation_pass import ValidationPass
+from semarc.compiler.context import CompilerContext
+from semarc.compiler.passes.architecture_analysis_pass import ArchitectureAnalysisPass
+from semarc.compiler.passes.constraint_pass import ConstraintPass
+from semarc.compiler.passes.contract_pass import ContractPass
+from semarc.compiler.passes.diagnostic_report_pass import DiagnosticReportPass
+from semarc.compiler.passes.expansion_pass import ExpansionPass
+from semarc.compiler.passes.generation_pass import GenerationPass
+from semarc.compiler.passes.ir_pass import IRPass
+from semarc.compiler.passes.lexing_pass import LexingPass
+from semarc.compiler.passes.module_constraint_pass import ModuleConstraintPass
+from semarc.compiler.passes.optimization_pass import OptimizationPass
+from semarc.compiler.passes.parsing_pass import ParsingPass
+from semarc.compiler.passes.profile_pass import ProfilePass
+from semarc.compiler.passes.relationship_pass import RelationshipPass
+from semarc.compiler.passes.stdlib_pass import StdlibPass
+from semarc.compiler.passes.validation_pass import ValidationPass
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -80,7 +80,7 @@ def generated_code_files(output_dir: Path) -> list[Path]:
 
 def generated_file_map(output_dir: Path) -> dict[str, str]:
     return {
-        str(path.relative_to(output_dir)): path.read_text(encoding="utf-8")
+        path.relative_to(output_dir).as_posix(): path.read_text(encoding="utf-8")
         for path in generated_code_files(output_dir)
     }
 
@@ -95,6 +95,11 @@ class GeneratorValidationSuite:
             "generator_manifest.json",
             "public/index.php",
             "routes.php",
+            "bootstrap.php",
+            "bin/migrate.php",
+            "docker/nginx.conf",
+            "tests/run.php",
+            "tests/api_scenario.json",
             "config/database.php",
         ],
         "fastapi": [
@@ -105,7 +110,12 @@ class GeneratorValidationSuite:
             "generator_manifest.json",
             "requirements.txt",
             "main.py",
+            "database.py",
+            "migrate.py",
+            "alembic.ini",
             "config/settings.py",
+            "tests/test_api.py",
+            "tests/api_scenario.json",
         ],
         "nestjs": [
             "README.md",
@@ -116,7 +126,11 @@ class GeneratorValidationSuite:
             "package.json",
             "nest-cli.json",
             "tsconfig.json",
+            "src/main.ts",
             "src/app.module.ts",
+            "src/database/data-source.ts",
+            "test/api.e2e-spec.ts",
+            "test/api_scenario.json",
         ],
     }
 
@@ -124,26 +138,28 @@ class GeneratorValidationSuite:
         "php": [
             "public",
             "tests",
+            "core",
+            "bin",
             "controllers",
             "models",
             "services",
             "repositories",
-            "middleware",
+            "validators",
             "migrations",
             "config",
         ],
         "fastapi": [
             "tests",
             "config",
+            "core",
             "routers",
             "models",
             "schemas",
             "services",
             "repositories",
-            "middleware",
-            "migrations",
+            "migrations/versions",
         ],
-        "nestjs": ["src", "src/modules", "test"],
+        "nestjs": ["src", "src/modules", "src/common", "src/database/migrations", "test"],
     }
 
     def validate(self, context: CompilerContext, target: str) -> None:
@@ -210,5 +226,5 @@ class GeneratorValidationSuite:
             content = path.read_text(encoding="utf-8")
             if content.count("{") != content.count("}"):
                 raise AssertionError(f"Unbalanced braces in {path.relative_to(output_dir)}")
-            if path.relative_to(output_dir).parts[0] == "src" and "export " not in content:
+            if path.relative_to(output_dir).parts[0] == "src" and path.name != "main.ts" and "export " not in content:
                 raise AssertionError(f"Missing TypeScript export in {path.relative_to(output_dir)}")

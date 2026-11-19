@@ -1,282 +1,120 @@
 # Compiler Passes
 
-SEMARC uses explicit compiler passes. Each pass accepts `CompilerContext`, mutates a focused part of compiler state, and leaves unrelated state alone.
-
-## Pass Philosophy
-
-Passes should be:
-
-- isolated
-- deterministic
-- ordered
-- easy to test
-- free of target-specific side effects until generation
-
-Each pass should have one responsibility.
-
-## Compiler Context
-
-`compiler/context.py` stores shared state:
-
-- source path
-- source text
-- tokens
-- AST
-- relationship graph
-- migration plan
-- architecture diagnostics
-- dependency graph
-- architecture plan
-- expanded architecture
-- Architecture IR
-- target profile
-- generated artifacts
-- compiler pass names
+SEMARC uses explicit compiler passes. Each pass accepts `CompilerContext`
+(`semarc/compiler/context.py`), updates a focused part of the compiler state and leaves the rest
+alone. Passes are deterministic, ordered and free of target-specific side effects until
+generation.
 
 ## Pass Order
 
 ```text
 LexingPass
-    |
 ParsingPass
-    |
 ContractPass:AST
-    |
+ProfilePass
+StdlibPass
 ValidationPass
-    |
+ModuleConstraintPass
 RelationshipPass
-    |
 ConstraintPass
-    |
+ArchitectureAnalysisPass
 ExpansionPass
-    |
 IRPass
-    |
 OptimizationPass
-    |
 ContractPass:IR
-    |
 GenerationPass
-    |
 DiagnosticReportPass
-    |
 ContractPass:Generation
 ```
 
+`main.py` and `tests/support.py` run the passes in this order.
+
 ## LexingPass
 
-Responsibility: read source and tokenize it.
-
-Input:
-
-- `context.source_path`
-
-Output:
-
-- `context.source`
-- `context.tokens`
-
-Modification rules:
-
-- must not create AST
-- must not validate semantics
-- must not generate code
+Reads the source file and produces token lines. Keywords are matched case sensitively;
+numbers, paths, types, relation types and HTTP methods get their own token types. It does
+not build AST or validate semantics.
 
 ## ParsingPass
 
-Responsibility: parse tokens into AST.
-
-Input:
-
-- `context.tokens`
-
-Output:
-
-- `context.ast`
-
-Modification rules:
-
-- must not perform architecture expansion
-- must not select target implementation strategy
-
-## ValidationPass
-
-Responsibility: validate semantic correctness.
-
-Input:
-
-- `context.ast`
-
-Output:
-
-- no output on success
-- semantic error on failure
-
-Checks include:
-
-- missing project
-- duplicate models
-- duplicate routes
-- unsupported database/auth/target
-- undefined relationship models
-- duplicate relationships
-- circular ownership relationships
+Builds the semantic AST through `semarc/ast/ast_builder.py`: models with field modifiers, routes
+with optional access, validations with model scope and numeric parameters, relations,
+profiles and packages. Reserved commands (`SERVICE`, `CONFIG`) raise a parser error.
 
 ## ContractPass
 
-Responsibility: enforce internal contracts between compiler layers.
+Checks compiler state between stages: AST structure, required IR keys, model, route and
+repository shapes, target leakage in IR, and generated component metadata.
 
-Modes:
+## ProfilePass and StdlibPass
 
-- `ContractPass:AST`
-- `ContractPass:IR`
-- `ContractPass:Generation`
+Load `semarc/profiles/*.profile` and compose requested profiles with inheritance and cycle
+detection, then discover `semarc/stdlib/**/module.yaml` modules into the module registry.
 
-Input:
+## ValidationPass
 
-- AST, IR, or generated component metadata
+Rejects invalid programs before any architecture is built:
 
-Output:
+- missing project, unsupported database, auth or target (including `--target` overrides)
+- naming rules, duplicate models and fields, declared implicit columns
+- route syntax, duplicate routes and parameters, reserved routes, `PROTECTED` without auth
+- relationship integrity, ownership cycles, fields that collide with foreign keys
+- auth credential field types, `AUTH SESSION`
+- `VALIDATE` targets, rule and type fit, `MIN`/`MAX` bounds, column and bcrypt limits
+- duplicate stdlib module usage; then resolves module dependencies
 
-- no output on success
-- contract error on malformed compiler state
+## ModuleConstraintPass
 
-Checks include:
-
-- AST root structure
-- required IR keys
-- route handler shape
-- repository metadata
-- target-specific leakage markers
-- generated component metadata shape
+Validates `requires` and `conflicts` of resolved stdlib modules (for example
+`payment.razorpay` requires `database.mysql`).
 
 ## RelationshipPass
 
-Responsibility: build relationship graph and migration plan.
+Builds the relationship graph, de-duplicated foreign keys (unique for `HAS_ONE`) and the
+relationship-level migration plan.
 
-Input:
+## ConstraintPass and ArchitectureAnalysisPass
 
-- AST models
-- AST relations
-
-Output:
-
-- `context.relationship_graph`
-- `context.relationship_plan`
-- `context.migration_plan`
-
-## ConstraintPass
-
-Responsibility: run deterministic semantic architecture constraints before expansion.
-
-Input:
-
-- AST
-- relationship plan
-
-Output:
-
-- `context.constraint_result`
-- `context.architecture_report`
-
-Checks include:
-
-- conflicting authentication strategies
-- JWT authentication without rate limiting
-- missing database declarations
-- route-level validation recommendations
-- relationship depth and relationship integrity recommendations
-
-Modification rules:
-
-- must not generate code
-- must not mutate AST semantics
-- must not contain target-specific implementation logic
+Run deterministic diagnostic rules (errors, warnings, recommendations, score) and the
+read-only architecture analysis rules. Diagnostics never change the architecture, but
+diagnostic **errors** block generation.
 
 ## ExpansionPass
 
-Responsibility: select target profile and expand architecture.
+Selects the target profile, runs `ResourcePlanner` and the architecture rule engine, and
+expands the plan.
 
-Input:
-
-- AST
-- target override
-- relationship plan
-
-Output:
-
-- `context.target_profile`
-- `context.architecture_plan`
-- `context.dependency_graph`
-- `context.expanded_architecture`
+`ResourcePlanner` (`semarc/architecture/resource_planner.py`) decides the auth model and
+credentials, final model specs with merged validation rules, references and dependents,
+every route's operation, the default list routes, the auth routes and the access policy.
+The rule engine builds the dependency graph from the same plan.
 
 ## IRPass
 
-Responsibility: build framework-independent Architecture IR.
-
-Input:
-
-- expanded architecture
-- dependency graph
-- relationship graph
-- migration plan
-
-Output:
-
-- `context.ir`
+Builds the language-neutral Architecture IR from the expanded architecture, including
+models, routes with operations and access, auth settings and migration tables, plus
+dependency graph, relationship graph, module and profile metadata.
 
 ## OptimizationPass
 
-Responsibility: deterministic IR cleanup.
-
-Current behavior:
-
-- sort models
-- sort repositories
-- sort relationships
-
-Future behavior may include:
-
-- duplicate component removal
-- dependency simplification
-- unused route removal
+Delegates to `ArchitectureOptimizer` (`semarc/architecture/optimizer.py`): sorts models,
+repositories and relationships, removes duplicate components, and orders migration tables
+topologically by foreign key with a sequence number.
 
 ## GenerationPass
 
-Responsibility: select target generator and write files.
+1. Refuses to continue when diagnostics contain errors.
+2. Resolves the target from `TargetRegistry` and builds the generation contract.
+3. Validates target capabilities and layer wiring.
+4. Prepares the output directory: clears a previous SEMARC output, refuses a foreign
+   non-empty directory unless `--force` is given.
+5. Runs the target generator.
+6. Validates generated artifacts against the contract.
 
-Input:
-
-- `context.target_profile`
-- `context.ir`
-
-Output:
-
-- generated backend files
-- `context.generated_components`
-
-Modification rules:
-
-- this is the only pass that should write generated backend files
-- it must not change semantic meaning
+This is the only pass that writes project files.
 
 ## DiagnosticReportPass
 
-Responsibility: produce the final architecture diagnostics report after IR and generation metadata exist.
-
-Input:
-
-- AST
-- relationship plan
-- dependency graph
-- Architecture IR
-
-Output:
-
-- `output/architecture_report.json`
-- refreshed `context.architecture_report`
-
-Modification rules:
-
-- must not alter generated backend code
-- must not change architecture decisions
+Re-runs diagnostics with IR and dependency graph available and writes
+`architecture_report.json` (score, findings, modules, profiles, statistics, contract
+mapping) into the output directory.

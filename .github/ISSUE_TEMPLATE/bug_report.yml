@@ -1,0 +1,37 @@
+name: Bug report
+description: SEMARC rejected a valid specification, generated wrong code, or a generated project misbehaves.
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: SEMARC version
+      description: Output of `semarc version`.
+    validations:
+      required: true
+  - type: dropdown
+    id: target
+    attributes:
+      label: Target
+      options: [PHP, FastAPI, NestJS, Laravel, Express, Django, Not target specific]
+    validations:
+      required: true
+  - type: dropdown
+    id: database
+    attributes:
+      label: Database
+      options: [MySQL, PostgreSQL, SQLite, Not database specific]
+  - type: textarea
+    id: spec
+    attributes:
+      label: Minimal specification
+      description: The smallest `.sem` file that shows the problem.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce, expected and actual behaviour
+    validations:
+      required: true
