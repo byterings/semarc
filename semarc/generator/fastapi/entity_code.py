@@ -1,26 +1,45 @@
 """Renders SQLAlchemy models, Pydantic schemas, repositories and services from IR."""
 from semarc.generator.utils.inflector import snake_case
-from semarc.generator.utils.resource_views import field_defaults, field_rules, owner_reference, secret_fields, unique_columns, writable_fields
+from semarc.generator.utils.resource_views import (
+    field_defaults,
+    field_rules,
+    owner_reference,
+    replace_values,
+    secret_fields,
+    unique_columns,
+    writable_fields,
+)
 
 PYTHON_TYPES = {
     "STRING": "str",
     "TEXT": "str",
     "INTEGER": "int",
     "FLOAT": "float",
+    "DECIMAL": "Decimal",
     "BOOLEAN": "bool",
     "DATE": "date",
     "DATETIME": "datetime",
 }
-INPUT_TYPES = {"DATE": "IsoDate", "DATETIME": "IsoDateTime"}
+INPUT_TYPES = {"DATE": "IsoDate", "DATETIME": "IsoDateTime", "DECIMAL": "DecimalInput"}
 COLUMN_TYPES = {
     "STRING": "String(255)",
     "TEXT": "Text",
     "INTEGER": "Integer",
     "FLOAT": "Float",
+    "DECIMAL": "Numeric(12, 2)",
     "BOOLEAN": "Boolean",
     "DATE": "Date",
     "DATETIME": "DateTime",
 }
+
+
+def python_literal(field_type: str, value) -> str:
+    """A field value from the IR as Python source (DATE and DECIMAL become typed values)."""
+    if field_type == "DATE":
+        return f"date.fromisoformat({value!r})"
+    if field_type == "DECIMAL":
+        return f"Decimal({value!r})"
+    return repr(value)
 
 
 def module_name(model_name: str) -> str:
@@ -33,6 +52,7 @@ def model_code(model: dict) -> str:
         sql_types = sorted(set(sql_types) | {"ForeignKey"})
     lines = [
         "from datetime import date, datetime" if any(model_field["type"] == "DATE" for model_field in model["fields"]) else "from datetime import datetime",
+        *(["from decimal import Decimal"] if any(model_field["type"] == "DECIMAL" for model_field in model["fields"]) else []),
         "",
         f"from sqlalchemy import {', '.join(sql_types)}",
         "from sqlalchemy.orm import Mapped, mapped_column",
@@ -58,8 +78,10 @@ def model_code(model: dict) -> str:
         options = [COLUMN_TYPES[model_field["type"]], f"nullable={not model_field['required']}"]
         if model_field["unique"]:
             options.append("unique=True")
+        if model_field.get("index"):
+            options.append("index=True")
         if model_field.get("default") is not None:
-            options.append(f"default={model_field['default']!r}")
+            options.append(f"default={python_literal(model_field['type'], model_field['default'])}")
         lines.append(f"    {model_field['name']}: Mapped[{annotation}] = mapped_column({', '.join(options)})")
     for reference in model["references"]:
         options = ["Integer", f'ForeignKey("{reference["table"]}.id")', "nullable=False"]
@@ -84,17 +106,22 @@ def schema_code(model: dict) -> str:
     required += [reference["column"] for reference in model["references"] if not reference["owner"]]
 
     datetimes = [field for field, rule in rules.items() if rule["type"] == "DATETIME"]
+    defaulted = [field for field, rule in rules.items() if rule["default"] is not None and not rule["nullable"]]
     date_imports = ["date"] if any(rule["type"] == "DATE" for rule in rules.values()) else []
 
     lines = []
     if date_imports:
-        lines.extend([f"from datetime import {', '.join(date_imports)}", ""])
+        lines.extend([f"from datetime import {', '.join(date_imports)}"])
+    if any(rule["in"] for rule in rules.values()):
+        lines.append("from typing import Literal")
+    if lines:
+        lines.append("")
     lines.extend(
         [
             "PYDANTIC_IMPORTS",
             "",
             "from schemas.base import (",
-            *[f"    {name}," for name in _schema_imports(rules, not_empty, emails, required, datetimes)],
+            *[f"    {name}," for name in _schema_imports(rules, not_empty, emails, required + defaulted, datetimes)],
             ")",
             "",
             "",
@@ -102,15 +129,15 @@ def schema_code(model: dict) -> str:
         ]
     )
     lines.extend(_input_fields(model, rules, optional=False))
-    lines.extend(_validators(not_empty, emails, [], datetimes))
+    lines.extend(_validators(not_empty, emails, defaulted, datetimes))
     lines.extend(["", "", f"class {name}Update(InputSchema):"])
     lines.extend(_input_fields(model, rules, optional=True))
-    lines.extend(_validators(not_empty, emails, required, datetimes))
+    lines.extend(_validators(not_empty, emails, [field for field, rule in rules.items() if not rule["nullable"]], datetimes))
     lines.extend(["", "", f"class {name}Read(OutputSchema):", "    id: int"])
     for model_field in model["fields"]:
         if model_field.get("secret", False):
             continue
-        base = "UtcDateTime" if model_field["type"] == "DATETIME" else PYTHON_TYPES[model_field["type"]]
+        base = {"DATETIME": "UtcDateTime", "DECIMAL": "DecimalText"}.get(model_field["type"], PYTHON_TYPES[model_field["type"]])
         annotation = base + ("" if model_field["required"] else " | None")
         lines.append(f"    {model_field['name']}: {annotation}")
     lines.extend(f"    {reference['column']}: int" for reference in model["references"])
@@ -125,6 +152,7 @@ def _schema_imports(rules: dict, not_empty: list, emails: list, required: list, 
     names = {"InputSchema", "OutputSchema", "UtcDateTime"}
     names |= {"IsoDate"} if "DATE" in types else set()
     names |= {"IsoDateTime", "utc_naive"} if datetimes else set()
+    names |= {"DecimalInput", "DecimalText"} if "DECIMAL" in types else set()
     names |= {"not_empty"} if not_empty else set()
     names |= {"valid_email"} if emails else set()
     names |= {"not_null"} if required else set()
@@ -135,16 +163,20 @@ def _input_fields(model: dict, rules: dict, optional: bool) -> list[str]:
     lines = []
     for field_name, rule in rules.items():
         annotation = INPUT_TYPES.get(rule["type"], PYTHON_TYPES[rule["type"]])
+        if rule["in"]:
+            annotation = f"Literal[{', '.join(repr(value) for value in rule['in'])}]"
         options = []
         if optional or not rule["required"]:
             annotation += " | None"
             options.append("default=None")
-        if rule["type"] in {"STRING", "TEXT"}:
+        if rule["in"]:
+            pass
+        elif rule["type"] in {"STRING", "TEXT"}:
             if rule["min"] is not None:
                 options.append(f"min_length={rule['min']}")
             if rule["max"] is not None:
                 options.append(f"max_length={rule['max']}")
-        elif rule["type"] in {"INTEGER", "FLOAT"}:
+        elif rule["type"] in {"INTEGER", "FLOAT", "DECIMAL"}:
             if rule["min"] is not None:
                 options.append(f"ge={rule['min']}")
             if rule["max"] is not None:
@@ -197,7 +229,14 @@ def service_code(model: dict, ir: dict) -> str:
     secrets = secret_fields(model)
     imported_models = sorted({name} | {reference["model"] for reference in model["references"]} | {dependent["model"] for dependent in model["dependents"]})
 
-    lines = ["from sqlalchemy.orm import Session", ""]
+    default_types = {model_field["type"] for model_field in model["fields"] if model_field.get("default") is not None}
+    lines = [
+        *(["from datetime import date"] if "DATE" in default_types else []),
+        *(["from decimal import Decimal"] if "DECIMAL" in default_types else []),
+        *([""] if default_types & {"DATE", "DECIMAL"} else []),
+        "from sqlalchemy.orm import Session",
+        "",
+    ]
     lines.extend(f"from models.{module_name(other)} import {other}" for other in imported_models)
     lines.extend(
         [
@@ -237,7 +276,14 @@ def service_code(model: dict, ir: dict) -> str:
         lines.append(f"    unique = ({', '.join(repr(column) for column in unique)},)")
     defaults = field_defaults(model)
     if defaults:
-        lines.append(f"    defaults = {defaults!r}")
+        types = {model_field["name"]: model_field["type"] for model_field in model["fields"]}
+        rendered = ", ".join(f"{name!r}: {python_literal(types[name], value)}" for name, value in defaults.items())
+        lines.append(f"    defaults = {{{rendered}}}")
+    replaced = replace_values(model)
+    if replaced:
+        types = {model_field["name"]: model_field["type"] for model_field in model["fields"]}
+        rendered = ", ".join(f"{name!r}: {'None' if value is None else python_literal(types[name], value)}" for name, value in replaced.items())
+        lines.append(f"    replace_values = {{{rendered}}}")
     lines.append(f"    filters = {model['query']['filters']!r}")
     lines.append(f"    sort_fields = ({', '.join(repr(field) for field in model['query']['sort'])},)")
 

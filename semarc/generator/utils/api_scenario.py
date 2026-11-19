@@ -365,6 +365,13 @@ class ApiScenarioBuilder:
             self._call(create, f"create {label} rejects empty body", 422, path=self._path(create), body={})
 
         equals = {visible["name"]: body[visible["name"]]} if visible else {}
+        equals.update(
+            {
+                model_field["name"]: model_field["default"]
+                for model_field in model["fields"]
+                if model_field.get("default") is not None and model_field.get("writable", True) and model_field["name"] not in body
+            }
+        )
         owner = owner_reference(model)
         if protected and owner and self.has_token:
             equals[owner["column"]] = {"$ref": "user_id"}
@@ -385,6 +392,17 @@ class ApiScenarioBuilder:
 
         if unique_columns(model):
             self._call(create, f"create {label} rejects duplicate", 409, path=self._path(create), body=body)
+        for model_field in model["fields"]:
+            allowed = model_field.get("rules", {}).get("in")
+            if allowed and model_field.get("writable", True):
+                outside = "not-an-allowed-value" if model_field["type"] == "STRING" else max(allowed) + 1000
+                self._call(
+                    create,
+                    f"create {label} rejects {model_field['name']} outside its allowed values",
+                    422,
+                    path=self._path(create),
+                    body={**body, model_field["name"]: outside},
+                )
 
         if "read" in routes:
             read = routes["read"]
@@ -468,6 +486,25 @@ class ApiScenarioBuilder:
                 path=self._path(route, var),
                 body={candidate["name"]: value},
                 equals={f"data.{candidate['name']}": value},
+            )
+
+        decimal = next((model_field for model_field in model["fields"] if model_field["type"] == "DECIMAL"), None)
+        if decimal is not None:
+            number = (decimal["rules"].get("min") or 0) + 2.5
+            self._call(
+                route,
+                f"update {label} accepts a decimal number",
+                200,
+                path=self._path(route, var),
+                body={decimal["name"]: number},
+                equals={f"data.{decimal['name']}": f"{number:.2f}"},
+            )
+            self._call(
+                route,
+                f"update {label} rejects a decimal with three decimals",
+                422,
+                path=self._path(route, var),
+                body={decimal["name"]: "1.234"},
             )
 
         invalid = next((model_field for model_field in model["fields"] if not model_field.get("secret", False)), None)
@@ -697,7 +734,9 @@ class ApiScenarioBuilder:
         variant = self._next_variant(model["name"])
         body = {}
         for model_field in model["fields"]:
-            if model_field["required"] or model_field.get("secret", False) or model_field["rules"].get("email"):
+            # fields with a DEFAULT are left out so the API fills them in
+            needed = model_field["required"] and (model_field.get("default") is None or not model_field.get("writable", True))
+            if needed or model_field.get("secret", False) or model_field["rules"].get("email"):
                 body[model_field["name"]] = self._sample(model_field, variant)
         return body
 
@@ -716,6 +755,11 @@ class ApiScenarioBuilder:
         rules = model_field.get("rules", {})
         field_type = model_field["type"]
         name = model_field["name"]
+        if rules.get("in"):
+            return rules["in"][variant % len(rules["in"])]
+        if field_type == "DECIMAL":
+            value = (rules.get("min") if rules.get("min") is not None else 1) + variant + 0.25
+            return f"{min(value, rules['max']) if rules.get('max') is not None else value:.2f}"
         if field_type in {"STRING", "TEXT"}:
             if rules.get("email"):
                 value = f"{name.replace('_', '.')}{variant}@example.com"

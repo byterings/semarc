@@ -8,9 +8,9 @@ final class User
 
     /** Declared fields and their validation rules. */
     public const FIELDS = [
-        'email' => ['type' => 'STRING', 'required' => true, 'not_empty' => false, 'email' => false, 'min' => null, 'max' => 255],
-        'name' => ['type' => 'STRING', 'required' => true, 'not_empty' => false, 'email' => false, 'min' => null, 'max' => 255],
-        'password' => ['type' => 'STRING', 'required' => true, 'not_empty' => false, 'email' => false, 'min' => null, 'max' => 72],
+        'email' => ['type' => 'STRING', 'required' => true, 'nullable' => false, 'not_empty' => false, 'email' => false, 'min' => null, 'max' => 255, 'in' => null],
+        'name' => ['type' => 'STRING', 'required' => true, 'nullable' => false, 'not_empty' => false, 'email' => false, 'min' => null, 'max' => 255, 'in' => null],
+        'password' => ['type' => 'STRING', 'required' => true, 'nullable' => false, 'not_empty' => false, 'email' => false, 'min' => null, 'max' => 72, 'in' => null],
     ];
 
     /** Foreign key columns and the model they reference. */
@@ -25,6 +25,9 @@ final class User
 
     /** Values set on create when the request does not (or may not) provide them. */
     public const DEFAULTS = [];
+
+    /** What PUT stores for fields the request leaves out: the DEFAULT, or null for OPTIONAL fields. */
+    public const REPLACE_VALUES = [];
 
     /** Query parameters list routes accept as equality filters, with their types. */
     public const FILTERS = ['id' => 'INTEGER', 'email' => 'STRING', 'name' => 'STRING'];

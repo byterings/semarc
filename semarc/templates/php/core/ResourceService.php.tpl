@@ -104,6 +104,10 @@ abstract class ResourceService
         }
         $owner = $this->ownerColumn($ownerId);
         $data = $this->validator->validate($input, ($this->model)::inputRules($owner), $partial);
+        if (!$partial) {
+            // PUT replaces the record: left-out fields get their DEFAULT, OPTIONAL ones null
+            $data += ($this->model)::REPLACE_VALUES;
+        }
         if ($data === []) {
             return $this->get($id);
         }
@@ -194,6 +198,7 @@ abstract class ResourceService
         return match ($type) {
             'INTEGER' => preg_match('/^-?\d+$/', $raw) === 1 ? (int) $raw : null,
             'FLOAT' => is_numeric($raw) ? (float) $raw : null,
+            'DECIMAL' => Validator::decimal($raw),
             'BOOLEAN' => match (strtolower($raw)) {
                 'true', '1' => true,
                 'false', '0' => false,
@@ -209,6 +214,7 @@ abstract class ResourceService
         return match ($type) {
             'INTEGER' => 'an integer',
             'FLOAT' => 'a number',
+            'DECIMAL' => 'a decimal number',
             'BOOLEAN' => 'true or false',
             'DATE' => 'a date (YYYY-MM-DD)',
             default => 'text',

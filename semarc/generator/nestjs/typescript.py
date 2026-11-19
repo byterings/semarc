@@ -6,6 +6,7 @@ TS_TYPES = {
     "TEXT": "string",
     "INTEGER": "number",
     "FLOAT": "number",
+    "DECIMAL": "string",
     "BOOLEAN": "boolean",
     "DATE": "string",
     "DATETIME": "Date",

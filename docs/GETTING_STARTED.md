@@ -43,10 +43,11 @@ ROUTE POST /products
 ROUTE GET /orders PROTECTED
 ```
 
-- `MODEL` blocks declare tables and fields (`STRING`, `TEXT`, `INTEGER`, `FLOAT`, `BOOLEAN`,
-  `DATE`, `DATETIME`), with `UNIQUE` and `OPTIONAL` modifiers.
+- `MODEL` blocks declare tables and fields (`STRING`, `TEXT`, `INTEGER`, `FLOAT`, `DECIMAL`,
+  `BOOLEAN`, `DATE`, `DATETIME`), with `UNIQUE`, `OPTIONAL`, `INDEX` and `DEFAULT value`
+  modifiers.
 - `RELATION` adds foreign keys; `User HAS_MANY Order` also makes each order owned by a user.
-- `VALIDATE` adds input rules (`REQUIRED`, `EMAIL`, `MIN n`, `MAX n`).
+- `VALIDATE` adds input rules (`REQUIRED`, `EMAIL`, `MIN n`, `MAX n`, `IN a b c`).
 - `ROUTE` declares endpoints. The shape decides the behaviour: `GET /products` lists,
   `GET /products/{id}` reads, `PATCH /products/{id}` updates, and so on.
 - `AUTH JWT` issues bearer tokens; `AUTH SESSION` uses cookie sessions for browser front ends.

@@ -906,6 +906,8 @@ def migration_code(table: dict) -> str:
         options = [f"name: {ts_string(column['name'])}", f"type: columnType('{column['type']}') as string"]
         if column["type"] == "STRING":
             options.append("length: '255'")
+        if column["type"] == "DECIMAL":
+            options.extend(["precision: 12", "scale: 2"])
         options.append(f"isNullable: {'false' if column['required'] else 'true'}")
         if column["unique"]:
             options.append("isUnique: true")
@@ -928,6 +930,10 @@ def migration_code(table: dict) -> str:
         for foreign_key in table["foreign_keys"]
     ]
     indices = [
+        f"        {{ columnNames: [{ts_string(column['name'])}] }},"
+        for column in table["fields"]
+        if column.get("index")
+    ] + [
         f"        {{ columnNames: [{ts_string(foreign_key['column'])}] }},"
         for foreign_key in table["foreign_keys"]
         if not foreign_key.get("unique")

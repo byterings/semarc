@@ -29,7 +29,7 @@ final class Validator
                 continue;
             }
             if ($value === null) {
-                if ($rules['required']) {
+                if (!$rules['nullable']) {
                     $errors[$name][] = "{$name} is required";
                 } else {
                     $clean[$name] = null;
@@ -51,6 +51,7 @@ final class Validator
 
             $clean[$name] = match ($rules['type']) {
                 'FLOAT' => (float) $value,
+                'DECIMAL' => self::decimal($value),
                 'DATETIME' => self::utc((string) $value),
                 default => $value,
             };
@@ -69,11 +70,28 @@ final class Validator
             'STRING', 'TEXT' => is_string($value) ? null : "{$name} must be a string",
             'INTEGER' => is_int($value) ? null : "{$name} must be an integer",
             'FLOAT' => is_int($value) || is_float($value) ? null : "{$name} must be a number",
+            'DECIMAL' => self::decimal($value) !== null ? null : "{$name} must be a decimal with at most 10 digits before and 2 after the point",
             'BOOLEAN' => is_bool($value) ? null : "{$name} must be a boolean",
             'DATE' => self::isDate($value) ? null : "{$name} must be a date (YYYY-MM-DD)",
             'DATETIME' => self::isDateTime($value) ? null : "{$name} must be an ISO 8601 date and time",
             default => null,
         };
+    }
+
+    /** A JSON number or numeric string with up to 10 integer digits and 2 decimals, as "123.40". */
+    public static function decimal(mixed $value): ?string
+    {
+        if (is_int($value) || is_float($value)) {
+            if (!is_finite((float) $value) || round((float) $value, 2) != $value) {
+                return null;
+            }
+            $value = number_format((float) $value, 2, '.', '');
+        }
+        if (!is_string($value) || preg_match('/^(-?)(\d{1,10})(?:\.(\d{1,2}))?$/', $value, $parts) !== 1) {
+            return null;
+        }
+
+        return $parts[1] . $parts[2] . '.' . str_pad($parts[3] ?? '', 2, '0');
     }
 
     public static function isDate(mixed $value): bool
@@ -112,6 +130,12 @@ final class Validator
     private function ruleErrors(string $name, mixed $value, array $rules): array
     {
         $errors = [];
+        if ($rules['in'] !== null && !in_array($value, $rules['in'], true)) {
+            $errors[] = "{$name} must be one of: " . implode(', ', $rules['in']);
+        }
+        if ($rules['type'] === 'DECIMAL') {
+            $value = (float) self::decimal($value);
+        }
         if (is_string($value)) {
             $length = mb_strlen($value);
             if ($rules['not_empty'] && trim($value) === '') {
@@ -126,7 +150,8 @@ final class Validator
             if ($rules['max'] !== null && $length > $rules['max']) {
                 $errors[] = "{$name} must be at most {$rules['max']} characters";
             }
-        } elseif (is_int($value) || is_float($value)) {
+        }
+        if (is_int($value) || is_float($value)) {
             if ($rules['min'] !== null && $value < $rules['min']) {
                 $errors[] = "{$name} must be at least {$rules['min']}";
             }

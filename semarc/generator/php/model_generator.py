@@ -4,6 +4,7 @@ from semarc.generator.utils.resource_views import (
     field_defaults,
     field_rules,
     output_fields,
+    replace_values,
     secret_fields,
     unique_columns,
     writable_fields,
@@ -15,6 +16,7 @@ CASTS = {
     "TEXT": "string",
     "INTEGER": "int",
     "FLOAT": "float",
+    "DECIMAL": "decimal",
     "BOOLEAN": "bool",
     "DATE": "date",
     "DATETIME": "timestamp",
@@ -37,7 +39,7 @@ class ModelGenerator:
 
     def _model(self, model: dict) -> str:
         fields = {
-            model_field["name"]: {key: value for key, value in field_rules(model_field).items() if key not in {"unique", "secret"}}
+            model_field["name"]: {key: value for key, value in field_rules(model_field).items() if key not in {"unique", "secret", "default"}}
             for model_field in writable_fields(model)
         }
         references = {
@@ -81,6 +83,9 @@ class ModelGenerator:
                 "",
                 "    /** Values set on create when the request does not (or may not) provide them. */",
                 f"    public const DEFAULTS = {php_literal(field_defaults(model))};",
+                "",
+                "    /** What PUT stores for fields the request leaves out: the DEFAULT, or null for OPTIONAL fields. */",
+                f"    public const REPLACE_VALUES = {php_literal(replace_values(model))};",
                 "",
                 "    /** Query parameters list routes accept as equality filters, with their types. */",
                 f"    public const FILTERS = {php_literal(model['query']['filters'])};",

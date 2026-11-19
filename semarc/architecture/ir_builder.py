@@ -107,6 +107,7 @@ class ArchitectureIRBuilder:
                     "field": validation.field_name,
                     "rules": validation.rules,
                     "parameters": dict(validation.parameters),
+                    **({"values": list(validation.values)} if validation.values else {}),
                 }
             )
 
@@ -121,6 +122,7 @@ class ArchitectureIRBuilder:
                             "type": model_field["type"],
                             "required": model_field["required"],
                             "unique": model_field["unique"],
+                            "index": model_field.get("index", False),
                         }
                         for model_field in model["fields"]
                     ],

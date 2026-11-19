@@ -1,5 +1,6 @@
 import re
 from datetime import UTC, date, datetime
+from decimal import Decimal
 from typing import Annotated, Generic, TypeVar
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, PlainSerializer
@@ -33,6 +34,28 @@ IsoDate = Annotated[date, BeforeValidator(_iso_text), Field(strict=False)]
 
 IsoDateTime = Annotated[datetime, BeforeValidator(_iso_text), Field(strict=False)]
 """Request date-time: an ISO 8601 string; offsets are converted to UTC."""
+
+DECIMAL_PATTERN = re.compile(r"^-?\d{1,10}(\.\d{1,2})?$")
+
+
+def _decimal_input(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        raise ValueError("must be a decimal number")
+    if isinstance(value, float):
+        if value != value or round(value, 2) != value:
+            raise ValueError("must have at most 2 decimals")
+        value = f"{value:.2f}"
+    text = str(value)
+    if not DECIMAL_PATTERN.match(text):
+        raise ValueError("must be a decimal with at most 10 digits before and 2 after the point")
+    return Decimal(text)
+
+
+DecimalInput = Annotated[Decimal, BeforeValidator(_decimal_input), Field(strict=False)]
+"""Request decimal: a JSON number or numeric string with up to 2 decimals."""
+
+DecimalText = Annotated[Decimal, PlainSerializer(lambda value: f"{value:.2f}", return_type=str)]
+"""A DECIMAL rendered as a string with exactly 2 decimals."""
 
 
 class OutputSchema(BaseModel):

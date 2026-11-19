@@ -1,9 +1,29 @@
 """Renders TypeORM entities, class-validator DTOs, repositories, services and modules."""
 from semarc.generator.nestjs.typescript import TS_TYPES, Imports, file_base, folder, ts_string
-from semarc.generator.utils.resource_views import field_defaults, field_rules, output_fields, owner_reference, secret_fields, unique_columns, writable_fields
+from semarc.generator.utils.resource_views import (
+    field_defaults,
+    field_rules,
+    output_fields,
+    owner_reference,
+    replace_values,
+    secret_fields,
+    unique_columns,
+    writable_fields,
+)
 
 DATE_PATTERN = r"/^\d{4}-\d{2}-\d{2}$/"
 DATETIME_PATTERN = r"/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?$/"
+
+
+def ts_value(value) -> str:
+    """A field value from the IR as a TypeScript literal."""
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, str):
+        return ts_string(value)
+    return str(value)
 
 
 def entity_code(model: dict, reserved: set[str]) -> str:
@@ -19,12 +39,18 @@ def entity_code(model: dict, reserved: set[str]) -> str:
         options = [f"type: columnType('{model_field['type']}')"]
         if model_field["type"] == "STRING":
             options.append("length: 255")
+        if model_field["type"] == "DECIMAL":
+            options.extend(["precision: 12", "scale: 2", "transformer: decimalText"])
+            imports.use("../../database/column-types", "decimalText")
         if not model_field["required"]:
             options.append("nullable: true")
         if model_field["unique"]:
             options.append("unique: true")
         annotation = TS_TYPES[model_field["type"]] + ("" if model_field["required"] else " | null")
-        body.extend([f"  @{column}({{ {', '.join(options)} }})", f"  {model_field['name']}!: {annotation};", ""])
+        decorators = [f"  @{column}({{ {', '.join(options)} }})"]
+        if model_field.get("index"):
+            decorators.insert(0, f"  @{imports.use('typeorm', 'Index')}()")
+        body.extend([*decorators, f"  {model_field['name']}!: {annotation};", ""])
     for reference in model["references"]:
         options = ["type: columnType('INTEGER')"]
         if reference["unique"]:
@@ -56,11 +82,13 @@ def dto_code(model: dict, reserved: set[str], partial: bool) -> str:
 
     for model_field in writable_fields(model):
         rules = field_rules(model_field)
-        decorators = _presence(imports, name, model_field["name"], rules["required"], partial)
+        decorators = _presence(imports, name, model_field["name"], rules["required"], partial, rules["nullable"])
         decorators.extend(_type_decorators(imports, model_field["name"], rules))
         optional = partial or not rules["required"]
         base = "string" if rules["type"] == "DATETIME" else TS_TYPES[rules["type"]]
-        annotation = base + (" | null" if not rules["required"] else "")
+        if rules["type"] == "DECIMAL":
+            base = "string | number"
+        annotation = base + (" | null" if rules["nullable"] else "")
         lines.extend(decorators + [f"  {model_field['name']}{'?' if optional else '!'}: {annotation};", ""])
 
     for reference in model["references"]:
@@ -78,10 +106,12 @@ def dto_code(model: dict, reserved: set[str], partial: bool) -> str:
     return "\n".join(imports.render() + [""] + lines)
 
 
-def _presence(imports: Imports, dto: str, field_name: str, required: bool, partial: bool) -> list[str]:
+def _presence(imports: Imports, dto: str, field_name: str, required: bool, partial: bool, nullable: bool | None = None) -> list[str]:
+    """IsDefined when required; null rejected (ValidateIf) when the column is not nullable; else IsOptional."""
+    nullable = (not required) if nullable is None else nullable
     if required and not partial:
         return [f"  @{imports.use('class-validator', 'IsDefined')}()"]
-    if required and partial:
+    if not nullable:
         validate_if = imports.use("class-validator", "ValidateIf")
         return [f"  @{validate_if}((dto: {dto}) => dto.{field_name} !== undefined)"]
     return [f"  @{imports.use('class-validator', 'IsOptional')}()"]
@@ -90,6 +120,16 @@ def _presence(imports: Imports, dto: str, field_name: str, required: bool, parti
 def _type_decorators(imports: Imports, field_name: str, rules: dict) -> list[str]:
     decorators = []
     field_type = rules["type"]
+    if rules["in"]:
+        allowed = ", ".join(ts_string(value) if isinstance(value, str) else str(value) for value in rules["in"])
+        listed = ", ".join(str(value) for value in rules["in"])
+        decorators.append(f"  @{imports.use('class-validator', 'IsIn')}([{allowed}], {{ message: '{field_name} must be one of: {listed}' }})")
+        return decorators
+    if field_type == "DECIMAL":
+        minimum = "null" if rules["min"] is None else rules["min"]
+        maximum = "null" if rules["max"] is None else rules["max"]
+        decorators.append(f"  @{imports.use('../../../common/validation', 'IsDecimalValue')}({minimum}, {maximum})")
+        return decorators
     if field_type in {"STRING", "TEXT"}:
         decorators.append(f"  @{imports.use('class-validator', 'IsString')}()")
         if rules["not_empty"]:
@@ -176,10 +216,17 @@ def service_code(model: dict, reserved: set[str], ir: dict | None = None) -> str
     datetimes = [model_field["name"] for model_field in model["fields"] if model_field["type"] == "DATETIME"]
     if datetimes:
         lines.append(f"  protected readonly dateTimes = [{', '.join(ts_string(field) for field in datetimes)}];")
+    decimals = [model_field["name"] for model_field in model["fields"] if model_field["type"] == "DECIMAL"]
+    if decimals:
+        lines.append(f"  protected readonly decimals = [{', '.join(ts_string(field) for field in decimals)}];")
     defaults = field_defaults(model)
     if defaults:
-        entries = ", ".join(f"{name}: {ts_string(value) if isinstance(value, str) else str(value).lower()}" for name, value in defaults.items())
+        entries = ", ".join(f"{name}: {ts_value(value)}" for name, value in defaults.items())
         lines.append(f"  protected readonly defaults = {{ {entries} }};")
+    replaced = replace_values(model)
+    if replaced:
+        entries = ", ".join(f"{name}: {ts_value(value)}" for name, value in replaced.items())
+        lines.append(f"  protected readonly replaceValues = {{ {entries} }};")
     filters = ", ".join(f"{name}: {ts_string(field_type)}" for name, field_type in model["query"]["filters"].items())
     lines.append(f"  protected readonly filters = {{ {filters} }};")
     lines.append(f"  protected readonly sortFields = [{', '.join(ts_string(field) for field in model['query']['sort'])}];")

@@ -12,6 +12,7 @@ from semarc.architecture.rules.auth_rules import (
     OAUTH_PROVIDERS,
     REFRESH_ROUTE,
 )
+from semarc.architecture.rules.field_values import parse_value
 from semarc.generator.utils.inflector import snake_case
 from semarc.generator.utils.resource_views import SECRET_MAX_LENGTH, STRING_MAX_LENGTH
 
@@ -29,7 +30,8 @@ ROLES_MODULE = "auth.roles"
 AUTH_JWT_MODULES = {ROLES_MODULE, "auth.password_reset", "auth.email_verification"}
 RESERVED_ROUTES = {("GET", "/"), ("GET", "/health"), ("GET", "/routes"), ("GET", "/openapi.json"), ("GET", "/docs")}
 TEXT_TYPES = {"STRING", "TEXT"}
-NUMERIC_TYPES = {"INTEGER", "FLOAT"}
+NUMERIC_TYPES = {"INTEGER", "FLOAT", "DECIMAL"}
+IN_TYPES = {"STRING", "INTEGER"}
 
 
 class SemanticValidationError(Exception):
@@ -84,6 +86,7 @@ class SemanticValidator:
         self._validate_foreign_key_fields(architecture, errors)
         self._validate_auth(architecture, errors)
         self._validate_validation_rules(architecture, errors)
+        self._validate_defaults_in_choices(architecture, errors)
         self._validate_used_modules(architecture, errors)
 
         if errors:
@@ -204,6 +207,27 @@ class SemanticValidator:
                     errors.append(
                         self._error(f"Duplicate field modifier on {model.name}.{model_field.name}", model_field)
                     )
+                self._validate_field_options(model, model_field, errors)
+
+    def _validate_field_options(self, model, model_field, errors: list[str]) -> None:
+        label = f"{model.name}.{model_field.name}"
+        modifiers = set(model_field.modifiers)
+        if "INDEX" in modifiers and "UNIQUE" in modifiers:
+            errors.append(self._error(f"{label} is UNIQUE, which already creates an index; remove INDEX", model_field))
+        if "INDEX" in modifiers and model_field.field_type == "TEXT":
+            errors.append(self._error(f"INDEX is not supported on TEXT fields ({label}); use STRING", model_field))
+        if model_field.default is None:
+            return
+        if "UNIQUE" in modifiers:
+            errors.append(self._error(f"DEFAULT cannot be combined with UNIQUE ({label})", model_field))
+        if model.name == AUTH_MODEL and model_field.name in {AUTH_IDENTITY_FIELD, AUTH_SECRET_FIELD}:
+            errors.append(self._error(f"{label} is a credential and cannot have a DEFAULT", model_field))
+        if model_field.field_type == "DATETIME":
+            errors.append(self._error(f"DEFAULT is not supported on DATETIME fields ({label})", model_field))
+            return
+        _, problem = parse_value(model_field.field_type, model_field.default)
+        if problem:
+            errors.append(self._error(f"DEFAULT {model_field.default} for {label} must be {problem}", model_field))
 
     def _validate_route_definitions(self, architecture: ArchitectureNode, errors: list[str]) -> None:
         for route in architecture.routes:
@@ -409,6 +433,36 @@ class SemanticValidator:
                 errors.append(self._error(f"{rule} validation requires a text or numeric field: {owner}", validation))
             if rule == "REQUIRED" and "OPTIONAL" in modifiers:
                 errors.append(self._error(f"REQUIRED validation conflicts with OPTIONAL field: {owner}", validation))
+            if rule == "IN":
+                self._validate_in_values(validation, owner, field_type, errors)
+
+    def _validate_defaults_in_choices(self, architecture: ArchitectureNode, errors: list[str]) -> None:
+        for validation in architecture.validations:
+            if "IN" not in validation.rules:
+                continue
+            for model in architecture.models:
+                if validation.model_name not in {None, model.name}:
+                    continue
+                for model_field in model.fields:
+                    if model_field.name == validation.field_name and model_field.default is not None:
+                        if model_field.default not in validation.values:
+                            errors.append(
+                                self._error(
+                                    f"DEFAULT {model_field.default} for {model.name}.{model_field.name} is not one of the IN values",
+                                    model_field,
+                                )
+                            )
+
+    def _validate_in_values(self, validation, owner: str, field_type: str, errors: list[str]) -> None:
+        if field_type not in IN_TYPES:
+            errors.append(self._error(f"IN validation requires a STRING or INTEGER field: {owner}", validation))
+            return
+        if len(set(validation.values)) != len(validation.values):
+            errors.append(self._error(f"Duplicate value in IN for {owner}", validation))
+        for value in validation.values:
+            _, problem = parse_value(field_type, value)
+            if problem:
+                errors.append(self._error(f"IN value {value} for {owner} must be {problem}", validation))
 
     def _validate_used_modules(self, architecture: ArchitectureNode, errors: list[str]) -> None:
         if self.module_registry is None:

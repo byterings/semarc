@@ -237,6 +237,13 @@ an owner:
 
 ## Requests and validation
 
+- `PUT` replaces a record: required fields must be sent, left-out `OPTIONAL` fields become
+  `null` and left-out fields with a `DEFAULT` get the default. `PATCH` changes only the fields
+  it sends. Fields managed by the API (such as `role`) are never changed by either.
+- `DECIMAL` values are returned as strings with two decimals (`"19.90"`) on every target and
+  database. Requests may send a number or a string with at most two decimals.
+- Values outside a `VALIDATE ... IN` list get 422.
+
 - Bodies must be JSON objects. Malformed JSON returns 400. Unknown fields are ignored.
 - Types are strict: `STRING`/`TEXT` need JSON strings, `INTEGER` an integer, `FLOAT` a
   number, `BOOLEAN` `true`/`false`, `DATE` a `YYYY-MM-DD` string and `DATETIME` an ISO 8601

@@ -21,6 +21,8 @@ language; such changes are listed under **Changed**.
 - Refresh tokens (rotating, hashed, `JWT_REFRESH_TTL`), `POST /token/refresh`, `POST /logout`
   and `POST /me/password` for every `AUTH JWT` project.
 - Migrations support `ON DELETE CASCADE` for infrastructure tables.
+- Language: `DECIMAL` type (exact, two decimals, returned as strings), `DEFAULT value` and
+  `INDEX` field modifiers, and `VALIDATE field IN a b c`.
 - Password reset (`USE auth.password_reset`: `POST /password/forgot`, `POST /password/reset`) and
   email verification (`USE auth.email_verification`: `email_verified_at`, `POST /email/verify`,
   `POST /email/resend`) with single-use hashed tokens.
@@ -38,6 +40,9 @@ language; such changes are listed under **Changed**.
   deterministic OAuth provider for `scripts/e2e_runtime.py`.
 
 ### Changed
+- `PUT` replaces records the same way on every target: left-out `OPTIONAL` fields become
+  `null` and left-out fields with a `DEFAULT` get the default (FastAPI used to clear
+  defaulted fields, PHP and NestJS kept left-out optional fields).
 - `AUTH SESSION` is no longer rejected.
 - All compiler code moved into the `semarc` package (`semarc.compiler`, `semarc.generator`,
   ...). `python3 main.py` keeps working in a checkout.

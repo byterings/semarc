@@ -1,7 +1,7 @@
 from typing import List
 
 from semarc.ast_loader import load_ast_builder, load_semantic_nodes
-from semarc.lexer.lexer import FIELD_MODIFIERS, RESERVED_KEYWORDS, ROUTE_ACCESS, VALIDATION_RULES, Token
+from semarc.lexer.lexer import DEFAULT_MODIFIER, FIELD_MODIFIERS, RESERVED_KEYWORDS, ROUTE_ACCESS, VALIDATION_RULES, Token
 
 nodes = load_semantic_nodes()
 ast_builder = load_ast_builder()
@@ -149,12 +149,24 @@ class Parser:
             raise ParserError(self._message(tokens[0], "Field name must be an identifier"))
         self._expect(tokens[1], "TYPE", "Field type must be a supported semantic type")
         modifiers = []
-        for token in tokens[2:]:
+        default = None
+        index = 2
+        while index < len(tokens):
+            token = tokens[index]
+            index += 1
+            if token.value == DEFAULT_MODIFIER:
+                if default is not None:
+                    raise ParserError(self._message(token, "DEFAULT is declared twice"))
+                if index >= len(tokens):
+                    raise ParserError(self._message(token, "DEFAULT requires a value, for example DEFAULT draft"))
+                default = tokens[index].value
+                index += 1
+                continue
             if token.value not in FIELD_MODIFIERS:
-                supported = ", ".join(sorted(FIELD_MODIFIERS))
+                supported = ", ".join(sorted(FIELD_MODIFIERS | {DEFAULT_MODIFIER}))
                 raise ParserError(self._message(token, f"Field modifier must be one of: {supported}"))
             modifiers.append(token.value)
-        return self.builder.field(tokens[0].value, tokens[1].value, tokens[0], modifiers)
+        return self.builder.field(tokens[0].value, tokens[1].value, tokens[0], modifiers, default)
 
     def _parse_route(self, tokens: List[Token]) -> RouteNode:
         if len(tokens) < 3:
@@ -190,6 +202,7 @@ class Parser:
 
         rules: list[str] = []
         parameters: dict[str, int] = {}
+        values: list[str] = []
         index = 2
         while index < len(tokens):
             token = tokens[index]
@@ -200,6 +213,12 @@ class Parser:
             rules.append(rule)
             index += 1
 
+            if rule == "IN":
+                values = [item.value for item in tokens[index:]]
+                if not values:
+                    raise ParserError(self._message(token, "IN requires the allowed values, for example IN draft published"))
+                break
+
             if rule in {"MIN", "MAX"}:
                 if index < len(tokens) and tokens[index].token_type == "NUMBER":
                     parameters[rule] = int(tokens[index].value)
@@ -209,7 +228,7 @@ class Parser:
                 else:
                     raise ParserError(self._message(token, "MAX requires a numeric value, for example MAX 255"))
 
-        return self.builder.validation(field_name, rules, tokens[0], model_name, parameters)
+        return self.builder.validation(field_name, rules, tokens[0], model_name, parameters, values)
 
     def _validation_target(self, token: Token) -> tuple[str | None, str]:
         if "." not in token.value:

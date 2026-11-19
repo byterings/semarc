@@ -94,14 +94,15 @@ All targets share one API contract (see [docs/GENERATED_API.md](docs/GENERATED_A
 | `TARGET` | `TARGET PHP`, `TARGET FASTAPI`, `TARGET NESTJS` (default PHP) |
 | `DATABASE` | `DATABASE MYSQL`, `DATABASE POSTGRESQL`, `DATABASE SQLITE` |
 | `AUTH` | `AUTH JWT` (bearer tokens) or `AUTH SESSION` (cookie sessions with CSRF protection) |
-| `MODEL` | `MODEL Post` followed by indented `name TYPE [UNIQUE] [OPTIONAL]` fields |
+| `MODEL` | `MODEL Post` followed by indented `name TYPE [UNIQUE] [OPTIONAL] [INDEX] [DEFAULT value]` fields |
 | `RELATION` | `RELATION User HAS_MANY Post` (`HAS_MANY`, `HAS_ONE`, `BELONGS_TO`) |
-| `VALIDATE` | `VALIDATE password REQUIRED MIN 8`, `VALIDATE Post.title MAX 120` |
+| `VALIDATE` | `VALIDATE password REQUIRED MIN 8`, `VALIDATE Post.title MAX 120`, `VALIDATE status IN draft published` |
 | `ROUTE` | `ROUTE GET /posts/{id}`, `ROUTE DELETE /posts/{id} PUBLIC`, `ROUTE DELETE /posts/{id} ROLE admin` |
 | `PROFILE` | `PROFILE ECOMMERCE` |
 | `USE` | `USE auth.roles`, `USE auth.oauth.google`, `USE payment.razorpay` |
 
-Field types are `STRING`, `TEXT`, `INTEGER`, `FLOAT`, `BOOLEAN`, `DATE` and `DATETIME`. Routes are mapped to
+Field types are `STRING`, `TEXT`, `INTEGER`, `FLOAT`, `DECIMAL`, `BOOLEAN`, `DATE` and `DATETIME`; modifiers are
+`UNIQUE`, `OPTIONAL`, `INDEX` and `DEFAULT value`. Routes are mapped to
 operations by shape: `GET|POST /posts`, `GET|PUT|PATCH|DELETE /posts/{id}` and
 `GET /users/{id}/posts`. Any other declared route is generated as an explicit `501` stub.
 With `AUTH JWT`, reads are public and writes need a token unless a route says `PUBLIC` or

@@ -22,6 +22,7 @@ from semarc.architecture.rules.auth_rules import (
     REFRESH_TOKEN_TABLE,
     REFRESH_TOKEN_TTL_SECONDS,
 )
+from semarc.architecture.rules.field_values import parse_value
 from semarc.generator.utils.inflector import pluralize, resource_path, snake_case
 
 
@@ -227,9 +228,10 @@ class ResourcePlanner:
                         "type": model_field.field_type,
                         "required": "OPTIONAL" not in model_field.modifiers,
                         "unique": "UNIQUE" in model_field.modifiers,
+                        "index": "INDEX" in model_field.modifiers,
                         "secret": False,
                         "writable": True,
-                        "default": None,
+                        "default": parse_value(model_field.field_type, model_field.default)[0] if model_field.default is not None else None,
                     }
                     for model_field in model.fields
                 ],
@@ -312,7 +314,7 @@ class ResourcePlanner:
                 spec_field["secret"] = True
 
     def _rules_for(self, model_name: str, spec_field: dict, validations: list) -> dict:
-        rules = {"required": spec_field["required"], "not_empty": False, "email": False, "min": None, "max": None}
+        rules = {"required": spec_field["required"], "not_empty": False, "email": False, "min": None, "max": None, "in": None}
         for validation in validations:
             if validation.field_name != spec_field["name"]:
                 continue
@@ -326,6 +328,8 @@ class ResourcePlanner:
                 rules["min"] = validation.parameters["MIN"]
             if "MAX" in validation.rules:
                 rules["max"] = validation.parameters["MAX"]
+            if "IN" in validation.rules:
+                rules["in"] = [parse_value(spec_field["type"], value)[0] for value in validation.values]
         return rules
 
     def _references_for(self, spec: dict, foreign_keys: list[dict], auth: dict | None) -> list[dict]:

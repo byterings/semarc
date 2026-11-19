@@ -6,6 +6,7 @@ ALEMBIC_TYPES = {
     "Text": "sa.Text()",
     "Integer": "sa.Integer()",
     "Float": "sa.Float()",
+    "Numeric(12, 2)": "sa.Numeric(precision=12, scale=2)",
     "Boolean": "sa.Boolean()",
     "Date": "sa.Date()",
     "DateTime": "sa.DateTime()",
@@ -45,6 +46,10 @@ def migration_code(table: dict, previous: dict | None) -> str:
         ]
     )
     indexes = [
+        f'    op.create_index("ix_{table["table"]}_{column["name"]}", "{table["table"]}", ["{column["name"]}"])'
+        for column in table["fields"]
+        if column.get("index")
+    ] + [
         f'    op.create_index("ix_{table["table"]}_{foreign_key["column"]}", "{table["table"]}", ["{foreign_key["column"]}"])'
         for foreign_key in table["foreign_keys"]
         if not foreign_key.get("unique")

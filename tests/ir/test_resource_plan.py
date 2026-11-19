@@ -180,7 +180,7 @@ class ModelSpecTests(unittest.TestCase):
         user = model(self.ir, "User")
         self.assertEqual(
             field(user, "email")["rules"],
-            {"required": True, "not_empty": True, "email": True, "min": None, "max": None},
+            {"required": True, "not_empty": True, "email": True, "min": None, "max": None, "in": None},
         )
         self.assertEqual(field(user, "password")["rules"]["min"], 8)
         self.assertEqual(field(model(self.ir, "Post"), "title")["rules"]["max"], 120)

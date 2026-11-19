@@ -21,6 +21,7 @@ SCALARS = {
     "TEXT": {"type": "string"},
     "INTEGER": {"type": "integer"},
     "FLOAT": {"type": "number"},
+    "DECIMAL": {"type": "string", "format": "decimal", "pattern": "^-?\\d{1,10}\\.\\d{2}$", "examples": ["19.99"]},
     "BOOLEAN": {"type": "boolean"},
     "DATE": {"type": "string", "format": "date"},
     "DATETIME": {"type": "string", "format": "date-time"},
@@ -226,8 +227,24 @@ class OpenApiBuilder:
                     schema["minimum"] = rules["min"]
                 if rules["max"] is not None:
                     schema["maximum"] = rules["max"]
-            if not rules["required"]:
-                schema["type"] = [schema["type"], "null"]
+            elif rules["type"] == "DECIMAL":
+                schema = {
+                    "type": ["string", "number"],
+                    "description": "Up to 10 digits before and 2 after the point; a string such as \"19.99\" or a number",
+                }
+                if rules["min"] is not None:
+                    schema["minimum"] = rules["min"]
+                if rules["max"] is not None:
+                    schema["maximum"] = rules["max"]
+            if rules["in"] is not None:
+                schema["enum"] = list(rules["in"])
+            if rules["default"] is not None:
+                schema["default"] = rules["default"]
+            if rules["nullable"]:
+                types = schema["type"] if isinstance(schema["type"], list) else [schema["type"]]
+                schema["type"] = [*types, "null"]
+                if "enum" in schema:
+                    schema["enum"] = [*schema["enum"], None]
             properties[model_field["name"]] = schema
             if rules["required"] and not partial:
                 required.append(model_field["name"])

@@ -41,11 +41,12 @@ class AstBuilder:
     def model(self, name: str, token) -> ModelNode:
         return ModelNode(name=name, location=self._location(token))
 
-    def field(self, name: str, field_type: str, token, modifiers: list[str] | None = None) -> FieldNode:
+    def field(self, name: str, field_type: str, token, modifiers: list[str] | None = None, default: str | None = None) -> FieldNode:
         return FieldNode(
             name=name,
             field_type=field_type.upper(),
             modifiers=[modifier.upper() for modifier in modifiers or []],
+            default=default,
             location=self._location(token),
         )
 
@@ -73,12 +74,14 @@ class AstBuilder:
         token,
         model_name: str | None = None,
         parameters: dict[str, int] | None = None,
+        values: list[str] | None = None,
     ) -> ValidationNode:
         return ValidationNode(
             field_name=field_name,
             rules=[rule.upper() for rule in rules],
             model_name=model_name,
             parameters={key.upper(): value for key, value in (parameters or {}).items()},
+            values=list(values or []),
             location=self._location(token),
         )
 

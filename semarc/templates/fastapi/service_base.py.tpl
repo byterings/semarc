@@ -2,6 +2,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
+from decimal import Decimal
 from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel
@@ -42,6 +43,7 @@ class ResourceService(Generic[ModelT]):
     dependents: tuple[Dependent, ...] = ()
     unique: tuple[str, ...] = ()
     defaults: dict[str, Any] = {}
+    replace_values: dict[str, Any] = {}
     filters: dict[str, str] = {"id": "INTEGER"}
     sort_fields: tuple[str, ...] = ("id",)
 
@@ -100,6 +102,11 @@ class ResourceService(Generic[ModelT]):
         if not manage_all:
             self._check_owner(record, owner_id)
         data = payload.model_dump(exclude_unset=partial)
+        if not partial:
+            # PUT replaces the record: left-out fields get their DEFAULT, OPTIONAL ones null
+            for field, value in self.replace_values.items():
+                if data.get(field) is None:
+                    data[field] = value
         self._apply_owner(data, owner_id, require=not partial, keep_existing=True)
         if not data:
             return self.serialize(record)
@@ -198,6 +205,7 @@ class ResourceService(Generic[ModelT]):
 FILTER_DESCRIPTIONS = {
     "INTEGER": "an integer",
     "FLOAT": "a number",
+    "DECIMAL": "a decimal number",
     "BOOLEAN": "true or false",
     "DATE": "a date (YYYY-MM-DD)",
 }
@@ -211,6 +219,8 @@ def _filter_value(raw: str, field_type: str) -> Any:
             return float(raw)
         except ValueError:
             return None
+    if field_type == "DECIMAL":
+        return Decimal(raw) if re.fullmatch(r"-?\d{1,10}(\.\d{1,2})?", raw) else None
     if field_type == "BOOLEAN":
         return {"true": True, "1": True, "false": False, "0": False}.get(raw.lower())
     if field_type == "DATE":

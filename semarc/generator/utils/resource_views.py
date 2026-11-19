@@ -18,15 +18,21 @@ def field_rules(model_field: dict) -> dict:
         maximum = STRING_MAX_LENGTH if maximum is None else min(maximum, STRING_MAX_LENGTH)
     if model_field.get("secret", False):
         maximum = min(maximum or SECRET_MAX_LENGTH, SECRET_MAX_LENGTH)
+    default = model_field.get("default")
     return {
         "type": model_field["type"],
-        "required": model_field["required"],
+        # must be sent on create; a field with a DEFAULT may be left out
+        "required": model_field["required"] and (default is None or not model_field.get("writable", True)),
+        # may be null; only OPTIONAL fields are nullable
+        "nullable": not model_field["required"],
+        "default": default if model_field.get("writable", True) else None,
         "unique": model_field["unique"],
         "secret": model_field.get("secret", False),
         "not_empty": rules.get("not_empty", False),
         "email": rules.get("email", False),
         "min": rules.get("min"),
         "max": maximum,
+        "in": rules.get("in"),
     }
 
 
@@ -34,6 +40,9 @@ def reference_rules(reference: dict) -> dict:
     return {
         "type": "INTEGER",
         "required": True,
+        "nullable": False,
+        "default": None,
+        "in": None,
         "unique": reference["unique"],
         "secret": False,
         "not_empty": False,
@@ -46,6 +55,19 @@ def reference_rules(reference: dict) -> dict:
 def writable_fields(model: dict) -> list[dict]:
     """Fields clients may send; managed fields (such as role) are set by the API only."""
     return [model_field for model_field in model["fields"] if model_field.get("writable", True)]
+
+
+def replace_values(model: dict) -> dict:
+    """What PUT stores for writable fields it may leave out: the DEFAULT, or null for OPTIONAL fields."""
+    values = {}
+    for model_field in writable_fields(model):
+        if model_field.get("secret", False):
+            continue
+        if model_field.get("default") is not None:
+            values[model_field["name"]] = model_field["default"]
+        elif not model_field["required"]:
+            values[model_field["name"]] = None
+    return values
 
 
 def field_defaults(model: dict) -> dict:

@@ -1,5 +1,6 @@
 import { ObjectLiteral } from 'typeorm';
 import { ApiError, ErrorDetails } from './api-error';
+import { decimalValue } from './validation';
 import { ResourceRepository } from './resource.repository';
 
 export const DEFAULT_LIMIT = {{default_limit}};
@@ -37,7 +38,9 @@ export abstract class ResourceService<T extends ObjectLiteral> {
   protected readonly dependents: Dependent[] = [];
   protected readonly unique: string[] = [];
   protected readonly dateTimes: string[] = [];
+  protected readonly decimals: string[] = [];
   protected readonly defaults: Data = {};
+  protected readonly replaceValues: Data = {};
   protected readonly filters: Record<string, string> = { id: 'INTEGER' };
   protected readonly sortFields: string[] = ['id'];
 
@@ -89,6 +92,14 @@ export abstract class ResourceService<T extends ObjectLiteral> {
       this.checkOwner(record, ownerId);
     }
     const data = this.toStored(defined(input));
+    if (!partial) {
+      // PUT replaces the record: left-out fields get their DEFAULT, OPTIONAL ones null
+      for (const [field, value] of Object.entries(this.replaceValues)) {
+        if (!(field in data)) {
+          data[field] = value;
+        }
+      }
+    }
     this.applyOwner(data, ownerId, !partial, true);
     if (Object.keys(data).length === 0) {
       return this.serialize(record);
@@ -170,6 +181,11 @@ export abstract class ResourceService<T extends ObjectLiteral> {
 
   /** ISO 8601 date-time strings are stored as UTC Date values without milliseconds. */
   private toStored(data: Data): Data {
+    for (const field of this.decimals) {
+      if (data[field] !== null && data[field] !== undefined) {
+        data[field] = decimalValue(data[field]);
+      }
+    }
     for (const field of this.dateTimes) {
       if (typeof data[field] === 'string') {
         const value = new Date(data[field] as string);
@@ -239,6 +255,7 @@ export abstract class ResourceService<T extends ObjectLiteral> {
 const FILTER_DESCRIPTIONS: Record<string, string> = {
   INTEGER: 'an integer',
   FLOAT: 'a number',
+  DECIMAL: 'a decimal number',
   BOOLEAN: 'true or false',
   DATE: 'a date (YYYY-MM-DD)',
 };
@@ -249,6 +266,8 @@ function filterValue(raw: string, type: string): unknown {
       return /^-?\d+$/.test(raw) ? Number(raw) : undefined;
     case 'FLOAT':
       return raw.trim() !== '' && Number.isFinite(Number(raw)) ? Number(raw) : undefined;
+    case 'DECIMAL':
+      return decimalValue(raw);
     case 'BOOLEAN':
       return ({ true: true, '1': true, false: false, '0': false } as Record<string, boolean>)[raw.toLowerCase()];
     case 'DATE':

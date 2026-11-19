@@ -8,9 +8,9 @@ declare(strict_types=1);
 final class Schema
 {
     private const TYPES = [
-        'mysql' => ['STRING' => 'VARCHAR(255)', 'TEXT' => 'TEXT', 'INTEGER' => 'INT', 'FLOAT' => 'DOUBLE', 'BOOLEAN' => 'TINYINT(1)', 'DATE' => 'DATE', 'DATETIME' => 'DATETIME'],
-        'pgsql' => ['STRING' => 'VARCHAR(255)', 'TEXT' => 'TEXT', 'INTEGER' => 'INTEGER', 'FLOAT' => 'DOUBLE PRECISION', 'BOOLEAN' => 'BOOLEAN', 'DATE' => 'DATE', 'DATETIME' => 'TIMESTAMP'],
-        'sqlite' => ['STRING' => 'VARCHAR(255)', 'TEXT' => 'TEXT', 'INTEGER' => 'INTEGER', 'FLOAT' => 'REAL', 'BOOLEAN' => 'INTEGER', 'DATE' => 'TEXT', 'DATETIME' => 'TEXT'],
+        'mysql' => ['STRING' => 'VARCHAR(255)', 'TEXT' => 'TEXT', 'INTEGER' => 'INT', 'FLOAT' => 'DOUBLE', 'DECIMAL' => 'DECIMAL(12,2)', 'BOOLEAN' => 'TINYINT(1)', 'DATE' => 'DATE', 'DATETIME' => 'DATETIME'],
+        'pgsql' => ['STRING' => 'VARCHAR(255)', 'TEXT' => 'TEXT', 'INTEGER' => 'INTEGER', 'FLOAT' => 'DOUBLE PRECISION', 'DECIMAL' => 'NUMERIC(12,2)', 'BOOLEAN' => 'BOOLEAN', 'DATE' => 'DATE', 'DATETIME' => 'TIMESTAMP'],
+        'sqlite' => ['STRING' => 'VARCHAR(255)', 'TEXT' => 'TEXT', 'INTEGER' => 'INTEGER', 'FLOAT' => 'REAL', 'DECIMAL' => 'NUMERIC', 'BOOLEAN' => 'INTEGER', 'DATE' => 'TEXT', 'DATETIME' => 'TEXT'],
     ];
 
     private const PRIMARY_KEYS = [
@@ -57,6 +57,12 @@ final class Schema
             'CREATE TABLE ' . $quote($definition['table']) . " (\n    " . implode(",\n    ", $lines) . "\n)" . $suffix,
         ];
 
+        foreach ($definition['columns'] as $column) {
+            if (!empty($column['index'])) {
+                $index = 'idx_' . $definition['table'] . '_' . $column['name'];
+                $statements[] = 'CREATE INDEX ' . $quote($index) . ' ON ' . $quote($definition['table']) . ' (' . $quote($column['name']) . ')';
+            }
+        }
         if ($driver !== 'mysql') {
             foreach ($definition['foreign_keys'] as $foreignKey) {
                 if (!$foreignKey['unique']) {

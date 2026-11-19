@@ -19,6 +19,7 @@ class MigrationGenerator:
                         "type": column["type"],
                         "required": column["required"],
                         "unique": column["unique"],
+                        **({"index": True} if column.get("index") else {}),
                     }
                     for column in table["fields"]
                 ],

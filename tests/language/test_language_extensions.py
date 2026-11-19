@@ -302,3 +302,65 @@ class ExampleCompatibilityTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+FIELDS = """PROJECT Demo
+
+MODEL Product
+    name STRING INDEX
+    price DECIMAL
+    status STRING DEFAULT draft
+    stock INTEGER DEFAULT 0
+    featured BOOLEAN DEFAULT false
+
+VALIDATE status IN draft published
+"""
+
+
+class FieldOptionTests(unittest.TestCase):
+    def plan(self, source: str) -> dict:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            return compile_source(source, tmpdir, "php", generate=False).ir
+
+    def rejected(self, source: str) -> str:
+        with self.assertRaises((SemanticValidationError, ParserError)) as raised:
+            self.plan(source)
+        return str(raised.exception)
+
+    def test_defaults_index_and_choices_reach_the_ir(self):
+        product = next(model for model in self.plan(FIELDS)["models"] if model["name"] == "Product")
+        fields = {item["name"]: item for item in product["fields"]}
+        self.assertEqual((fields["status"]["default"], fields["stock"]["default"], fields["featured"]["default"]), ("draft", 0, False))
+        self.assertTrue(fields["name"]["index"])
+        self.assertEqual(fields["price"]["type"], "DECIMAL")
+        self.assertEqual(fields["status"]["rules"]["in"], ["draft", "published"])
+
+    def test_decimal_default_is_normalised(self):
+        product = self.plan("PROJECT Demo\nMODEL Item\n    price DECIMAL DEFAULT 5\n")["models"][0]
+        self.assertEqual(product["fields"][0]["default"], "5.00")
+
+    def test_default_requires_a_value(self):
+        self.assertIn("DEFAULT requires a value", self.rejected("PROJECT Demo\nMODEL Item\n    status STRING DEFAULT\n"))
+
+    def test_default_must_fit_the_type(self):
+        self.assertIn("must be an integer", self.rejected("PROJECT Demo\nMODEL Item\n    stock INTEGER DEFAULT many\n"))
+        self.assertIn("2 decimals", self.rejected("PROJECT Demo\nMODEL Item\n    price DECIMAL DEFAULT 1.234\n"))
+        self.assertIn("true or false", self.rejected("PROJECT Demo\nMODEL Item\n    on BOOLEAN DEFAULT yes\n"))
+
+    def test_default_must_be_an_allowed_value(self):
+        source = FIELDS.replace("DEFAULT draft", "DEFAULT archived")
+        self.assertIn("is not one of the IN values", self.rejected(source))
+
+    def test_default_conflicts(self):
+        self.assertIn("DEFAULT cannot be combined with UNIQUE", self.rejected("PROJECT Demo\nMODEL Item\n    code STRING UNIQUE DEFAULT x\n"))
+        self.assertIn("DATETIME", self.rejected("PROJECT Demo\nMODEL Item\n    at DATETIME DEFAULT now\n"))
+
+    def test_index_conflicts(self):
+        self.assertIn("already creates an index", self.rejected("PROJECT Demo\nMODEL Item\n    code STRING UNIQUE INDEX\n"))
+        self.assertIn("INDEX is not supported on TEXT", self.rejected("PROJECT Demo\nMODEL Item\n    body TEXT INDEX\n"))
+
+    def test_in_rules(self):
+        self.assertIn("IN requires the allowed values", self.rejected("PROJECT Demo\nMODEL Item\n    s STRING\nVALIDATE s IN\n"))
+        self.assertIn("STRING or INTEGER", self.rejected("PROJECT Demo\nMODEL Item\n    on BOOLEAN\nVALIDATE on IN true\n"))
+        self.assertIn("must be an integer", self.rejected("PROJECT Demo\nMODEL Item\n    n INTEGER\nVALIDATE n IN 1 two\n"))
+        self.assertIn("Duplicate value in IN", self.rejected("PROJECT Demo\nMODEL Item\n    s STRING\nVALIDATE s IN a a\n"))

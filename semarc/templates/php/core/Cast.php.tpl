@@ -22,6 +22,12 @@ final class Cast
         return $value === null ? null : (float) $value;
     }
 
+    /** DECIMAL values are strings with exactly two decimals, whatever the database returns. */
+    public static function decimal(mixed $value): ?string
+    {
+        return $value === null ? null : number_format((float) $value, 2, '.', '');
+    }
+
     public static function bool(mixed $value): ?bool
     {
         if ($value === null) {
